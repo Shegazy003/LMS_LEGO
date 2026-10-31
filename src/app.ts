@@ -1,5 +1,6 @@
 // LMS Lego router: server-rendered pages on Hono.
 import { Hono, type Context, type MiddlewareHandler } from 'hono';
+import { HTTPException } from 'hono/http-exception';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { csrf } from 'hono/csrf';
 import type { AppEnv, CurrentSpace } from './app-env.ts';
@@ -480,8 +481,14 @@ app.notFound((c) => {
 });
 
 app.onError((err, c) => {
+  const lang = c.var.lang ?? 'en';
+  const t = makeLabel(lang);
+  // A refusal raised by a middleware (the csrf check answers 403) stays a refusal.
+  if (err instanceof HTTPException && err.status === 403) {
+    return page(c, messagePage(t, lang, t('noAccess'), Boolean(c.var.user)), 403);
+  }
+  if (err instanceof HTTPException && err.status < 500) return err.getResponse();
   console.error(err);
-  const t = makeLabel(c.var.lang ?? 'en');
-  return page(c, messagePage(t, c.var.lang ?? 'en', t('serverError'), false), 500);
+  return page(c, messagePage(t, lang, t('serverError'), false), 500);
 });
 
