@@ -47,6 +47,12 @@ jobs:
       - name: AT-1 guard - the test clock cannot be enabled in production
         if: success() || failure()
         run: npm run test:guard:clock
+      - name: AT-4 a learner sees exactly what was assigned
+        if: success() || failure()
+        run: npm run test:at4
+      - name: AT-4 guard - a space never reads another space's rows
+        if: success() || failure()
+        run: npm run test:guard:spaces
       - name: Upload evidence (screenshots, reports)
         if: always() && hashFiles('evidence/**') != ''
         uses: actions/upload-artifact@v4

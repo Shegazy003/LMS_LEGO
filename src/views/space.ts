@@ -11,11 +11,16 @@ export interface SpaceView {
   hasLogo: boolean;
 }
 
-function spaceHeader(space: SpaceView): Html {
+export function spaceHeader(space: SpaceView): Html {
   return html`<header class="space-header" style="background:${space.primaryColor}">
   ${space.hasLogo ? html`<img id="space-logo" src="/s/${space.id}/logo" alt="">` : ''}
   <h1 id="space-name">${space.name}</h1>
 </header>`;
+}
+
+/** The two places every member can always go: this space's home and My account. */
+export function spaceNav(t: Label, space: SpaceView): Html {
+  return html`<nav class="nav"><a id="nav-home" href="/s/${space.id}">${t('home')}</a><a id="nav-account" href="/account">${t('myAccount')}</a></nav>`;
 }
 
 /** The admin's home: the space with its name, logo, colour and kit labels. */
@@ -23,7 +28,7 @@ export function adminHome(t: Label, lang: Lang, space: SpaceView, displayName: s
   const concepts = (['publisher', 'learner', 'group', 'subject'] as const).map(
     (c) => html`<li data-concept="${c}">${t(c)}</li>`,
   );
-  const body = html`<p>${t('welcome', { name: displayName })}</p>
+  const body = html`${spaceNav(t, space)}<p>${t('welcome', { name: displayName })}</p>
 <ul id="concepts" class="tiles">${concepts}</ul>`;
   return layout({ t, lang, title: space.name, body, signedIn: true, header: spaceHeader(space) });
 }

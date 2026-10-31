@@ -10,16 +10,21 @@ import { SESSION_COOKIE, SESSION_IDLE_MS, sessionDecision } from './auth/session
 import { newRecoveryCode, randomToken, recoveryCodeHash, tokenHash } from './auth/tokens.ts';
 import { now } from './clock.ts';
 import { Db } from './db.ts';
-import { LOGO_MAX_BYTES, fileHeaders, sniffLogo } from './files.ts';
+import { LOGO_MAX_BYTES, fileHeaders, materialFileHeaders, sniffLogo } from './files.ts';
 import { makeLabel, productLang, type KitJson, type Lang } from './labels.ts';
+import {
+  findFile, findLesson, lessonMaterials, outline, readableSubject, subjectsForLearner, subjectsForPublisher,
+} from './learning.ts';
 import { normaliseCountryCode, normaliseMobile } from './phone.ts';
 import { SEED_KITS, seedKit } from './kits/seed.ts';
 import { registerTestHooks } from './test-hooks.ts';
 import { FREE_PLAN, UsageMeter, type FlushBatch } from './usage.ts';
+import { accountPage } from './views/account.ts';
 import { recoverPage, recoveryCodePage, setupPage, signInPage } from './views/auth.ts';
 import { messagePage, type Html } from './views/layout.ts';
+import { learnerHome, lessonPage, publisherHome, subjectPage } from './views/learn.ts';
 import { newSpacePage, ownerHome, ownerSpacePage, type AdminRow, type AppointValues, type NewSpaceValues } from './views/owner.ts';
-import { accessEndedPage, adminHome, membershipsPage } from './views/space.ts';
+import { accessEndedPage, adminHome, membershipsPage, type SpaceView } from './views/space.ts';
 
 type C = Context<AppEnv>;
 
@@ -435,42 +440,176 @@ app.get('/home', async (c) => {
 // Every address inside a space passes this check first: signed in, a member
 // of this space, and within the end date. After the end date every address
 // answers 403 with the plain "access ended" message.
+const ROLE_ORDER = ['admin', 'publisher', 'learner'];
+
 app.use('/s/:spaceId/*', async (c, next) => {
   const user = c.get('user');
   if (!user) return c.redirect('/signin');
   const spaceId = c.req.param('spaceId');
-  const row = await c.get('db').first<{ name: string; json: string; role: string; valid_until: string }>(
+  const rows = await c.get('db').all<{ name: string; json: string; role: string; valid_until: string }>(
     `SELECT s.name, k.json, m.role, m.valid_until
        FROM membership m JOIN space s ON s.id = m.space_id JOIN kit k ON k.id = s.kit_id
       WHERE m.space_id = ? AND m.user_id = ?
-      ORDER BY m.valid_until DESC LIMIT 1`,
+      ORDER BY m.valid_until DESC`,
     spaceId, user.id,
   );
-  if (!row) return refuse(c, 403, 'noAccess');
-  const kit = loadKit(row.json);
+  if (!rows.length) return refuse(c, 403, 'noAccess');
+  const kit = loadKit(rows[0].json);
   const [first, second] = kit.languages;
-  if (!membershipActive(row.valid_until, now())) {
+  const active = rows.filter((r) => membershipActive(r.valid_until, now()));
+  if (!active.length) {
+    const last = rows[0];
     const body = accessEndedPage(
       { t: makeLabel(first, kit), lang: first },
       second ? { t: makeLabel(second, kit), lang: second } : null,
-      { spaceName: row.name, date: row.valid_until, contactKey: row.role === 'admin' ? 'ownerWord' : 'admin' },
+      { spaceName: last.name, date: last.valid_until, contactKey: last.role === 'admin' ? 'ownerWord' : 'admin' },
     );
     return page(c, body, 403);
   }
-  const space: CurrentSpace = { id: spaceId, name: row.name, kit, role: row.role, validUntil: row.valid_until };
+  const rank = (role: string) => (ROLE_ORDER.includes(role) ? ROLE_ORDER.indexOf(role) : ROLE_ORDER.length);
+  const main = [...active].sort((x, y) => rank(x.role) - rank(y.role))[0];
+  const space: CurrentSpace = {
+    id: spaceId, name: main.name, kit, role: main.role, roles: active.map((r) => r.role), validUntil: main.valid_until,
+  };
   c.set('space', space);
   c.set('lang', first);
   await next();
 });
 
-app.get('/s/:spaceId', (c) => {
+// Role gates. Admin pages live under /s/<space>/admin, publisher pages under
+// /s/<space>/publish. Anyone without that role today gets 403 with the plain
+// refusal, before any page is looked up (so unknown addresses there are 403
+// too, not 404).
+const requireSpaceRole = (role: 'admin' | 'publisher'): MiddlewareHandler<AppEnv> => async (c, next) => {
+  if (!c.get('space').roles.includes(role)) return refuse(c, 403, 'noAccess');
+  await next();
+};
+// A pattern ending in /* also matches its own base (…/admin itself).
+app.use('/s/:spaceId/admin/*', requireSpaceRole('admin'));
+app.use('/s/:spaceId/publish/*', requireSpaceRole('publisher'));
+
+function spaceView(space: CurrentSpace): SpaceView {
+  return { id: space.id, name: space.name, primaryColor: space.kit.theme.primaryColor, hasLogo: Boolean(space.kit.theme.logoKey) };
+}
+
+function spaceLabel(c: C) {
   const space = c.get('space');
   const lang = space.kit.languages[0];
-  const view = { id: space.id, name: space.name, primaryColor: space.kit.theme.primaryColor, hasLogo: Boolean(space.kit.theme.logoKey) };
-  return page(c, adminHome(makeLabel(lang, space.kit), lang, view, c.get('user')!.display_name));
+  return { t: makeLabel(lang, space.kit), lang, view: spaceView(space) };
+}
+
+function renderAdminHome(c: C) {
+  const { t, lang, view } = spaceLabel(c);
+  return page(c, adminHome(t, lang, view, c.get('user')!.display_name));
+}
+
+async function renderPublisherHome(c: C) {
+  const { t, lang, view } = spaceLabel(c);
+  const user = c.get('user')!;
+  const subjects = await subjectsForPublisher(c.get('db'), view.id, user.id);
+  return page(c, publisherHome(t, lang, view, user.display_name, subjects));
+}
+
+async function renderLearnerHome(c: C) {
+  const { t, lang, view } = spaceLabel(c);
+  const user = c.get('user')!;
+  const subjects = c.get('space').roles.includes('learner') ? await subjectsForLearner(c.get('db'), view.id, user.id) : [];
+  return page(c, learnerHome(t, lang, view, user.display_name, subjects));
+}
+
+// The space home is the home of the person's main role: an admin gets the
+// admin home, a publisher the publisher home, everyone else the learner home.
+app.get('/s/:spaceId', (c) => {
+  const roles = c.get('space').roles;
+  if (roles.includes('admin')) return renderAdminHome(c);
+  if (roles.includes('publisher')) return renderPublisherHome(c);
+  return renderLearnerHome(c);
 });
+app.get('/s/:spaceId/admin', (c) => renderAdminHome(c));
+app.get('/s/:spaceId/publish', (c) => renderPublisherHome(c));
 
 app.get('/s/:spaceId/logo', (c) => serveLogo(c, c.get('space').id));
+
+// Reading: a subject, a lesson, a stored file. Anything the person may not
+// read here (another space's id, a subject not assigned, unpublished, or no
+// such id) answers the same 403, so an address reveals nothing.
+app.get('/s/:spaceId/learn/:subjectId', async (c) => {
+  const db = c.get('db');
+  const space = c.get('space');
+  const subject = await readableSubject(db, space, c.get('user')!.id, c.req.param('subjectId'));
+  if (!subject) return refuse(c, 403, 'noAccess');
+  const { t, lang, view } = spaceLabel(c);
+  return page(c, subjectPage(t, lang, view, subject, await outline(db, space.id, subject.id)));
+});
+
+app.get('/s/:spaceId/read/:lessonId', async (c) => {
+  const db = c.get('db');
+  const space = c.get('space');
+  const lesson = await findLesson(db, space.id, c.req.param('lessonId'));
+  const subject = lesson && (await readableSubject(db, space, c.get('user')!.id, lesson.subject_id));
+  if (!lesson || !subject) return refuse(c, 403, 'noAccess');
+  const { t, lang, view } = spaceLabel(c);
+  const materials = await lessonMaterials(db, space.id, lesson.id);
+  return page(c, lessonPage(t, lang, view, { subject, lesson, materials }));
+});
+
+app.get('/s/:spaceId/file/:materialId', async (c) => {
+  const db = c.get('db');
+  const space = c.get('space');
+  const file = await findFile(db, space.id, c.req.param('materialId'));
+  const subject = file && (await readableSubject(db, space, c.get('user')!.id, file.subject_id));
+  if (!file || !subject) return refuse(c, 403, 'noAccess');
+  const obj = await c.env.FILES.get(file.storage_key);
+  if (!obj) return refuse(c, 404, 'notFound');
+  const headers = materialFileHeaders(file.kind, obj.httpMetadata?.contentType ?? '', obj.httpEtag);
+  if (c.req.header('if-none-match') === obj.httpEtag) {
+    obj.body.cancel();
+    return new Response(null, { status: 304, headers });
+  }
+  return new Response(obj.body, { headers });
+});
+
+// ------------------------------------------------------------ my account ----
+// Everyone can change their own password. The page follows the language of the
+// person's space (their latest membership), else the browser's.
+async function accountLang(c: C): Promise<Lang> {
+  const row = await c.get('db').first<{ json: string }>(
+    `SELECT k.json FROM membership m JOIN space s ON s.id = m.space_id JOIN kit k ON k.id = s.kit_id
+      WHERE m.user_id = ? ORDER BY m.valid_until DESC LIMIT 1`,
+    c.get('user')!.id,
+  );
+  return row ? loadKit(row.json).languages[0] : c.get('lang');
+}
+
+app.use('/account/*', async (c, next) => {
+  if (!c.get('user')) return c.redirect('/signin');
+  c.set('lang', await accountLang(c));
+  await next();
+});
+
+function renderAccount(c: C, extra: { error?: string; done?: boolean } = {}, status: 200 | 400 = 200) {
+  const user = c.get('user')!;
+  return page(c, accountPage(label(c), c.get('lang'), { displayName: user.display_name, username: user.username, ...extra }), status);
+}
+
+app.get('/account', (c) => renderAccount(c));
+
+app.post('/account/password', async (c) => {
+  const db = c.get('db');
+  const user = c.get('user')!;
+  const t = label(c);
+  const body = await c.req.parseBody();
+  const current = typeof body.current_password === 'string' ? body.current_password : '';
+  const next = typeof body.new_password === 'string' ? body.new_password : '';
+  const row = await db.first<{ password_hash: string }>('SELECT password_hash FROM user WHERE id = ?', user.id);
+  if (!row || !(await verifyPassword(current, row.password_hash))) return renderAccount(c, { error: t('currentPasswordWrong') }, 400);
+  if (next.length < MIN_PASSWORD) return renderAccount(c, { error: t('passwordTooShort') }, 400);
+  await db.batch([
+    ['UPDATE user SET password_hash = ? WHERE id = ?', await hashPassword(next), user.id],
+    ['DELETE FROM session WHERE user_id = ? AND id <> ?', user.id, user.sessionId], // every other sign-in ends
+  ]);
+  return renderAccount(c, { done: true });
+});
 
 // ------------------------------------------------------- not found, errors ----
 app.notFound((c) => {

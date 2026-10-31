@@ -12,6 +12,8 @@ import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 const wrangler = join(root, 'node_modules', '.bin', 'wrangler');
+// A sentence that exists only inside the test seeding code (src/test-hooks.ts).
+const SEED_MARKER = 'test seeding refused';
 
 function readConfig(): any {
   const text = readFileSync(join(root, 'wrangler.jsonc'), 'utf8');
@@ -49,11 +51,15 @@ test('production guard: production config compiles test hooks out and sets no te
   }
 });
 
-test('production guard: the production bundle contains no clock control, the test bundle does', () => {
+test('production guard: the production bundle contains no clock control and no test seeding, the test bundle does', () => {
   const testBundle = bundle('test');
   assert.ok(testBundle.includes('/__test/clock'), 'the test build must contain the clock route (check is meaningful)');
+  assert.ok(testBundle.includes('/__test/seed'), 'the test build must contain the seeding route (check is meaningful)');
+  assert.ok(testBundle.includes(SEED_MARKER), 'the test build must contain the seeding code (check is meaningful)');
   const production = bundle('');
   assert.ok(production.length > 1000, 'production bundle was built');
   assert.ok(!production.includes('/__test/'), 'production bundle must not contain test routes');
+  assert.ok(!production.includes('/__test/seed'), 'production bundle must not contain the seeding route');
+  assert.ok(!production.includes(SEED_MARKER), 'production bundle must not contain the seeding code');
   assert.ok(!production.includes('TEST_HOOKS'), 'production bundle must not read the test flag');
 });

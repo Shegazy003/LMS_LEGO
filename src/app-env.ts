@@ -15,7 +15,10 @@ export interface CurrentSpace {
   id: string;
   name: string;
   kit: KitJson;
+  /** The person's main role here (admin, then publisher, then learner). */
   role: string;
+  /** Every role the person holds here today (memberships within their end date). */
+  roles: string[];
   validUntil: string;
 }
 
