@@ -34,3 +34,8 @@ export function fileHeaders(type: string, etag: string): Record<string, string> 
     'cache-control': 'private, no-cache',
   };
 }
+
+/** Headers for a lesson file (PDF or image). Not built yet: AT-4 red. */
+export function materialFileHeaders(kind: 'pdf' | 'image', storedType: string, etag: string): Record<string, string> {
+  throw new Error(`materialFileHeaders(${kind}, ${storedType}, ${etag}) is not built yet`);
+}
