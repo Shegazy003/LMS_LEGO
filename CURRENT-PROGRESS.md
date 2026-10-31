@@ -1,6 +1,26 @@
 # Current progress
 
-## Current state, 31 October 2026 (late night): AT-1 delivered, build task 2 (AT-4) in progress
+## Current state, 1 November 2026: AT-1 and AT-4 delivered, build task 3 (AT-3) in progress
+
+**What is true now**
+
+- **AT-1 delivered** (pull request #4, merge `c9a69e3`): owner setup and recovery code, spaces on kits, admins with end dates, the admin's themed view, the "access ended" refusal, the usage panel.
+- **AT-4 delivered** (pull request #6, merge `b47eca6`): learner home with exactly the assigned and published subjects, subject and lesson pages, the five material kinds with files served through access checks, change own password, role gating (learners never reach admin or publisher pages), and cross-space isolation enforced in queries, in the database schema and in live tests. Red before green; Lead ACCEPTED; Verifier PASS on `cc20ec3`; CI green on `main` after the merge.
+- Contract 0.3 stays frozen. Nothing is deployed.
+
+**Active priority:** build task 3, acceptance test **AT-3** (the publisher builds the subject: chapter, lesson, PDF and image uploads, video link, web link, note, publish; a file that is not a PDF or image is refused with a plain message). Same route as before.
+
+**Carried into the plan** (none blocked a delivered test):
+- *Task 3 (AT-3):* make the CI browser install reliable (one attempt timed out before any test ran); a guard test that every non-learner route sits under the role-gated prefixes.
+- *Task 4 (AT-2):* role gating for any new admin routes under the same guard; a sign-in rate limit (the reset link adds a second door); membership checks honour `valid_from` as well as `valid_until`.
+- *First-deploy task (before AT-1 step 4):* the owner's last-resort reset documented and tested; owner setup immediately after the first deploy; re-check the PDF sandbox in a real browser during the owner's acceptance.
+- *Owner's Arabic label pass:* the expiry line reads «تواصل مع مدير»; natural Arabic wants «المدير». Collected with the other first-draft kit labels for the owner.
+
+**Waiting on the human owner:** nothing for task 3. Still open: subject names from Hadeer and Shimaa ("Mathematics" stands in), the Cloudflare account (before the first public address).
+
+**Known limits of this checkpoint:** content can be created only through the test seeding route until tasks 3 and 4 land; usage counts are approximate; end dates are UTC days; no sign-in rate limit yet; the Verifier runs on a different Anthropic model rather than a different vendor (exception in decision 002); free-tier figures and WhatsApp rates must be re-read before the first deploy.
+
+## Earlier on 31 October 2026 (late night): AT-1 delivered, task 2 opened (historical)
 
 **What is true now**
 
