@@ -53,3 +53,15 @@ export function materialFileHeaders(kind: 'pdf' | 'image', storedType: string, e
     'content-disposition': shown ? 'inline' : 'attachment',
   };
 }
+
+// Lesson file upload rules (AT-3). Not built yet: scaffolding for the red tests.
+export const MATERIAL_MAX_BYTES = 25 * 1024 * 1024;
+export type MaterialFileType = 'application/pdf' | 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif';
+
+export function sniffMaterial(_bytes: Uint8Array): { kind: 'pdf' | 'image'; type: MaterialFileType } | null {
+  return null;
+}
+
+export function materialBodyTooLarge(_contentLength: string | undefined): boolean {
+  return false;
+}

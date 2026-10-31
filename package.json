@@ -9,9 +9,11 @@
     "test:unit": "node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./test/support/github-reporter.mjs --test-reporter-destination=stdout \"test/unit/*.test.ts\"",
     "test:at1": "node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./test/support/github-reporter.mjs --test-reporter-destination=stdout \"test/at1/*.test.ts\"",
     "test:at4": "node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./test/support/github-reporter.mjs --test-reporter-destination=stdout \"test/at4/*.test.ts\"",
+    "test:at3": "node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./test/support/github-reporter.mjs --test-reporter-destination=stdout \"test/at3/*.test.ts\"",
     "test:guard:labels": "node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./test/support/github-reporter.mjs --test-reporter-destination=stdout test/guards/no-hardcoded-labels.test.ts",
     "test:guard:clock": "node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./test/support/github-reporter.mjs --test-reporter-destination=stdout test/guards/production-guard.test.ts",
     "test:guard:spaces": "node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./test/support/github-reporter.mjs --test-reporter-destination=stdout test/guards/space-isolation.test.ts",
+    "test:guard:roles": "node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./test/support/github-reporter.mjs --test-reporter-destination=stdout test/guards/role-gates.test.ts",
     "typecheck": "tsc --noEmit",
     "dev": "wrangler d1 migrations apply lms-lego --local && wrangler dev",
     "dev:test": "wrangler d1 migrations apply lms-lego --local --env test && wrangler dev --env test"
