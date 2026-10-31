@@ -13,6 +13,40 @@ Ideas recorded so they are not lost and not competing with the current release. 
 | **Per-space data export** (an admin downloads their space's people and content as a file) | The first release relies on the database's built-in 30-day history; an export needs its own privacy decision on who may hold it | An organization asks for its own copy, or the pilot runs longer than 30 days |
 | **Usage dashboards** for the owner and admins (who opened what, when) | Not part of the release promise; raises privacy questions that deserve their own decision | The owner asks what organizations actually use |
 
+## Owner ideas added 31 October 2026, after the founding package
+
+Recorded here, not in release 1, under "completion before expansion". Each is written as a future release promise so it can become a contract of its own without reopening release 1. The data-model notes say what release 1 must *not* do, so these stay cheap later.
+
+### A. Guardian accounts (father, mother, or a supervisor at work)
+
+**Future promise:** a guardian signs in and sees, read-only, what each of their learners has been assigned and how they are doing, from beginning to end.
+
+- **In Lego terms** this is a ninth canonical concept, **Guardian**, linked to one or more learners (a learner may have two). The School kit labels it Parent / ولي أمر; the Company kit labels the same concept Supervisor / مشرف, a line manager watching their team's training. One concept, two meanings, no new code per kit.
+- **Who appoints:** the admin, with validity dates, exactly like publishers and learners. The space verifies the family relationship; the product never guesses it.
+- **What "monitor" means** must be decided before building: the assigned subjects (free), exam results (needs idea B), and whether a lesson was opened (needs a view log, which is a privacy decision for the owner, RED).
+- **Release 1 keeps it cheap:** `membership.role` is text, so `guardian` is one more value; a `guardian_link (guardian_user_id, learner_user_id, space_id)` table is added when the release starts. Nothing in release 1 assumes a person holds only one role.
+- **Trigger:** the pilot school asks for parents to see results, or idea B is approved.
+
+### B. Exam results published through the space
+
+**Future promise:** a publisher records the results of one exam for a whole group in one step, and each learner (and their guardian) sees only their own results, from beginning to end.
+
+- **Shape:** each subject has a set of exams (title, date, maximum mark). For each exam the publisher opens one page that lists the assigned learners with an empty mark box each, fills it in, and presses Publish once. That is the "one step". A spreadsheet upload can be added, but names in a file must be matched to accounts, and a mismatch in Arabic spelling would publish a mark to the wrong child; the pre-filled page avoids that risk.
+- **Views:** learner sees own marks; guardian sees their learners' marks; admin sees the whole space; publisher sees their subjects.
+- **Non-negotiables:** a published mark can be corrected, and the correction keeps the previous value and who changed it (data integrity); a learner must never see another learner's row (privacy, tested like AT-4).
+- **Release 1 keeps it cheap:** `exam (subject_id, title, date, max_mark)` and `exam_result (exam_id, user_id, mark, note, published_at, changed_by)` are two new tables; nothing in release 1 needs to change. The Later list's "Quizzes and grading" means tests taken inside the product; this idea is results entered by the teacher, which is far smaller, and comes first.
+- **Trigger:** the pilot school finishes its first term on the space.
+
+### C. Printing orders through a contracted shop
+
+**Future promise:** a learner asks for a material to be printed, their guardian approves the purchase, the order reaches the contracted print shop, and the learner collects it, from beginning to end.
+
+- **Why it is RED before any work starts:** it involves money, a contract with an outside business, and giving that business access to lesson files. Each needs the owner's decision: who sets prices, who collects payment, who is liable if a file leaks.
+- **Simplest safe shape:** a new role **Vendor** per space (the shop's account), a price list per page count, and an order with five states: requested by learner → approved by guardian → sent to shop → ready → collected. The shop sees only the files of approved orders, through time-limited links, with the space's name watermarked on each page. Payment stays outside the product in its first version (the guardian pays the shop at collection), so no card processing, no refunds, no financial records to protect.
+- **Needs first:** idea A (guardians), because the approval step is the guardian's.
+- **Release 1 keeps it cheap:** materials already have a stable id and a storage key, which is all an order needs to reference.
+- **Trigger:** guardians exist, and one school has a print shop willing to sign the contract.
+
 ## From the brainstorm comparison
 
 | Idea | Why it waits |
