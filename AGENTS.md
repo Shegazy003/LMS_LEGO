@@ -31,7 +31,7 @@ A question already answered by the contract, a decision record or these instruct
 
 ## Where records live
 
-The product contract, decisions and progress live in this repository under `docs/` and `CURRENT-PROGRESS.md`; work travels as pull requests. If the owner runs the delivery team inside Paperclip, Paperclip's task holds the assignment and review stages and links to the pull request; there is never a second backlog. One canonical writer per file at a time.
+The product contract, decisions and progress live in this repository under `docs/` and `CURRENT-PROGRESS.md`; work travels as pull requests (owner decision, 31 October 2026: GitHub, not Paperclip). If the owner later runs the delivery team inside Paperclip, Paperclip's task holds the assignment and review stages and links to the pull request; there is never a second backlog. One canonical writer per file at a time.
 
 ## Delivery line
 

@@ -1,6 +1,6 @@
 # Product contract: LMS Lego, release 1
 
-**Version:** 0.2, 31 October 2026. **Status:** `CONTRACT READY`. The product critic's one review is recorded in section 8 and every finding is resolved below. The owner approves it, or answers the one batch of questions in section 7. Once the owner approves, this contract is **frozen**; later changes are a new version with an explained impact.
+**Version:** 0.3, 31 October 2026. **Status:** `CONTRACT READY`, with the owner's answers to questions 1 to 7 recorded in section 7 and one addition from question 8 (the free WhatsApp reset link, one step in AT-2). The product critic's review of version 0.2 is in section 8. **The owner approves this version by merging the pull request that carries it**; from that merge the contract is **frozen**, and later changes are a new version with an explained impact.
 
 ## 1. User and problem
 
@@ -18,17 +18,19 @@ Each test is binary and observed in the deployed product (or its exact emulation
 
 ### AT-1 The owner shapes a space and appoints its admin
 
-1. The owner signs in, creates a space named "Al Nour School", picks the **School** kit with Arabic as first language and English as second, uploads a logo and picks a colour.
+1. The owner signs in, creates a space named "Mesk School" (مدرسة مسك), picks the **School** kit with Arabic as first language and English as second, uploads a logo and picks a colour.
 2. The owner appoints an admin with a username, a first password and an end date of today plus 30 days.
-3. **Expected:** the admin signs in and sees "مدرسة النور" with the logo and colour, right-to-left, with the labels معلّم / طالب / فصل / مادّة. When the clock is moved past the end date, the same admin signs in and sees, in place of the space, the plain message "Your access to مدرسة النور ended on <date>. Contact the owner." and every direct link to the space is refused with the same message. The owner's home shows, for the whole product, files stored and today's page requests and database writes against the free-plan lines.
+3. **Expected:** the admin signs in and sees "مدرسة مسك" with the logo and colour, right-to-left, with the labels معلّم / طالب / فصل / مادّة. When the clock is moved past the end date, the same admin signs in and sees, in place of the space, the plain message "Your access to مدرسة مسك ended on <date>. Contact the owner." and every direct link to the space is refused with the same message. The owner's home shows, for the whole product, files stored and today's page requests and database writes against the free-plan lines.
 4. **Owner acceptance of this test runs once on the public address**, not only in CI emulation.
 
 ### AT-2 The admin staffs the space and assigns a subject
 
-1. The admin appoints one publisher and two learners, each with an end date, and forms a group "Grade 5A" containing only the first learner.
-2. The admin creates the subject "Mathematics", assigns the publisher to it, and assigns the group to it.
-3. The publisher reports a forgotten password; the admin sets them a new one from the publisher's page.
-4. **Expected:** the publisher's home lists Mathematics; the first learner's home lists Mathematics; the second learner's home lists nothing. The publisher signs in with the new password and the old one is refused. The admin cannot appoint another admin, and cannot set an end date later than their own.
+1. The admin appoints two publishers, Hadeer and Shimaa, and two learners, each with an end date and a registered mobile number (for a learner, the parent's number). Numbers are typed the local way (010…) with the space's default country code and stored in international form; a number that cannot be normalised is refused with a plain message.
+2. The admin creates the subject "Mathematics" (the teachers will name the real subjects), assigns Hadeer to it, and assigns the group to it. The admin forms a group "Science" containing only the first learner.
+3. Hadeer reports a forgotten password. The admin opens Hadeer's page and presses "Send reset link by WhatsApp". The product shows the number's last digits and asks for one confirming tap, then offers two things side by side: a WhatsApp button and a Copy button for the same link. The admin uses WhatsApp (or copies the link and sends it another way). Hadeer opens the link, types her username, and sets a new password.
+4. The admin does the same for the first learner: the link goes to the parent's number.
+5. **Expected (checked in CI):** Hadeer's home lists Mathematics; Shimaa's home lists nothing yet; the first learner's home lists Mathematics; the second learner's home lists nothing. The WhatsApp button carries the registered number in international form and the product's fixed message in the space's first language (it names مدرسة مسك, the admin, the product address, "valid 30 minutes", and puts the link alone on the last line). The link accepts the correct username once; it is refused with the wrong username, on a second use, and after the clock moves 30 minutes from its creation. Issuing a fresh link kills the previous one. The admin cannot appoint another admin, and cannot set an end date later than their own.
+6. **Owner acceptance only:** the admin actually sends one link through WhatsApp on a phone, and Hadeer sets her password from it.
 
 ### AT-3 The publisher builds the subject
 
@@ -40,16 +42,16 @@ Each test is binary and observed in the deployed product (or its exact emulation
 1. The first learner signs in, changes their own password, signs in again with it, opens Mathematics, Fractions, Adding fractions, and opens all five materials.
 2. The second learner signs in and tries the direct address of the lesson and of the PDF.
 3. The clock is moved past the first learner's end date and the first learner signs in again.
-4. **Expected:** the first learner reaches everything in step 1; the second learner is refused on both addresses; neither learner can see any edit control; after step 3 the first learner sees "Your access to مدرسة النور ended on <date>. Contact the مدير." and the lesson and PDF addresses are refused with the same message.
+4. **Expected:** the first learner reaches everything in step 1; the second learner is refused on both addresses; neither learner can see any edit control; after step 3 the first learner sees "Your access to مدرسة مسك ended on <date>. Contact the مدير." and the lesson and PDF addresses are refused with the same message.
 
 ### AT-5 The kit changes every word, and no code changes
 
-1. The owner creates a second space "Delta Logistics" on the **Company** kit, then opens the kit of "Al Nour School", switches it to the **Company** kit, and renames "Trainer" to "Coach" in English and to "مرشد" in Arabic there.
-2. **Expected:** every page the Al Nour admin, publisher and learner open now says Coach / مرشد, Employee, Team, Course; the first learner still opens Mathematics, Fractions, Adding fractions and its materials unchanged; Delta Logistics still says Trainer; switching an account's language to English flips the layout to left-to-right; the deployed code is byte-identical before and after (same commit).
+1. The owner creates a second space "Delta Logistics" on the **Company** kit, then opens the kit of "Mesk School", switches it to the **Company** kit, and renames "Trainer" to "Coach" in English and to "مرشد" in Arabic there.
+2. **Expected:** every page the Mesk School admin, publishers and learners open now says Coach / مرشد, Employee, Team, Course; the first learner still opens Mathematics, Fractions, Adding fractions and its materials unchanged; Delta Logistics still says Trainer; switching an account's language to English flips the layout to left-to-right; the deployed code is byte-identical before and after (same commit).
 
 ## 4. Now / Later
 
-**Now (this release):** owner sign-in; spaces; the three seed kits (School, Company, University) with editable labels, logo and colours; Arabic and English; admins, publishers, learners and groups with validity dates, and a plain "access ended" message after the date; whoever appointed a person can set them a new password; one publisher per subject; chapters, lessons and materials (PDF, image, video link, web link, note); learner access by assignment; change own password; the owner's usage panel against the free-plan lines.
+**Now (this release):** owner sign-in; spaces; the three seed kits (School, Company, University) with editable labels, logo and colours; Arabic and English; admins, publishers, learners and groups with validity dates, and a plain "access ended" message after the date; whoever appointed a person can set them a new password, or send them a one-time reset link through the appointer's own WhatsApp to the person's registered mobile number (a parent's number for a learner); the owner's recovery code shown once at first setup; one publisher per subject; chapters, lessons and materials (PDF, image, video link, web link, note); learner access by assignment; change own password; the owner's usage panel against the free-plan lines.
 
 **Later:** everything in [04-LATER.md](04-LATER.md), led by gamification packs and subject editions.
 
@@ -60,21 +62,25 @@ This release does not grade, test, certify, message, schedule, take attendance, 
 ## 6. Constraints
 
 - **Cost:** $0 recurring, per [03-HOSTING-DECISION.md](03-HOSTING-DECISION.md). The only paid step is a $5 per month plan, and only on the owner's RED decision.
-- **Data and privacy:** names, usernames and lesson files of real students and employees. Every record is scoped to its space; files are served only through access checks; the owner sees kits, admins and usage totals, never the people or content inside a space; sessions expire after 30 days of no use (checked by unit tests, not an acceptance test); no analytics beyond the usage panel. Recovery relies on the database's built-in 30-day point-in-time history; a per-space export for admins is in Later.
+- **Data and privacy:** names, usernames, registered mobile numbers (parents' numbers for children) and lesson files of real students and employees. A mobile number is used only to send a reset link and is never shown to other users inside the product. Two facts the school must know: a reset sent through WhatsApp reveals the sender's own number to the recipient, and puts the recipient's number into the sender's phone; the school decides whether admins use a school phone or a personal one, and tells parents, when it collects their numbers, what they are used for. The Copy button exists so a school can choose another channel. Every record is scoped to its space; files are served only through access checks; the owner sees kits, admins and usage totals, never the people or content inside a space; sessions expire after 30 days of no use (checked by unit tests, not an acceptance test); no analytics beyond the usage panel. Recovery relies on the database's built-in 30-day point-in-time history; a per-space export for admins is in Later.
 - **Platform:** phone-width web pages first, in Arabic and English, right-to-left correct.
 - **Delivery:** the roles and rules in [AGENTS.md](../AGENTS.md); tests first; every acceptance test is a named CI step; the owner's merge is acceptance.
 - **Deadline:** none set by the owner. The Project Lead proposes the order: AT-1, AT-4, AT-3, AT-2, AT-5 (sign-in and refusal first, because they protect every other test).
 
-## 7. Open questions for the owner (one batch, each with a recommended answer)
+## 7. Owner's answers, 31 October 2026
 
-1. **Which real organization is the pilot?** Recommended: one school you already know, with one admin, two teachers and one class, so AT-1 to AT-5 run on real names.
-2. **Sign-in by username and password set by the appointing person, with no email?** Recommended: yes. It costs nothing and matches how schools hand out accounts. Email can come later.
-3. **Videos as links only in this release?** Recommended: yes. Unlisted YouTube or Drive links are free and need no storage.
-4. **May the team create a free Cloudflare account under your email for hosting?** Recommended: you create it yourself (it is a credential) and never share the password; the team never needs it until the first public address.
-5. **Where do tasks and reviews live for this product: Paperclip, or GitHub pull requests only?** Recommended: GitHub only until the Paperclip team is resumed, since all six agents are paused there. The roles stay the same either way.
-6. **How is the single owner account recovered if its password is lost?** (RED: it is the product's root credential.) Recommended: at first setup the product shows a one-time recovery code; you write it down and keep it off the computer; nobody else can reset the owner.
-7. **Public address: the free `lms-lego.workers.dev` address for the pilot, or your own domain?** Recommended: the free address for the pilot school; buy one domain (about $10 a year, your purchase) before handing a space to a second organization, so the product carries your name, not Cloudflare's.
-8. **(Added 31 October after the review.) Password reset by WhatsApp in release 1?** Recommended: yes, in its free shape only: the appointer presses "Send reset link by WhatsApp", their own WhatsApp opens with the link typed to the registered number, they press Send. No Meta account, no cost. If you say yes, this becomes contract version 0.3 with one step added to AT-2. A code sent automatically by the product costs about half a cent per message in Egypt and needs a Meta Business account, so that shape stays in Later D until an organization asks for it.
+| # | Question | Owner's answer | Recorded as |
+|---|---|---|---|
+| 1 | Which real organization is the pilot? | **Mesk School.** Teachers Hadeer and Shimaa. Class: Science. | AT-1, AT-2, AT-4 and AT-5 now use these names. Subject names will come from the teachers; "Mathematics" stands in until then |
+| 2 | Sign-in by username and password set by the appointing person, no email? | **Yes** | Now list; AT-2 |
+| 3 | Videos as links only? | **Yes** | Now list; AT-3 |
+| 4 | Who creates the Cloudflare account? | **The owner** | Hosting decision; nobody else holds the credential |
+| 5 | Tasks and reviews in Paperclip or GitHub? | **GitHub** | AGENTS.md: pull requests are the record; the roles are unchanged |
+| 6 | How is the owner account recovered? | **Use the registered mobile number (the WhatsApp idea)** | See the note below: a recovery code now, the registered number as soon as the product can send a message itself |
+| 7 | Free address for the pilot, own domain later? | **Agreed** | Hosting decision |
+| 8 | Free WhatsApp reset link in release 1? | **"Explain more"**; explained in Later D and in the explainer page | Included in this version (AT-2 step 3) because it is free and removes the help desk; the owner's merge confirms it, or says "remove" and it goes back to Later D |
+
+**Note on question 6.** The owner's answer is adopted as the goal, with one practical step in between. The free WhatsApp shape in release 1 works because *somebody above you* presses Send: the admin for a teacher, the owner for an admin. Nobody is above the owner, so an owner reset by mobile needs the product to send the message itself, which is the paid shape (Later D2: a Meta Business account and about half a cent per message). Until D2 is built, release 1 shows the owner a one-time recovery code at first setup, which the owner keeps off the computer, and registers the owner's mobile number so D2 can take over without any further decision. While signed in, the owner can generate a new code at any time (the old one dies). If both the password and the code are lost, the last resort is the Cloudflare account holder, which is the owner, running one documented command in the Cloudflare dashboard; the README carries that step, and nobody else can do it.
 
 ## 8. Critic review (31 October 2026, one review of version 0.1): "Revise first"
 
@@ -88,4 +94,18 @@ This release does not grade, test, certify, message, schedule, take attendance, 
 | 6 | "Silent" expiry reads as a broken product | Accepted. The plain "access ended" message is now an expectation in AT-1 and AT-4 |
 | 7 | `workers.dev` carries Cloudflare's name; owner could approve without seeing a live address | Accepted. Domain is open question 7; AT-1 owner acceptance runs once on the public address |
 
-Version 0.2 resolves all seven. No second review round: the operating contract allows one review per contract version, and none of the changes adds scope beyond what the owner's original ideas named.
+Version 0.2 resolved all seven.
+
+### Second look at the 0.3 delta (31 October 2026, evening): "Revise first", resolved in place
+
+| # | Finding (critic) | Disposition |
+|---|---|---|
+| 1 | The link alone sets the password; a mis-sent message hands over the account | Accepted. The reset page asks for the username; the admin sees the number's last digits and confirms before WhatsApp opens |
+| 2 | "WhatsApp opens, admin presses Send, Hadeer opens the link" cannot be observed in CI | Accepted. Expected rewritten to what CI checks (the button's number and message, one-time use, wrong username, reuse, 30-minute expiry, fresh link kills old); the real send is owner-only acceptance, like AT-1 step 4 |
+| 3 | The child path was promised but untested; parents' numbers and the admin's number leave the product | Accepted. Learner reset added as step 4; section 6 states both disclosures and the school's choice of phone; consent note for parents' numbers |
+| 4 | An unknown number sending "set your password here" is phishing-shaped; message text unspecified | Accepted. A fixed product message in the space's first language, naming the space, the admin and the product address, link alone on the last line, tested in CI |
+| 5 | An admin without WhatsApp on the device hits a dead end with a ticking link | Accepted. Copy button beside the WhatsApp button; timer runs from creation; a fresh link can be issued |
+| 6 | Egyptian numbers typed as 010… break the link unless normalised | Accepted. Default country code per space, stored in international form, refused otherwise (step 1) |
+| 7 | A lost recovery code leaves no path above the owner | Accepted. Code regenerable while signed in; last resort named: the owner, as Cloudflare account holder, runs one documented command |
+
+No third round: the two security findings are resolved by adding checks, not by changing the promise.
