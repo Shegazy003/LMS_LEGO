@@ -1,6 +1,24 @@
 # Current progress
 
-## Current state, 31 October 2026 (night): contract 0.3 FROZEN, build task 1 (AT-1) in progress
+## Current state, 31 October 2026 (late night): AT-1 delivered, build task 2 (AT-4) in progress
+
+**What is true now**
+
+- **AT-1 is delivered** (pull request #4, merge `c9a69e3`). Owner first setup with a one-time recovery code and regeneration; sign-in with server-side sessions and CSRF protection; spaces on the three seed kits with logo, colour and default country code; admins appointed with a normalised mobile and an end date; the admin's themed right-to-left view; the "access ended" message and 403 on every direct link after the end date; the owner's usage panel against the free lines. Red before green in CI; Lead ACCEPTED; Verifier PASS on `6362b97`. Track record in [decision 002](docs/06-DELEGATION-AND-ROLES.md).
+- Contract 0.3 stays frozen. Hosting decision 001 stands. Nothing is deployed.
+
+**Active priority:** build task 2, acceptance test **AT-4** (a learner sees exactly what was assigned, and nothing after the end date). Same route: Opus Builder in its own worktree on `build/at-4` → red then green in CI → Lead stamp → Sonnet Verifier → delegate merges on PASS.
+
+**Carried into the plan from the Verifier's notes on task 1** (none blocked AT-1):
+- *Task 2 (AT-4):* gate the space home and space pages by role, so a learner never gets the admin home; prove one space cannot read another's rows.
+- *Task 4 (AT-2):* role gating for publisher pages; a sign-in rate limit (the reset link adds a second door).
+- *First-deploy task (before AT-1 step 4, the owner's acceptance on the public address):* the owner's last-resort reset written into the README and tested; the owner does first setup immediately after the first deploy, because /setup is open to whoever arrives first until then.
+
+**Waiting on the human owner:** nothing for task 2. Still open: subject names from Hadeer and Shimaa (before AT-2), the Cloudflare account (before the first public address).
+
+**Known limits of this checkpoint:** usage counts are approximate and can only read low; end dates are UTC days; no sign-in rate limit yet; the Verifier runs on a different Anthropic model rather than a different vendor (exception in decision 002); free-tier figures and WhatsApp rates must be re-read before the first deploy; Arabic kit labels are first drafts.
+
+## Earlier on 31 October 2026 (night): contract 0.3 frozen, build task 1 opened (historical)
 
 **What is true now**
 

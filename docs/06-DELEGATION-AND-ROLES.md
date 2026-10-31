@@ -17,7 +17,7 @@ Those stay with the human owner and arrive as one bundle, as before.
 
 | Role | Runs as | Model | Why |
 |---|---|---|---|
-| Owner's delegate, Project Lead, Product Manager | The founding session | Claude Fable 5.1 | Holds the whole history; one place for sequencing, stamps and acceptance |
+| Owner's delegate, Project Lead, Product Manager | The founding session | Claude Opus 5.5 (the owner switched the session's model on 31 October 2026; it began on Fable 5.1) | Holds the whole history; one place for sequencing, stamps and acceptance |
 | Product critic | A fresh agent per contract version | Claude Sonnet 5.5 | A second pair of eyes that has not seen the drafting; a focused one-shot review suits a smaller model |
 | Builder | A fresh agent per task, in its own git worktree, on its own branch | Claude Opus 5.5 | The task is long and needs the strongest coding model available here |
 | Independent Verifier | A fresh agent per candidate, read-only | Claude Sonnet 5.5 | Must not be the Builder's model; judges only from the frozen contract, the exact commit and CI evidence |
@@ -25,6 +25,12 @@ Those stay with the human owner and arrive as one bundle, as before.
 ## Independence exception (recorded, with compensating controls)
 
 The platform's rule asks for a Verifier from a **different AI vendor** than the Builder. Only Anthropic models are available in this environment, so the Verifier runs on a different Anthropic model (Sonnet) from the Builder (Opus). Compensating controls: the Verifier is a fresh agent that never sees the Builder's conversation, receives only the frozen contract, the exact commit, the diff and the CI run, and may not run the candidate's code outside CI. When another vendor becomes available in this repository's delivery line, this exception ends.
+
+## Track record
+
+| Task | Pull request | Builder | Red runs | Green run | Lead | Verifier | Merged |
+|---|---|---|---|---|---|---|---|
+| 1 · AT-1 | #4 | Opus 5.5, worktree, `build/at-1` | 41247378486, 41248452055, 41248931525 | 41249055975 on `6362b97` | ACCEPTED | PASS (Sonnet 5.5) | `c9a69e3`, 31 October 2026 |
 
 ## Working rules for the agents (in addition to AGENTS.md)
 
