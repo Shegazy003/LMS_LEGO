@@ -30,6 +30,7 @@ The three kits above ship with the product as starting points. The owner can cop
 | **Guardian** (watches one or more learners, read-only) | Parent / ولي أمر | Supervisor / مشرف | [Later A](04-LATER.md) |
 | **Exam** and its results (entered by the publisher, seen by the learner) | Exam / امتحان | Assessment / تقييم | [Later B](04-LATER.md) |
 | **Vendor** (a contracted print shop that fulfils approved orders) | Print shop / مطبعة | Print shop / مطبعة | [Later C](04-LATER.md) |
+| **Registered mobile** on a person (a guardian's number for a child), for password reset by WhatsApp | same in every kit | same | [Later D](04-LATER.md) |
 
 Release 1 builds none of these, but keeps `membership.role` as free text and gives every material a stable id, so adding them is new tables, not changed ones.
 

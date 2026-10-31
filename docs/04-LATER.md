@@ -47,6 +47,25 @@ Recorded here, not in release 1, under "completion before expansion". Each is wr
 - **Release 1 keeps it cheap:** materials already have a stable id and a storage key, which is all an order needs to reference.
 - **Trigger:** guardians exist, and one school has a print shop willing to sign the contract.
 
+### D. Password set and reset verified by the registered mobile number (WhatsApp)
+
+**Future promise:** a person who forgot their password proves it is them through the mobile number registered on their account, by WhatsApp, and sets a new password without anyone's help, from beginning to end.
+
+- **Why it matters:** the critic's first finding was that admins become the help desk for forgotten passwords. Release 1 answers it with "whoever appointed you can set you a new password". This idea removes even that step.
+- **Whose number:** an adult's own; for a child, the guardian's number (idea A). The number is personal data of a parent or employee and is stored only for this purpose, never shown to other users and never used for marketing.
+- **Three shapes, from free to paid.** Checked 31 October 2026 against Meta's published rates for Egypt and current third-party rate cards; the Builder re-reads the official page before any work.
+
+| Shape | How it works | Recurring cost | Needs an account? |
+|---|---|---|---|
+| **D1. Prepared message, sent by a person** | The appointer (admin, or the guardian for a child) presses "Send reset link by WhatsApp"; the product opens WhatsApp on their phone with the registered number and a one-time link already typed; they press Send | $0 | No. Uses the person's own WhatsApp; the product never talks to Meta |
+| **D2. Code sent by the product** | The user presses "Forgot password", the product sends a 6-digit code to the registered number through Meta's WhatsApp Cloud API, the user types it and sets a new password | About $0.0036 per message plus 14% VAT in Egypt (a 300-person school with a few resets each per year: under $5 a year). Egypt also has a higher "authentication-international" rate if the sending business is registered outside Egypt | Yes: a Meta Business account, business verification, a dedicated phone number and a card on file. RED: an account and a paid service |
+| **D3. Code sent by SMS** | Same as D2 over SMS | Several times the WhatsApp rate per message | Yes: an SMS provider account. RED |
+
+- **Recommendation:** D1 fits release 1's zero-cost line and could join it as contract version 0.3 with one step added to AT-2 (the admin sends the publisher's reset link by WhatsApp and the publisher sets a new password from it). D2 waits for the first organization that asks for self-service and accepts the few dollars a year, and for the owner's RED decision on the Meta account. D3 only if WhatsApp is unavailable to a user.
+- **Non-negotiables for D2 and D3:** a code expires in 10 minutes, five wrong attempts lock the code, no more than three codes per number per hour, and a code is never written to any log.
+- **Release 1 keeps it cheap:** an optional `user.mobile` column (E.164 format, verified flag) is added when D starts; one-time links already exist in spirit as session tokens, so D1 is a short page and a `wa.me` link.
+- **Trigger:** the owner answers question 8 in the contract (D1 in release 1, or later); D2 when an organization asks for self-service reset.
+
 ## From the brainstorm comparison
 
 | Idea | Why it waits |
