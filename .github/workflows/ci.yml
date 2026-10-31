@@ -15,6 +15,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      WRANGLER_SEND_METRICS: "false"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -22,10 +24,29 @@ jobs:
           node-version: 22
       - name: Install (lockfile only, when present)
         run: if [ -f package-lock.json ]; then npm ci; fi
-      # The Builder adds one named step per acceptance test ("AT-1 ...",
-      # "AT-5 ...") so the Verifier can see each result in the GitHub UI.
-      - name: Test
-        run: npm test
+      - name: Install Chromium for the browser test
+        run: npx playwright install --with-deps chromium
+      # Each check below runs even if an earlier one failed, so every result
+      # is visible. The job fails if any of them fails.
+      - name: Rails
+        if: success() || failure()
+        run: node --test test/rails.test.js
+      - name: Type check
+        if: success() || failure()
+        run: npm run typecheck
+      - name: Unit tests
+        if: success() || failure()
+        run: npm run test:unit
+      # One named step per acceptance test ("AT-1 ...", "AT-5 ...").
+      - name: AT-1 owner shapes a space and appoints its admin
+        if: success() || failure()
+        run: npm run test:at1
+      - name: AT-1 guard - every user-facing word comes through the label function
+        if: success() || failure()
+        run: npm run test:guard:labels
+      - name: AT-1 guard - the test clock cannot be enabled in production
+        if: success() || failure()
+        run: npm run test:guard:clock
       - name: Upload evidence (screenshots, reports)
         if: always() && hashFiles('evidence/**') != ''
         uses: actions/upload-artifact@v4

@@ -5,9 +5,25 @@
   "type": "module",
   "description": "LMS Lego: a learning space a non-technical owner shapes and hands to any organization. See docs/01-PRODUCT-CONTRACT.md.",
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "test:unit": "node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./test/support/github-reporter.mjs --test-reporter-destination=stdout \"test/unit/*.test.ts\"",
+    "test:at1": "node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./test/support/github-reporter.mjs --test-reporter-destination=stdout \"test/at1/*.test.ts\"",
+    "test:guard:labels": "node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./test/support/github-reporter.mjs --test-reporter-destination=stdout test/guards/no-hardcoded-labels.test.ts",
+    "test:guard:clock": "node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./test/support/github-reporter.mjs --test-reporter-destination=stdout test/guards/production-guard.test.ts",
+    "typecheck": "tsc --noEmit",
+    "dev": "wrangler d1 migrations apply lms-lego --local && wrangler dev",
+    "dev:test": "wrangler d1 migrations apply lms-lego --local --env test && wrangler dev --env test"
   },
   "engines": {
     "node": ">=22"
+  },
+  "dependencies": {
+    "hono": "4.13.13"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20261012.1",
+    "playwright": "1.63.0",
+    "typescript": "6.0.3",
+    "wrangler": "4.149.0"
   }
 }
