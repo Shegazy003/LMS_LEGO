@@ -15,4 +15,6 @@
 
 **Next action, already defined:** after owner approval, the Project Lead cuts the first build task: AT-1 (owner shapes a space, appoints an admin, validity refusal), with its failing tests written first.
 
+**Owner ideas received 31 October 2026, after the founding package:** guardian (parent) accounts, exam results published per exam in one step, and print orders approved by a guardian and fulfilled by a contracted shop. Recorded as Later A, B and C with future promises, data-model notes and triggers; release 1 scope unchanged, so the contract stays at version 0.2 and needs no second critic review. Idea C is RED before any work (money, outside contract, file access). A fourth idea, password reset verified by the registered mobile number over WhatsApp, is Later D with three shapes; its free shape (a prepared message sent from the appointer's own WhatsApp) is offered to the owner as question 8, and would make the contract version 0.3 with one step added to AT-2.
+
 **Known limits of this checkpoint:** the free-tier figures in the hosting decision were checked against Cloudflare's changelog and pricing summaries on 31 October 2026 and must be re-read before the first deploy; the Arabic labels in the kits are first drafts for the owner to correct.

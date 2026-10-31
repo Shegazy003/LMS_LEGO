@@ -74,6 +74,7 @@ This release does not grade, test, certify, message, schedule, take attendance, 
 5. **Where do tasks and reviews live for this product: Paperclip, or GitHub pull requests only?** Recommended: GitHub only until the Paperclip team is resumed, since all six agents are paused there. The roles stay the same either way.
 6. **How is the single owner account recovered if its password is lost?** (RED: it is the product's root credential.) Recommended: at first setup the product shows a one-time recovery code; you write it down and keep it off the computer; nobody else can reset the owner.
 7. **Public address: the free `lms-lego.workers.dev` address for the pilot, or your own domain?** Recommended: the free address for the pilot school; buy one domain (about $10 a year, your purchase) before handing a space to a second organization, so the product carries your name, not Cloudflare's.
+8. **(Added 31 October after the review.) Password reset by WhatsApp in release 1?** Recommended: yes, in its free shape only: the appointer presses "Send reset link by WhatsApp", their own WhatsApp opens with the link typed to the registered number, they press Send. No Meta account, no cost. If you say yes, this becomes contract version 0.3 with one step added to AT-2. A code sent automatically by the product costs about half a cent per message in Egypt and needs a Meta Business account, so that shape stays in Later D until an organization asks for it.
 
 ## 8. Critic review (31 October 2026, one review of version 0.1): "Revise first"
 
