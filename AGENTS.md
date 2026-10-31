@@ -14,7 +14,7 @@ For code that changes behaviour: write the smallest meaningful failing test firs
 
 | Role | Decides | Never does |
 |---|---|---|
-| **Owner** (non-technical) | Goals and ideas, spending, consequential risk, accounts and credentials, anything public or live, final acceptance (the merge) | Scheduling, debugging, technical choices, acknowledgements |
+| **Owner** (non-technical) | Goals and ideas, spending, consequential risk, accounts and credentials, anything public or live. Final acceptance (the merge) is delegated to the founding Claude session from 31 October 2026 ([decision 002](docs/06-DELEGATION-AND-ROLES.md)) | Scheduling, debugging, technical choices, acknowledgements |
 | **Product Manager** | The product contract: user, problem, release promise, Now / Later, non-goals, 3 to 5 acceptance tests | Dispatch work, design code, approve candidates |
 | **Product critic** | One review of a draft contract: at most 7 ranked findings, then "Ready for owner" or "Revise first" | Approve, block or rewrite the contract |
 | **Project Lead** | Task order, assignment, work-in-progress limit of one build task, unblocking, the Lead stamp on each candidate (ACCEPTED, REWORK, REPLAN), the single owner decision bundle | Write code, verify, change the contract silently |
@@ -34,6 +34,8 @@ A question already answered by the contract, a decision record or these instruct
 The product contract, decisions and progress live in this repository under `docs/` and `CURRENT-PROGRESS.md`; work travels as pull requests (owner decision, 31 October 2026: GitHub, not Paperclip). If the owner later runs the delivery team inside Paperclip, Paperclip's task holds the assignment and review stages and links to the pull request; there is never a second backlog. One canonical writer per file at a time.
 
 ## Delivery line
+
+Who runs each role, and on which model, is in [docs/06-DELEGATION-AND-ROLES.md](docs/06-DELEGATION-AND-ROLES.md).
 
 Builder opens a pull request → GitHub Actions runs every acceptance test as its own named step (`AT-1 …`) → Project Lead stamps → Independent Verifier reads the CI evidence and the diff and gives PASS or HOLD → owner merges. The owner's merge is acceptance. Nothing is shown to the owner before PASS, and nothing is released without the owner's merge.
 
