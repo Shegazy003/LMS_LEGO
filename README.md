@@ -8,7 +8,8 @@ A learning space that a non-technical owner can shape like Lego bricks and hand 
 2. [docs/01-PRODUCT-CONTRACT.md](docs/01-PRODUCT-CONTRACT.md): who it is for, the one release promise, the five acceptance tests, what is in and what is postponed.
 3. [docs/02-LEGO-MODEL.md](docs/02-LEGO-MODEL.md): the bricks. Kits, canonical concepts, the authority chain and the data model.
 4. [docs/03-HOSTING-DECISION.md](docs/03-HOSTING-DECISION.md): the zero-cost hosting choice and when to revisit it.
-5. [docs/04-LATER.md](docs/04-LATER.md): every good idea that is not in this release.
+5. [docs/05-ROADMAP.md](docs/05-ROADMAP.md): the line of releases, why release 1 is small, and when each parked idea comes forward.
+6. [docs/04-LATER.md](docs/04-LATER.md): every good idea that is not in this release, with its trigger.
 
 **How the team works** is in [AGENTS.md](AGENTS.md) and [docs/00-OPERATING-CONTRACT.md](docs/00-OPERATING-CONTRACT.md). They are the short working form of the owner's Completion-First Manifesto and the operating model adopted in the `ai-engineering-platform` repository on 15 October 2026. This repository follows the same roles and rules; it does not copy that platform's machinery.
 
