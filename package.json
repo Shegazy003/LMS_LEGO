@@ -1,0 +1,13 @@
+{
+  "name": "lms-lego",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "LMS Lego: a learning space a non-technical owner shapes and hands to any organization. See docs/01-PRODUCT-CONTRACT.md.",
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
