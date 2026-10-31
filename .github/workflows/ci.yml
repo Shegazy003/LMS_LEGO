@@ -43,10 +43,10 @@ jobs:
         run: npm run test:at1
       - name: AT-1 guard - every user-facing word comes through the label function
         if: success() || failure()
-        run: node --test --test-reporter=spec test/guards/no-hardcoded-labels.test.ts
+        run: npm run test:guard:labels
       - name: AT-1 guard - the test clock cannot be enabled in production
         if: success() || failure()
-        run: node --test --test-reporter=spec test/guards/production-guard.test.ts
+        run: npm run test:guard:clock
       - name: Upload evidence (screenshots, reports)
         if: always() && hashFiles('evidence/**') != ''
         uses: actions/upload-artifact@v4

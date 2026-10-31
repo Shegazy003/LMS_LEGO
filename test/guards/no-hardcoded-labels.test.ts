@@ -8,6 +8,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { SEED_KITS } from '../../src/kits/seed.ts';
+import { CONCEPTS } from '../../src/labels.ts';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 const src = join(root, 'src');
@@ -34,14 +35,19 @@ function forbiddenWords(): string[] {
 }
 
 /** Text a user could see: the contents of string and template literals, with
- * ${…} expressions, HTML tags and label('key') lookups removed. */
+ * ${…} expressions, HTML tags and label('key') lookups removed. Module paths in
+ * import/export statements and literals that are exactly a canonical concept
+ * key (an identifier such as 'subject', not a word on a page) are not text. */
 export function visibleText(source: string): string {
-  const withoutLookups = source.replace(/\b(?:label|t)\(\s*(['"`])[A-Za-z]+\1/g, '');
+  const withoutLookups = source
+    .replace(/\b(?:label|t)\(\s*(['"`])[A-Za-z]+\1/g, '')
+    .replace(/\b(from|import)\s*(['"])[^'"\n]*\2/g, '');
   const pieces: string[] = [];
   const literal = /'((?:[^'\\\n]|\\.)*)'|"((?:[^"\\\n]|\\.)*)"|`((?:[^`\\]|\\.)*)`/g;
   for (const m of withoutLookups.matchAll(literal)) {
     const piece = m[1] ?? m[2] ?? m[3] ?? '';
     if (/^\s*(SELECT|INSERT|UPDATE|DELETE|WITH)\s/i.test(piece)) continue; // SQL, never shown
+    if ((CONCEPTS as readonly string[]).includes(piece)) continue; // a key, never shown
     pieces.push(piece.replace(/\$\{[^}]*\}/g, ' '));
   }
   return stripMarks(pieces.join('\n').replace(/<[^>]*>/g, ' '));
@@ -55,7 +61,7 @@ export function findHardCoded(source: string, words = forbiddenWords()): string[
     const isArabic = /[؀-ۿ]/.test(word);
     const pattern = isArabic
       ? new RegExp(`(?<![\\p{L}\\p{M}])(?:ال|وال|بال|لل|و|ب|ل)?${escaped}(?![\\p{L}\\p{M}])`, 'u')
-      : new RegExp(`(?<![\\p{L}])${escaped}(?:s|es)?(?![\\p{L}])`, 'iu');
+      : new RegExp(`(?<![\\p{L}\\p{N}_])${escaped}(?:s|es)?(?![\\p{L}\\p{N}_])`, 'iu');
     if (pattern.test(text)) found.push(word);
   }
   return found;
@@ -67,6 +73,13 @@ test('labels guard: the scanner catches a hard-coded role word (self-check)', ()
   assert.deepEqual(findHardCoded("const ok = html`<h2>${t('publisher')}</h2>`;"), []);
   assert.deepEqual(findHardCoded('<div class="card">'), []);
   assert.deepEqual(findHardCoded("db.prepare('SELECT id FROM session WHERE id = ?')"), []);
+  // Identifiers are not page words: module paths, names like lms_session, concept keys.
+  assert.deepEqual(findHardCoded("import { x } from './auth/session.ts';"), []);
+  assert.deepEqual(findHardCoded("export const COOKIE = 'lms_session';"), []);
+  assert.deepEqual(findHardCoded("const keys = ['publisher', 'subject', 'lesson'] as const;"), []);
+  // ...but the same words written as text are still caught.
+  assert.deepEqual(findHardCoded("const s = 'Your session ended';"), ['Session']);
+  assert.deepEqual(findHardCoded('html`<li>Subjects</li>`'), ['Subject']);
 });
 
 test('labels guard: no page template or product sentence hard-codes a canonical role word', () => {

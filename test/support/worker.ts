@@ -25,15 +25,17 @@ function freePort(): Promise<number> {
   });
 }
 
+/** Runs a wrangler command; resolves with its stdout (warnings go to stderr). */
 function run(args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
     const child = spawn(wrangler, args, { cwd: root, env: quietEnv });
     let out = '';
+    let err = '';
     child.stdout.on('data', (d) => (out += d));
-    child.stderr.on('data', (d) => (out += d));
+    child.stderr.on('data', (d) => (err += d));
     child.on('error', reject);
     child.on('exit', (code) =>
-      code === 0 ? resolve(out) : reject(new Error(`wrangler ${args.join(' ')} exited ${code}\n${out}`)),
+      code === 0 ? resolve(out) : reject(new Error(`wrangler ${args.join(' ')} exited ${code}\n${out}\n${err}`)),
     );
   });
 }
@@ -82,7 +84,9 @@ export async function startWorker(): Promise<RunningWorker> {
       const out = await run([
         'd1', 'execute', 'lms-lego', '--local', '--env', 'test', '--persist-to', persist, '--json', '--command', query,
       ]);
-      const parsed = JSON.parse(out.slice(out.indexOf('[')));
+      const start = out.search(/^\[/m); // the JSON array starts a line
+      if (start < 0) throw new Error(`no JSON from wrangler d1 execute:\n${out}`);
+      const parsed = JSON.parse(out.slice(start));
       return parsed[0]?.results ?? [];
     },
     async stop() {

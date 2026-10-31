@@ -356,6 +356,7 @@ describe('AT-1 owner shapes a space and appoints its admin', { concurrency: fals
     assert.equal((await c.post('/signin', { username: ADMIN.username, password: ADMIN.password })).status, 302);
     const direct = await c.get(`/s/${spaceId}/logo`);
     assert.equal(direct.status, 403);
-    assert.ok((await direct.text()).includes(english));
+    const words = (await direct.text()).replace(/<[^>]*>/g, ''); // the text, without markup
+    assert.ok(words.includes(english), 'the direct link answers with the same message');
   });
 });

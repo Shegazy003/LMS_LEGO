@@ -6,9 +6,10 @@
   "description": "LMS Lego: a learning space a non-technical owner shapes and hands to any organization. See docs/01-PRODUCT-CONTRACT.md.",
   "scripts": {
     "test": "node --test",
-    "test:unit": "node --test \"test/unit/*.test.ts\"",
-    "test:guards": "node --test \"test/guards/*.test.ts\"",
-    "test:at1": "node --test \"test/at1/*.test.ts\"",
+    "test:unit": "node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./test/support/github-reporter.mjs --test-reporter-destination=stdout \"test/unit/*.test.ts\"",
+    "test:at1": "node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./test/support/github-reporter.mjs --test-reporter-destination=stdout \"test/at1/*.test.ts\"",
+    "test:guard:labels": "node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./test/support/github-reporter.mjs --test-reporter-destination=stdout test/guards/no-hardcoded-labels.test.ts",
+    "test:guard:clock": "node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./test/support/github-reporter.mjs --test-reporter-destination=stdout test/guards/production-guard.test.ts",
     "typecheck": "tsc --noEmit",
     "dev": "wrangler d1 migrations apply lms-lego --local && wrangler dev",
     "dev:test": "wrangler d1 migrations apply lms-lego --local --env test && wrangler dev --env test"
