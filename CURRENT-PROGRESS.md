@@ -1,6 +1,22 @@
 # Current progress
 
-## Current state, 31 October 2026 (evening): contract 0.3 `CONTRACT READY`, owner's answers recorded
+## Current state, 31 October 2026 (night): contract 0.3 FROZEN, build task 1 (AT-1) in progress
+
+**What is true now**
+
+- Contract 0.3 was approved by merging pull request #2 (merge `b010037`). It is frozen; changes are a new version with stated impact.
+- The owner delegated acceptance and merging to the founding Claude session and asked for every role to run as its own agent on a fitting model: [decision 002](docs/06-DELEGATION-AND-ROLES.md). Accounts, money, first public publication and data deletion stay with the human owner.
+- Hosting decision 001 stands. Nothing is deployed; the owner's Cloudflare account is needed only for the first public address.
+
+**Active priority:** build task 1, acceptance test AT-1 (owner first setup and recovery code, sign-in, create a space with a seed kit, appoint an admin with an end date, the admin's themed right-to-left view, the "access ended" message and refused links after expiry, the owner's usage panel). Builder: a fresh Opus agent in its own worktree on branch `build/at-1`. Route: failing tests committed first → implementation → pull request → CI with a named `AT-1` step → Lead stamp → Verifier (Sonnet, read-only) `PASS` → delegate merges.
+
+**Waiting on the human owner:** nothing for this task. Still open for later tasks: subject names from Hadeer and Shimaa (before AT-2), the Cloudflare account (before the first public address).
+
+**Next action, already defined:** on `PASS` of task 1, cut task 2 (AT-4: learner view and refusals), per the order in the contract.
+
+**Known limits of this checkpoint:** the free-tier figures in the hosting decision and the WhatsApp rates in Later D were checked on 31 October 2026 and must be re-read before the first deploy; the Arabic labels in the kits are first drafts for the owner to correct; the Verifier runs on a different Anthropic model rather than a different vendor (exception recorded in decision 002).
+
+## Earlier on 31 October 2026 (evening): contract 0.3 `CONTRACT READY` (historical)
 
 **What is true now**
 
