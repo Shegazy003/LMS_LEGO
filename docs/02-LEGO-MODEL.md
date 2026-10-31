@@ -30,7 +30,6 @@ The three kits above ship with the product as starting points. The owner can cop
 | **Guardian** (watches one or more learners, read-only) | Parent / ولي أمر | Supervisor / مشرف | [Later A](04-LATER.md) |
 | **Exam** and its results (entered by the publisher, seen by the learner) | Exam / امتحان | Assessment / تقييم | [Later B](04-LATER.md) |
 | **Vendor** (a contracted print shop that fulfils approved orders) | Print shop / مطبعة | Print shop / مطبعة | [Later C](04-LATER.md) |
-| **Registered mobile** on a person (a guardian's number for a child), for password reset by WhatsApp | same in every kit | same | [Later D](04-LATER.md) |
 
 Release 1 builds none of these, but keeps `membership.role` as free text and gives every material a stable id, so adding them is new tables, not changed ones.
 
@@ -68,7 +67,7 @@ Rules, each of which becomes a test:
 2. **Nobody grants longer than they hold.** A membership's `valid_until` never exceeds the granter's own `valid_until` in that space.
 3. **Expiry is immediate and explained.** When a membership passes `valid_until`, the person can still sign in but, in place of that space, sees "Your access to <space> ended on <date>. Contact the <admin label>." (for an expired admin: "Contact the owner."), and every direct link to its content is refused with the same message. Nothing is deleted; the admin can extend the date.
 4. **The owner is above spaces.** The owner's authority is a product-level flag, not a membership; there is exactly one owner account in the first release.
-5. **Whoever appointed a person can set them a new password.** The owner for admins, the admin for publishers and learners. Everyone can change their own password. The owner is recovered only by a one-time recovery code shown at first setup.
+5. **Whoever appointed a person can set them a new password, or send them a one-time reset link.** The owner for admins, the admin for publishers and learners. The link goes through the appointer's own WhatsApp to the person's registered mobile number and dies after 30 minutes or one use. Everyone can change their own password. The owner is recovered by a one-time recovery code shown at first setup, until the product can send messages itself (Later D2).
 6. **Visibility follows assignment, not role.** A learner sees exactly the subjects assigned to them or to a group they belong to; a publisher sees exactly the subjects assigned to them. Admins see their whole space. The owner sees the kits and the admins of every space plus product-wide usage totals, and nothing inside a space unless they appoint themselves admin of it.
 
 ## Data model (first release)
@@ -77,8 +76,9 @@ Every row except `user` and `kit` carries `space_id`, so one deployment serves m
 
 | Table | Columns (keys only) | Notes |
 |---|---|---|
-| `user` | id, username, password_hash, display_name, is_owner, created_at | Usernames are unique across the product; passwords are set by whoever appoints the user and can be changed by the user |
-| `space` | id, name, kit_id, created_by, created_at | One kit per space |
+| `user` | id, username, password_hash, display_name, mobile, is_owner, created_at | Usernames are unique across the product; passwords are set by whoever appoints the user and can be changed by the user. `mobile` is the registered number (a parent's number for a child) stored in international form after normalising with the space's default country code, used only for reset links |
+| `reset_link` | id, user_id, token_hash, expires_at, used_at, created_by | One-time, 30 minutes from creation; the reset page also requires the username. The appointer sends it through their own WhatsApp (`wa.me` link with the product's fixed message pre-typed, in the space's first language) or copies it. Issuing a new link marks the previous one used |
+| `space` | id, name, kit_id, default_country_code, created_by, created_at | One kit per space; the country code turns 010… into +2010… |
 | `kit` | id, name, json | The structure above; three seed rows |
 | `membership` | id, space_id, user_id, role (admin, publisher, learner), valid_from, valid_until, granted_by | One row per person per role per space |
 | `group` | id, space_id, name | |

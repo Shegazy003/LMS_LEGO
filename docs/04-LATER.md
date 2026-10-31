@@ -61,10 +61,10 @@ Recorded here, not in release 1, under "completion before expansion". Each is wr
 | **D2. Code sent by the product** | The user presses "Forgot password", the product sends a 6-digit code to the registered number through Meta's WhatsApp Cloud API, the user types it and sets a new password | About $0.0036 per message plus 14% VAT in Egypt (a 300-person school with a few resets each per year: under $5 a year). Egypt also has a higher "authentication-international" rate if the sending business is registered outside Egypt | Yes: a Meta Business account, business verification, a dedicated phone number and a card on file. RED: an account and a paid service |
 | **D3. Code sent by SMS** | Same as D2 over SMS | Several times the WhatsApp rate per message | Yes: an SMS provider account. RED |
 
-- **Recommendation:** D1 fits release 1's zero-cost line and could join it as contract version 0.3 with one step added to AT-2 (the admin sends the publisher's reset link by WhatsApp and the publisher sets a new password from it). D2 waits for the first organization that asks for self-service and accepts the few dollars a year, and for the owner's RED decision on the Meta account. D3 only if WhatsApp is unavailable to a user.
+- **Status:** D1 joined release 1 as contract version 0.3 (AT-2 step 3) on the owner's answers of 31 October 2026. D2 waits for the first organization that asks for self-service and accepts the few dollars a year, and for the owner's RED decision on the Meta account. D3 only if WhatsApp is unavailable to a user.
 - **Non-negotiables for D2 and D3:** a code expires in 10 minutes, five wrong attempts lock the code, no more than three codes per number per hour, and a code is never written to any log.
 - **Release 1 keeps it cheap:** an optional `user.mobile` column (E.164 format, verified flag) is added when D starts; one-time links already exist in spirit as session tokens, so D1 is a short page and a `wa.me` link.
-- **Trigger:** the owner answers question 8 in the contract (D1 in release 1, or later); D2 when an organization asks for self-service reset.
+- **Trigger for D2:** an organization asks for self-service reset, or the owner wants mobile-based recovery of the owner account (question 6), and the owner takes the RED decision on the Meta Business account.
 
 ## From the brainstorm comparison
 
