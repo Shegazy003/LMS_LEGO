@@ -484,9 +484,8 @@ const requireSpaceRole = (role: 'admin' | 'publisher'): MiddlewareHandler<AppEnv
   if (!c.get('space').roles.includes(role)) return refuse(c, 403, 'noAccess');
   await next();
 };
-app.use('/s/:spaceId/admin', requireSpaceRole('admin'));
+// A pattern ending in /* also matches its own base (…/admin itself).
 app.use('/s/:spaceId/admin/*', requireSpaceRole('admin'));
-app.use('/s/:spaceId/publish', requireSpaceRole('publisher'));
 app.use('/s/:spaceId/publish/*', requireSpaceRole('publisher'));
 
 function spaceView(space: CurrentSpace): SpaceView {
@@ -582,11 +581,6 @@ async function accountLang(c: C): Promise<Lang> {
   return row ? loadKit(row.json).languages[0] : c.get('lang');
 }
 
-app.use('/account', async (c, next) => {
-  if (!c.get('user')) return c.redirect('/signin');
-  c.set('lang', await accountLang(c));
-  await next();
-});
 app.use('/account/*', async (c, next) => {
   if (!c.get('user')) return c.redirect('/signin');
   c.set('lang', await accountLang(c));
