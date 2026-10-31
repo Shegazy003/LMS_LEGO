@@ -35,6 +35,15 @@ button{background:#1f6feb;color:#fff;border:0;font-weight:600;cursor:pointer}
 .nowrap{white-space:nowrap}
 .meter{height:8px;background:#eef0f3;border-radius:4px;overflow:hidden}
 .meter span{display:block;height:100%;background:#2da44e}
+main{overflow-wrap:anywhere}
+.nav{display:flex;gap:16px;margin:0 0 8px}
+.trail{display:flex;flex-wrap:wrap;gap:4px 8px}
+.items{list-style:none;padding:0;margin:0}
+.items .title{font-weight:700;margin:2px 0 8px}
+.items .open{display:inline-block;margin-inline-end:12px}
+.items img.preview{display:block;max-width:100%;min-width:96px;height:auto;margin:0 0 8px;border-radius:8px;border:1px solid #e3e6ea;image-rendering:auto}
+.note{white-space:pre-wrap;background:#fffdf3;border:1px solid #f0e3b3;border-radius:8px;padding:10px 12px}
+.done{background:#e8f5ec;color:#0f5132;border:1px solid #badbcc;border-radius:8px;padding:10px 12px}
 `;
 
 export interface LayoutOptions {

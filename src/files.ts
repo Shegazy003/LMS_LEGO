@@ -35,7 +35,21 @@ export function fileHeaders(type: string, etag: string): Record<string, string> 
   };
 }
 
-/** Headers for a lesson file (PDF or image). Not built yet: AT-4 red. */
+/** File types a lesson file may be shown as. Anything else stored under a
+ * material is only ever offered as a download, never shown in our origin. */
+const MATERIAL_TYPES: Record<'pdf' | 'image', readonly string[]> = {
+  pdf: ['application/pdf'],
+  image: ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml'],
+};
+
+/** Headers for a lesson file (PDF or image): the logo's safety headers
+ * (nosniff, sandbox, no-cache so the access check runs on every open), shown
+ * inline when the stored type fits the kind, otherwise a download. Chromium's
+ * PDF viewer renders under the sandbox policy (checked by hand, 31 Oct 2026). */
 export function materialFileHeaders(kind: 'pdf' | 'image', storedType: string, etag: string): Record<string, string> {
-  throw new Error(`materialFileHeaders(${kind}, ${storedType}, ${etag}) is not built yet`);
+  const shown = MATERIAL_TYPES[kind].includes(storedType);
+  return {
+    ...fileHeaders(shown ? storedType : 'application/octet-stream', etag),
+    'content-disposition': shown ? 'inline' : 'attachment',
+  };
 }
