@@ -1,0 +1,28 @@
+// LMS Lego Worker configuration.
+// No account id, database id or secret lives here. On the first deploy the
+// owner's Cloudflare account provisions the D1 database and the R2 bucket
+// (Wrangler's automatic resource provisioning); see README "Deploy".
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "lms-lego",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": true,
+  // Production build: the test hooks (controllable clock) are compiled out.
+  "define": { "__TEST_HOOKS__": "false" },
+  "d1_databases": [
+    { "binding": "DB", "database_name": "lms-lego", "migrations_dir": "migrations" }
+  ],
+  "r2_buckets": [{ "binding": "FILES", "bucket_name": "lms-lego-files" }],
+  "env": {
+    // Local and CI test runs only (`wrangler dev --env test`). Never deployed.
+    "test": {
+      "define": { "__TEST_HOOKS__": "true" },
+      "vars": { "TEST_HOOKS": "1" },
+      "d1_databases": [
+        { "binding": "DB", "database_name": "lms-lego", "migrations_dir": "migrations" }
+      ],
+      "r2_buckets": [{ "binding": "FILES", "bucket_name": "lms-lego-files" }]
+    }
+  }
+}
