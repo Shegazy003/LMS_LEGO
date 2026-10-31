@@ -1,10 +1,23 @@
-// Membership validity. Not implemented yet.
-export function utcDate(_nowMs: number): string {
-  throw new Error('not implemented');
+// Membership validity. Dates are UTC calendar days (YYYY-MM-DD). A membership
+// is active up to and including its end date, and ends at the start of the
+// following UTC day.
+
+const DAY_MS = 86_400_000;
+
+export function utcDate(nowMs: number): string {
+  return new Date(nowMs).toISOString().slice(0, 10);
 }
-export function addDays(_date: string, _days: number): string {
-  throw new Error('not implemented');
+
+export function isIsoDate(text: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) return false;
+  const d = new Date(text + 'T00:00:00Z');
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === text;
 }
-export function membershipActive(_validUntil: string, _nowMs: number): boolean {
-  throw new Error('not implemented');
+
+export function addDays(date: string, days: number): string {
+  return utcDate(Date.parse(date + 'T00:00:00Z') + days * DAY_MS);
+}
+
+export function membershipActive(validUntil: string, nowMs: number): boolean {
+  return utcDate(nowMs) <= validUntil;
 }

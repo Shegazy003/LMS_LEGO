@@ -1,5 +1,4 @@
-export default {
-  fetch(): Response {
-    return new Response('not found', { status: 404 });
-  },
-};
+// Worker entry point.
+import { app } from './app.ts';
+
+export default app;
