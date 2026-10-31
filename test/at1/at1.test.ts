@@ -141,6 +141,16 @@ describe('AT-1 owner shapes a space and appoints its admin', { concurrency: fals
     assert.match(cookie, /Path=\//i);
     const token = cookie.split(';')[0];
     assert.equal((await c.get('/owner')).status, 200);
+    // A sign-in form posted from another site is refused, even with the right password.
+    const crossSite = await fetch(worker.url + '/signin', {
+      method: 'POST',
+      redirect: 'manual',
+      headers: { origin: 'https://attacker.example', 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ username: OWNER.username, password: OWNER.password }),
+    });
+    assert.equal(crossSite.status, 403, 'a cross-site form is refused with 403');
+    assert.ok(!crossSite.headers.getSetCookie().some((l) => l.startsWith('lms_session=')), 'and starts no session');
+
     const stored = await worker.sql('SELECT id FROM session');
     assert.ok(stored.length >= 1, 'sessions live on the server');
     assert.ok(stored.every((r) => !token.includes(String(r.id))), 'the cookie value is not stored as-is');
