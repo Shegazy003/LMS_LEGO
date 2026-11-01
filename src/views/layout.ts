@@ -44,6 +44,17 @@ main{overflow-wrap:anywhere}
 .items img.preview{display:block;max-width:100%;min-width:96px;height:auto;margin:0 0 8px;border-radius:8px;border:1px solid #e3e6ea;image-rendering:auto}
 .note{white-space:pre-wrap;background:#fffdf3;border:1px solid #f0e3b3;border-radius:8px;padding:10px 12px}
 .done{background:#e8f5ec;color:#0f5132;border:1px solid #badbcc;border-radius:8px;padding:10px 12px}
+.draft{background:#fff8e1;color:#5c4400;border:1px solid #f0d58a;border-radius:8px;padding:10px 12px}
+.row{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+h3{font-size:1.05rem;margin:0}
+textarea{font:inherit;padding:10px 12px;border:1px solid #c9ced6;border-radius:8px;resize:vertical}
+button.secondary{background:#fff;color:#8a1c12;border:1px solid #c9ced6}
+form.move,form.move-inner{display:inline-flex;gap:4px;margin:0}
+form.move button,form.move-inner button{background:#fff;color:#1f6feb;border:1px solid #c9ced6;padding:4px 12px;font-size:1.1rem;line-height:1.2}
+button:disabled{opacity:.35;cursor:default}
+form.inline-add{display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap;margin-top:12px}
+form.inline-add label{flex:1 1 180px}
+.items form.move{margin-top:8px}
 `;
 
 export interface LayoutOptions {

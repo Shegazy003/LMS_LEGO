@@ -10,20 +10,28 @@ import { SESSION_COOKIE, SESSION_IDLE_MS, sessionDecision } from './auth/session
 import { newRecoveryCode, randomToken, recoveryCodeHash, tokenHash } from './auth/tokens.ts';
 import { now } from './clock.ts';
 import { Db } from './db.ts';
-import { LOGO_MAX_BYTES, fileHeaders, materialFileHeaders, sniffLogo } from './files.ts';
-import { makeLabel, productLang, type KitJson, type Lang } from './labels.ts';
 import {
-  findFile, findLesson, lessonMaterials, outline, readableSubject, subjectsForLearner, subjectsForPublisher,
+  LOGO_MAX_BYTES, MATERIAL_MAX_BYTES, fileHeaders, materialBodyTooLarge, materialFileHeaders, sniffLogo, sniffMaterial,
+} from './files.ts';
+import { makeLabel, productLang, type KitJson, type Lang, type LabelKey } from './labels.ts';
+import {
+  findFile, findLesson, lessonMaterials, outline, readableSubject, subjectsForLearner, subjectsForPublisher, type SubjectRow,
 } from './learning.ts';
+import { externalUrl } from './links.ts';
 import { normaliseCountryCode, normaliseMobile } from './phone.ts';
+import {
+  addChapter, addLesson, addMaterial, editableChapter, editableLesson, editableMaterial, editableSubject, isDirection,
+  moveChapter, moveLesson, moveMaterial, setPublished, type EditableLesson, type NewMaterial,
+} from './publishing.ts';
 import { SEED_KITS, seedKit } from './kits/seed.ts';
 import { registerTestHooks } from './test-hooks.ts';
 import { FREE_PLAN, UsageMeter, type FlushBatch } from './usage.ts';
 import { accountPage } from './views/account.ts';
 import { recoverPage, recoveryCodePage, setupPage, signInPage } from './views/auth.ts';
 import { messagePage, type Html } from './views/layout.ts';
-import { learnerHome, lessonPage, publisherHome, subjectPage } from './views/learn.ts';
+import { learnerHome, lessonPage, subjectPage } from './views/learn.ts';
 import { newSpacePage, ownerHome, ownerSpacePage, type AdminRow, type AppointValues, type NewSpaceValues } from './views/owner.ts';
+import { lessonEditor, publisherHome, subjectEditor } from './views/publish.ts';
 import { accessEndedPage, adminHome, membershipsPage, type SpaceView } from './views/space.ts';
 
 type C = Context<AppEnv>;
@@ -67,7 +75,7 @@ async function storedBytes(bucket: R2Bucket): Promise<number> {
 // -------------------------------------------------------------- helpers ----
 const label = (c: C, kit?: KitJson) => makeLabel(c.get('lang'), kit);
 
-function page(c: C, body: Html, status: 200 | 400 | 401 | 403 | 404 | 500 = 200) {
+function page(c: C, body: Html, status: 200 | 400 | 401 | 403 | 404 | 413 | 500 = 200) {
   c.header('cache-control', 'no-store');
   return c.html(body, status);
 }
@@ -567,6 +575,169 @@ app.get('/s/:spaceId/file/:materialId', async (c) => {
     return new Response(null, { status: 304, headers });
   }
   return new Response(obj.body, { headers });
+});
+
+// ------------------------------------------------------------ publishing ----
+// The publisher's editor (AT-3). Every address is under /s/<space>/publish,
+// so the publisher gate has already run; each handler then finds the item
+// only inside this space and only in a subject this publisher is responsible
+// for, and each write repeats that check in its own statement. Anything else
+// answers the same 403 as a reading page. A refused form shows its plain
+// message on the same page and changes nothing; a done form goes back to the
+// editor (303, so a reload does not post again).
+const TITLE_MAX = 200;
+const NOTE_MAX = 10_000;
+const materialKey = (spaceId: string, materialId: string) => `spaces/${spaceId}/files/${materialId}`;
+const subjectEditorPath = (spaceId: string, subjectId: string) => `/s/${spaceId}/publish/edit/${subjectId}`;
+const lessonEditorPath = (spaceId: string, lessonId: string) => `/s/${spaceId}/publish/compose/${lessonId}`;
+
+function titleFrom(body: Record<string, unknown>): string | null {
+  const title = field(body, 'title');
+  return title && title.length <= TITLE_MAX ? title : null;
+}
+
+async function renderSubjectEditor(c: C, subject: SubjectRow, error?: LabelKey) {
+  const { t, lang, view } = spaceLabel(c);
+  const parts = await outline(c.get('db'), view.id, subject.id);
+  return page(c, subjectEditor(t, lang, view, subject, parts, error && t(error)), error ? 400 : 200);
+}
+
+async function renderLessonEditor(c: C, lesson: EditableLesson, error?: LabelKey, status: 200 | 400 | 413 = 200) {
+  const db = c.get('db');
+  const { t, lang, view } = spaceLabel(c);
+  const subject = await editableSubject(db, view.id, c.get('user')!.id, lesson.subject_id);
+  if (!subject) return refuse(c, 403, 'noAccess');
+  const materials = await lessonMaterials(db, view.id, lesson.id);
+  return page(c, lessonEditor(t, lang, view, { subject, lesson, materials, error: error && t(error) }), status);
+}
+
+app.get('/s/:spaceId/publish/edit/:subjectId', async (c) => {
+  const subject = await editableSubject(c.get('db'), c.get('space').id, c.get('user')!.id, c.req.param('subjectId'));
+  if (!subject) return refuse(c, 403, 'noAccess');
+  return renderSubjectEditor(c, subject);
+});
+
+app.post('/s/:spaceId/publish/edit/:subjectId/add', async (c) => {
+  const db = c.get('db');
+  const spaceId = c.get('space').id;
+  const userId = c.get('user')!.id;
+  const subject = await editableSubject(db, spaceId, userId, c.req.param('subjectId'));
+  if (!subject) return refuse(c, 403, 'noAccess');
+  const title = titleFrom(await c.req.parseBody());
+  if (!title) return renderSubjectEditor(c, subject, 'titleInvalid');
+  if (!(await addChapter(db, spaceId, userId, subject.id, title))) return refuse(c, 403, 'noAccess');
+  return c.redirect(subjectEditorPath(spaceId, subject.id) + '#outline', 303);
+});
+
+for (const [action, published] of [['publish', true], ['unpublish', false]] as const) {
+  app.post(`/s/:spaceId/publish/edit/:subjectId/${action}`, async (c) => {
+    const spaceId = c.get('space').id;
+    const subjectId = c.req.param('subjectId');
+    if (!(await setPublished(c.get('db'), spaceId, c.get('user')!.id, subjectId, published))) return refuse(c, 403, 'noAccess');
+    return c.redirect(subjectEditorPath(spaceId, subjectId), 303);
+  });
+}
+
+app.post('/s/:spaceId/publish/part/:chapterId/add', async (c) => {
+  const db = c.get('db');
+  const spaceId = c.get('space').id;
+  const userId = c.get('user')!.id;
+  const chapter = await editableChapter(db, spaceId, userId, c.req.param('chapterId'));
+  const subject = chapter && (await editableSubject(db, spaceId, userId, chapter.subject_id));
+  if (!chapter || !subject) return refuse(c, 403, 'noAccess');
+  const title = titleFrom(await c.req.parseBody());
+  if (!title) return renderSubjectEditor(c, subject, 'titleInvalid');
+  if (!(await addLesson(db, spaceId, userId, chapter.id, title))) return refuse(c, 403, 'noAccess');
+  return c.redirect(subjectEditorPath(spaceId, subject.id) + '#outline', 303);
+});
+
+app.post('/s/:spaceId/publish/part/:chapterId/move', async (c) => {
+  const db = c.get('db');
+  const spaceId = c.get('space').id;
+  const chapter = await editableChapter(db, spaceId, c.get('user')!.id, c.req.param('chapterId'));
+  if (!chapter) return refuse(c, 403, 'noAccess');
+  const direction = field(await c.req.parseBody(), 'direction');
+  if (isDirection(direction)) await moveChapter(db, spaceId, chapter, direction);
+  return c.redirect(subjectEditorPath(spaceId, chapter.subject_id) + '#outline', 303);
+});
+
+app.get('/s/:spaceId/publish/compose/:lessonId', async (c) => {
+  const lesson = await editableLesson(c.get('db'), c.get('space').id, c.get('user')!.id, c.req.param('lessonId'));
+  if (!lesson) return refuse(c, 403, 'noAccess');
+  return renderLessonEditor(c, lesson);
+});
+
+app.post('/s/:spaceId/publish/compose/:lessonId/move', async (c) => {
+  const db = c.get('db');
+  const spaceId = c.get('space').id;
+  const lesson = await editableLesson(db, spaceId, c.get('user')!.id, c.req.param('lessonId'));
+  if (!lesson) return refuse(c, 403, 'noAccess');
+  const direction = field(await c.req.parseBody(), 'direction');
+  if (isDirection(direction)) await moveLesson(db, spaceId, lesson, direction);
+  return c.redirect(subjectEditorPath(spaceId, lesson.subject_id) + '#outline', 303);
+});
+
+// One address for the four forms (file, video link, web link, note). A file's
+// kind (PDF or image) and its stored type come from its content; a refused
+// file never reaches storage, and a stored file whose row cannot be written is
+// removed again.
+app.post('/s/:spaceId/publish/compose/:lessonId/add', async (c) => {
+  const db = c.get('db');
+  const spaceId = c.get('space').id;
+  const userId = c.get('user')!.id;
+  const lesson = await editableLesson(db, spaceId, userId, c.req.param('lessonId'));
+  if (!lesson) return refuse(c, 403, 'noAccess');
+  if (materialBodyTooLarge(c.req.header('content-length'))) return renderLessonEditor(c, lesson, 'uploadTooLarge', 413);
+  const body = await c.req.parseBody();
+  const title = titleFrom(body);
+  if (!title) return renderLessonEditor(c, lesson, 'titleInvalid', 400);
+  const kind = field(body, 'kind');
+  const item: NewMaterial = { id: crypto.randomUUID(), kind: 'note', title, storageKey: null, url: null, noteText: null };
+  let upload: { bytes: Uint8Array; type: string } | null = null;
+
+  if (kind === 'file') {
+    const file = body.file;
+    if (!(file instanceof File) || file.size === 0) return renderLessonEditor(c, lesson, 'uploadMissing', 400);
+    if (file.size > MATERIAL_MAX_BYTES) return renderLessonEditor(c, lesson, 'uploadTooLarge', 413);
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const found = sniffMaterial(bytes);
+    if (!found) return renderLessonEditor(c, lesson, 'uploadType', 400);
+    item.kind = found.kind;
+    item.storageKey = materialKey(spaceId, item.id);
+    upload = { bytes, type: found.type };
+  } else if (kind === 'video_link' || kind === 'link') {
+    const url = externalUrl(field(body, 'url'));
+    if (!url) return renderLessonEditor(c, lesson, 'linkInvalid', 400);
+    item.kind = kind;
+    item.url = url;
+  } else if (kind === 'note') {
+    // Browsers send a text box's line breaks as CR LF; keep them as LF.
+    const text = (typeof body.text === 'string' ? body.text : '').replace(/\r\n?/g, '\n').trim();
+    if (!text || text.length > NOTE_MAX) return renderLessonEditor(c, lesson, 'noteInvalid', 400);
+    item.noteText = text;
+  } else {
+    return renderLessonEditor(c, lesson, 'kindInvalid', 400);
+  }
+
+  if (upload && item.storageKey) await c.env.FILES.put(item.storageKey, upload.bytes, { httpMetadata: { contentType: upload.type } });
+  let written = false;
+  try {
+    written = await addMaterial(db, spaceId, userId, lesson.id, item);
+  } finally {
+    if (!written && item.storageKey) await c.env.FILES.delete(item.storageKey);
+  }
+  if (!written) return refuse(c, 403, 'noAccess');
+  return c.redirect(lessonEditorPath(spaceId, lesson.id) + '#items', 303);
+});
+
+app.post('/s/:spaceId/publish/item/:materialId/move', async (c) => {
+  const db = c.get('db');
+  const spaceId = c.get('space').id;
+  const material = await editableMaterial(db, spaceId, c.get('user')!.id, c.req.param('materialId'));
+  if (!material) return refuse(c, 403, 'noAccess');
+  const direction = field(await c.req.parseBody(), 'direction');
+  if (isDirection(direction)) await moveMaterial(db, spaceId, material, direction);
+  return c.redirect(lessonEditorPath(spaceId, material.lesson_id) + '#items', 303);
 });
 
 // ------------------------------------------------------------ my account ----
