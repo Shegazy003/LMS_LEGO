@@ -1,6 +1,6 @@
 # LMS Lego: project instructions for every agent
 
-Read [CURRENT-PROGRESS.md](CURRENT-PROGRESS.md) and [docs/00-OPERATING-CONTRACT.md](docs/00-OPERATING-CONTRACT.md) before any work, then your own role section below and the task you were given. Never rely on another agent's reading.
+A new session reads [docs/08-HANDOVER.md](docs/08-HANDOVER.md) first. Then read [CURRENT-PROGRESS.md](CURRENT-PROGRESS.md) and [docs/00-OPERATING-CONTRACT.md](docs/00-OPERATING-CONTRACT.md) before any work, then your own role section below and the task you were given. Never rely on another agent's reading.
 
 ## What this repository is
 

@@ -4,6 +4,7 @@ A learning space that a non-technical owner can shape like Lego bricks and hand 
 
 **Start here**
 
+0. **New session? Start with [docs/08-HANDOVER.md](docs/08-HANDOVER.md).**
 1. [CURRENT-PROGRESS.md](CURRENT-PROGRESS.md): what is true now, what is next, what is waiting on the owner.
 2. [docs/01-PRODUCT-CONTRACT.md](docs/01-PRODUCT-CONTRACT.md): who it is for, the one release promise, the five acceptance tests, what is in and what is postponed.
 3. [docs/02-LEGO-MODEL.md](docs/02-LEGO-MODEL.md): the bricks. Kits, canonical concepts, the authority chain and the data model.

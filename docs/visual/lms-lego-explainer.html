@@ -1,0 +1,435 @@
+<title>LMS Lego Contract</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;700;800&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&family=Noto+Naskh+Arabic:wght@400;700&display=swap">
+<style>
+  /* Layout: one reading column of bricks; each section is a colored-stud band, diagrams in SVG. */
+  :root {
+    --bg: #f6f4ee;
+    --surface: #ffffff;
+    --fg: #1d2230;
+    --muted: #5b6273;
+    --line: #d9d5c9;
+    --owner: #d7352f;
+    --admin: #2d63c8;
+    --publisher: #e8b312;
+    --learner: #2e9a5a;
+    --accent: #d7352f;
+    --red: #b3261e;
+    --redbg: #fde8e6;
+    --amberbg: #fff4d6;
+    --display: 'Outfit', 'Segoe UI', system-ui, sans-serif;
+    --body: 'Source Sans 3', 'Segoe UI', system-ui, sans-serif;
+    --arabic: 'Noto Naskh Arabic', 'Geeza Pro', 'Tahoma', serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #15181f; --surface: #1e222b; --fg: #eceae2; --muted: #a2a7b4; --line: #343a47;
+      --owner: #ef5a52; --admin: #5e8ee6; --publisher: #f0c23a; --learner: #4fb878; --accent: #ef5a52;
+      --red: #ff8a80; --redbg: #3a1f1d; --amberbg: #3a3118; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #15181f; --surface: #1e222b; --fg: #eceae2; --muted: #a2a7b4; --line: #343a47;
+    --owner: #ef5a52; --admin: #5e8ee6; --publisher: #f0c23a; --learner: #4fb878; --accent: #ef5a52;
+    --red: #ff8a80; --redbg: #3a1f1d; --amberbg: #3a3118; color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 17px; line-height: 1.5; }
+  .wrap { max-width: 980px; margin: 0 auto; padding-block: 24px 64px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  h1, h2, h3 { font-family: var(--display); text-wrap: balance; line-height: 1.15; margin: 0; }
+  h1 { font-size: clamp(34px, 6vw, 52px); font-weight: 800; letter-spacing: -0.01em; }
+  h2 { font-size: clamp(24px, 3.6vw, 32px); font-weight: 700; }
+  h3 { font-size: 19px; font-weight: 700; }
+  p { margin: 0; max-width: 68ch; }
+  .eyebrow { font-family: var(--display); font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+  header { display: grid; gap: 14px; padding-block: 12px 36px; border-bottom: 1px solid var(--line); }
+  .status { display: inline-flex; gap: 10px; align-items: center; flex-wrap: wrap; font-family: var(--display); font-size: 14px; font-weight: 700; }
+  .pill { border-radius: 999px; padding: 4px 12px; background: var(--amberbg); color: var(--fg); }
+  .lede { font-size: 20px; color: var(--muted); max-width: 60ch; }
+  section { padding-block: 40px; border-bottom: 1px solid var(--line); display: grid; gap: 18px; }
+  section:last-of-type { border-bottom: 0; }
+  .studs { display: flex; gap: 6px; }
+  .studs i { width: 14px; height: 14px; border-radius: 50%; display: block; }
+  .roles { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; }
+  .role { padding: 14px 16px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line); border-top: 8px solid var(--c); display: grid; gap: 6px; min-width: 0; }
+  .role b { font-family: var(--display); font-size: 17px; }
+  .role small { color: var(--muted); font-size: 14px; }
+  .diagram { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px; }
+  .diagram svg { display: block; width: 100%; height: auto; min-width: 560px; max-width: 100%; }
+  svg text { font-family: var(--body); fill: var(--fg); font-size: 14px; }
+  svg .lab { font-family: var(--display); font-weight: 700; }
+  svg .mut { fill: var(--muted); font-size: 12px; }
+  svg .ar { font-family: var(--arabic); font-size: 15px; }
+  /* kit switcher */
+  .switcher { display: grid; gap: 14px; }
+  .tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+  .tabs button { font-family: var(--display); font-weight: 700; font-size: 15px; padding: 9px 16px; border-radius: 999px; border: 2px solid var(--line); background: var(--surface); color: var(--fg); cursor: pointer; }
+  .tabs button[aria-pressed="true"] { border-color: var(--fg); background: var(--fg); color: var(--bg); }
+  .tabs button:focus-visible, .lang button:focus-visible { outline: 3px solid var(--admin); outline-offset: 2px; }
+  .mock { border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--surface); }
+  .mock .bar { padding: 12px 16px; color: #fff; display: flex; justify-content: space-between; align-items: center; gap: 12px; font-family: var(--display); font-weight: 700; }
+  .mock .bar .lang { display: flex; gap: 4px; }
+  .mock .bar .lang button { font: inherit; font-size: 13px; padding: 3px 10px; border-radius: 999px; border: 1px solid rgba(255,255,255,.6); background: transparent; color: #fff; cursor: pointer; }
+  .mock .bar .lang button[aria-pressed="true"] { background: #fff; color: #222; }
+  .mock .body { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+  .mock .col { padding: 16px; min-width: 0; display: grid; gap: 10px; align-content: start; }
+  .mock .col + .col { border-inline-start: 1px solid var(--line); }
+  .mock .col h4 { margin: 0; font-family: var(--display); font-size: 13px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  .mock ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+  .mock li { padding: 8px 10px; border-radius: 8px; background: var(--bg); display: flex; justify-content: space-between; gap: 8px; }
+  .mock li span:last-child { color: var(--muted); font-size: 14px; }
+  .mock[dir="rtl"] { font-family: var(--arabic); font-size: 18px; }
+  .mock[dir="rtl"] h4 { font-family: var(--arabic); letter-spacing: 0; font-size: 14px; }
+  .note { font-size: 15px; color: var(--muted); }
+  /* tests */
+  .tests { display: grid; gap: 12px; }
+  .test { display: grid; grid-template-columns: 64px 1fr; gap: 14px; padding: 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; min-width: 0; }
+  .test .id { font-family: var(--display); font-weight: 800; font-size: 22px; line-height: 1; color: var(--c); }
+  .test .id small { display: block; font-size: 11px; color: var(--muted); font-weight: 700; letter-spacing: .08em; margin-top: 6px; }
+  .test h3 { margin-bottom: 4px; }
+  .test .see { margin-top: 8px; padding: 10px 12px; border-radius: 8px; background: var(--bg); font-size: 15px; }
+  .test .see b { color: var(--learner); }
+  .who { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-inline-end: 6px; vertical-align: middle; }
+  /* hosting */
+  .lines { display: grid; gap: 10px; }
+  .lineRow { display: grid; grid-template-columns: 150px 1fr 110px; gap: 12px; align-items: center; font-size: 15px; }
+  .lineRow .track { height: 14px; border-radius: 7px; background: var(--line); overflow: hidden; }
+  .lineRow .fill { height: 100%; background: var(--learner); border-radius: 7px; }
+  .lineRow .n { font-variant-numeric: tabular-nums; color: var(--muted); text-align: end; }
+  /* decisions */
+  .qs { display: grid; gap: 10px; counter-reset: q; }
+  .q { display: grid; grid-template-columns: 34px 1fr; gap: 12px; padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; }
+  .q::before { counter-increment: q; content: counter(q); font-family: var(--display); font-weight: 800; font-size: 20px; color: var(--muted); }
+  .q b { font-family: var(--display); }
+  .q .rec { color: var(--muted); font-size: 15px; margin-top: 4px; }
+  .q.red { border-color: var(--red); background: var(--redbg); }
+  .q.red::after { grid-column: 2; content: "RED: only you can decide this"; font-family: var(--display); font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--red); }
+  .later { display: flex; flex-wrap: wrap; gap: 8px; }
+  .later span { padding: 6px 12px; border-radius: 999px; border: 1px dashed var(--line); font-size: 15px; color: var(--muted); }
+  .files { font-size: 15px; color: var(--muted); display: grid; gap: 4px; }
+  .files code { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 14px; color: var(--fg); }
+  @media (max-width: 640px) {
+    .mock .body { grid-template-columns: 1fr; }
+    .mock .col + .col { border-inline-start: 0; border-top: 1px solid var(--line); }
+    .lineRow { grid-template-columns: 110px 1fr 90px; }
+    .test { grid-template-columns: 52px 1fr; }
+  }
+  @media (prefers-reduced-motion: no-preference) { .lineRow .fill { transition: width .4s ease; } }
+</style>
+
+<div class="wrap">
+<header>
+  <div class="studs"><i style="background:var(--owner)"></i><i style="background:var(--admin)"></i><i style="background:var(--publisher)"></i><i style="background:var(--learner)"></i></div>
+  <span class="eyebrow">LMS Lego · release 1 · 31 October 2026</span>
+  <h1>The contract, and the work it starts</h1>
+  <p class="lede">One product you shape like Lego bricks and hand to a school, a company or a university. This page shows what release 1 promises, how we will know it is done, who does what, and what is waiting on you.</p>
+  <div class="status"><span class="pill">RELEASE 1 ACCEPTED · LIVE</span><span style="color:var(--muted)">Accepted by you on 1 November at lms-lego.lmslego.workers.dev. CPU 3 ms per request, 0 errors, on the free plan.</span></div>
+</header>
+
+<section>
+  <span class="eyebrow">Where release 1 stands</span>
+  <h2>Five tests delivered, deployed and accepted on the public address.</h2>
+  <div class="tests">
+    <div class="test" style="--c:var(--owner)"><div class="id">AT-1<small>merged #4</small></div><div><h3>You shape Mesk School and appoint its admin</h3><p>Owner setup with a recovery code, three kits, logo and colour, admin with an end date, the "access ended" refusal, your usage panel.</p></div></div>
+    <div class="test" style="--c:var(--learner)"><div class="id">AT-4<small>merged #6</small></div><div><h3>A learner sees exactly what was assigned</h3><p>Only assigned, published subjects; files behind access checks; change password; one school can never read another's data.</p></div></div>
+    <div class="test" style="--c:var(--publisher)"><div class="id">AT-3<small>merged #8</small></div><div><h3>Hadeer builds and publishes a subject</h3><p>Chapters, lessons, real PDF and image uploads only, video and web links, notes; Shimaa cannot touch Hadeer's subject.</p></div></div>
+    <div class="test" style="--c:var(--admin)"><div class="id">AT-2<small>merged #10</small></div><div><h3>The admin staffs the school</h3><p>Teachers and learners with end dates and mobiles, groups, subjects, and WhatsApp reset links with every safeguard; a limit on wrong passwords.</p></div></div>
+    <div class="test" style="--c:var(--owner)"><div class="id">AT-5<small>merged #13</small></div><div><h3>The kit changes every word, no code changes</h3><p>Your kit editor, each person's language choice, proof that a switch is data only, and every form refusing forged cross-site posts.</p></div></div>
+  </div>
+  <p>Every one went Builder (Opus) → Lead stamp → Independent Verifier (Sonnet) PASS → merged, with tests failing first and passing on the exact commit. Also merged: the deploy workflow (it runs only when started by hand and has never run), your last-resort reset, and password strength as one setting. Left for the go-live sitting: your acceptance on the public address, and one real WhatsApp send from a phone.</p>
+  <div class="qs">
+    <div class="q red"><div><b>File storage: A (add a card when Cloudflare asks, 10 GB free) or B (no card, 1 GB)?</b><div class="rec">Recommended: A. Nothing is charged inside the free lines, and your usage panel warns before them.</div></div></div>
+    <div class="q red"><div><b>Password strength: A ($5 a month, today's strength) or B (free, lighter hashing)?</b><div class="rec">Recommended for the pilot: B. Cloudflare's free plan allows 10 ms per request; today's check takes about 44 ms, the lighter one about 4.4 ms. Set before the first deploy, confirmed live, then move to A when a second school joins.</div></div></div>
+    <div class="q red"><div><b>Create your Cloudflare account and one deploy key, and paste it into GitHub's secrets.</b><div class="rec">About 15 minutes; the steps are in docs/07-FIRST-DEPLOY.md. Nobody else ever sees the key.</div></div></div>
+  </div>
+</section>
+
+<section>
+  <span class="eyebrow">The idea</span>
+  <h2>One product, many spaces, each shaped by a kit</h2>
+  <p>The code knows only eight things: a space, an admin, a publisher, a learner, a group, a subject, a chapter and a lesson. A <b>kit</b> decides what people see: the language and its direction, the logo and colours, and the name of each of those eight things. Change the kit and every word on every page changes. No developer, no new code.</p>
+  <div class="diagram"><svg viewBox="0 0 900 300" role="img" aria-label="A kit of four bricks plugs into a space; three spaces use three different kits">
+    <defs>
+      <g id="brick"><rect x="0" y="10" width="150" height="56" rx="6"/><circle cx="35" cy="10" r="9"/><circle cx="75" cy="10" r="9"/><circle cx="115" cy="10" r="9"/></g>
+    </defs>
+    <text x="20" y="28" class="lab">The kit</text>
+    <g fill="var(--admin)"><use href="#brick" x="20" y="40"/></g>
+    <text x="95" y="80" text-anchor="middle" fill="#fff" class="lab">Language</text>
+    <g fill="var(--publisher)"><use href="#brick" x="20" y="106"/></g>
+    <text x="95" y="146" text-anchor="middle" fill="#222" class="lab">Theme</text>
+    <g fill="var(--owner)"><use href="#brick" x="20" y="172"/></g>
+    <text x="95" y="212" text-anchor="middle" fill="#fff" class="lab">Names of things</text>
+    <g fill="var(--line)"><use href="#brick" x="20" y="238"/></g>
+    <text x="95" y="278" text-anchor="middle" class="lab" style="fill:var(--muted)">Gamification · later</text>
+
+    <path d="M185 160 H 240" stroke="var(--muted)" stroke-width="3" fill="none" marker-end="url(#arr)"/>
+    <defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="var(--muted)"/></marker></defs>
+
+    <g>
+      <rect x="250" y="30" width="200" height="250" rx="12" fill="var(--bg)" stroke="var(--line)"/>
+      <text x="350" y="60" text-anchor="middle" class="lab">School kit</text>
+      <text x="350" y="82" text-anchor="middle" class="ar">مدرسة مسك</text>
+      <text x="270" y="118" class="mut">publisher</text><text x="430" y="118" text-anchor="end">Teacher · معلّم</text>
+      <text x="270" y="146" class="mut">learner</text><text x="430" y="146" text-anchor="end">Student · طالب</text>
+      <text x="270" y="174" class="mut">group</text><text x="430" y="174" text-anchor="end">Class · فصل</text>
+      <text x="270" y="202" class="mut">subject</text><text x="430" y="202" text-anchor="end">Subject · مادّة</text>
+      <text x="270" y="230" class="mut">lesson</text><text x="430" y="230" text-anchor="end">Lesson · درس</text>
+      <text x="350" y="265" text-anchor="middle" class="mut">Arabic first, right-to-left</text>
+    </g>
+    <g>
+      <rect x="470" y="30" width="200" height="250" rx="12" fill="var(--bg)" stroke="var(--line)"/>
+      <text x="570" y="60" text-anchor="middle" class="lab">Company kit</text>
+      <text x="570" y="82" text-anchor="middle">Delta Logistics</text>
+      <text x="490" y="118" class="mut">publisher</text><text x="650" y="118" text-anchor="end">Trainer · مدرّب</text>
+      <text x="490" y="146" class="mut">learner</text><text x="650" y="146" text-anchor="end">Employee · موظّف</text>
+      <text x="490" y="174" class="mut">group</text><text x="650" y="174" text-anchor="end">Team · فريق</text>
+      <text x="490" y="202" class="mut">subject</text><text x="650" y="202" text-anchor="end">Course · دورة</text>
+      <text x="490" y="230" class="mut">lesson</text><text x="650" y="230" text-anchor="end">Session · جلسة</text>
+      <text x="570" y="265" text-anchor="middle" class="mut">English first, left-to-right</text>
+    </g>
+    <g>
+      <rect x="690" y="30" width="200" height="250" rx="12" fill="var(--bg)" stroke="var(--line)"/>
+      <text x="790" y="60" text-anchor="middle" class="lab">University kit</text>
+      <text x="790" y="82" text-anchor="middle">Faculty of Pharmacy</text>
+      <text x="710" y="118" class="mut">publisher</text><text x="870" y="118" text-anchor="end">Lecturer · محاضر</text>
+      <text x="710" y="146" class="mut">learner</text><text x="870" y="146" text-anchor="end">Student · طالب</text>
+      <text x="710" y="174" class="mut">group</text><text x="870" y="174" text-anchor="end">Section · شعبة</text>
+      <text x="710" y="202" class="mut">subject</text><text x="870" y="202" text-anchor="end">Module · مقرّر</text>
+      <text x="710" y="230" class="mut">lesson</text><text x="870" y="230" text-anchor="end">Lecture · محاضرة</text>
+      <text x="790" y="265" text-anchor="middle" class="mut">or any kit you edit yourself</text>
+    </g>
+  </svg></div>
+
+  <div class="switcher">
+    <h3>Try it: the same space, three kits, two languages</h3>
+    <div class="tabs" role="group" aria-label="Choose a kit">
+      <button type="button" id="kit-school" data-kit="school" aria-pressed="true">School</button>
+      <button type="button" id="kit-company" data-kit="company" aria-pressed="false">Company</button>
+      <button type="button" id="kit-university" data-kit="university" aria-pressed="false">University</button>
+    </div>
+    <div class="mock" id="mock" dir="ltr">
+      <div class="bar" id="mockBar">
+        <span id="mockSpace">Al Nour School</span>
+        <span class="lang" role="group" aria-label="Language"><button type="button" id="lang-en" data-lang="en" aria-pressed="true">EN</button><button type="button" id="lang-ar" data-lang="ar" aria-pressed="false">ع</button></span>
+      </div>
+      <div class="body">
+        <div class="col"><h4 id="hPeople">People</h4><ul id="people"></ul></div>
+        <div class="col"><h4 id="hContent">Content</h4><ul id="content"></ul></div>
+      </div>
+    </div>
+    <p class="note">This is what acceptance test 5 protects: switching the kit changes every label and flips the direction, the content underneath stays exactly as it was, and no other space is touched.</p>
+  </div>
+</section>
+
+<section>
+  <span class="eyebrow">Who does what</span>
+  <h2>Four roles in the product, and a chain of appointment</h2>
+  <div class="roles">
+    <div class="role" style="--c:var(--owner)"><b>Owner (you)</b><small>Creates spaces, picks and edits kits, appoints each space's admin with an end date. Sees kits, admins and usage totals. Never sees inside a space.</small></div>
+    <div class="role" style="--c:var(--admin)"><b>Admin</b><small>Runs one space: appoints publishers and learners with end dates, forms groups, creates subjects and assigns them. Can reset the passwords of people they appointed.</small></div>
+    <div class="role" style="--c:var(--publisher)"><b>Publisher</b><small>Teacher, trainer or lecturer. Builds their subjects out of chapters, lessons and materials: PDF, image, video link, web link, note.</small></div>
+    <div class="role" style="--c:var(--learner)"><b>Learner</b><small>Student, employee or trainee. Sees exactly the subjects assigned to them or to their group, and nothing else.</small></div>
+  </div>
+  <div class="diagram"><svg viewBox="0 0 900 330" role="img" aria-label="Owner appoints admin; admin appoints publishers and learners, forms groups and assigns subjects; validity dates flow down the chain">
+    <defs><marker id="arr2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="var(--muted)"/></marker></defs>
+    <rect x="370" y="20" width="160" height="50" rx="8" fill="var(--owner)"/><text x="450" y="51" text-anchor="middle" fill="#fff" class="lab">Owner</text>
+    <path d="M450 70 V 100" stroke="var(--muted)" stroke-width="3" marker-end="url(#arr2)"/>
+    <text x="465" y="92" class="mut">appoints, sets valid until</text>
+    <rect x="350" y="105" width="200" height="50" rx="8" fill="var(--admin)"/><text x="450" y="136" text-anchor="middle" fill="#fff" class="lab">Admin of one space</text>
+    <path d="M400 155 C 400 200, 180 180, 180 215" stroke="var(--muted)" stroke-width="3" fill="none" marker-end="url(#arr2)"/>
+    <path d="M500 155 C 500 200, 720 180, 720 215" stroke="var(--muted)" stroke-width="3" fill="none" marker-end="url(#arr2)"/>
+    <path d="M450 155 V 215" stroke="var(--muted)" stroke-width="3" fill="none" marker-end="url(#arr2)"/>
+    <text x="235" y="190" class="mut">appoints</text>
+    <text x="600" y="190" class="mut">appoints, groups</text>
+    <rect x="90" y="220" width="180" height="50" rx="8" fill="var(--publisher)"/><text x="180" y="251" text-anchor="middle" fill="#222" class="lab">Publisher</text>
+    <rect x="360" y="220" width="180" height="50" rx="8" fill="var(--bg)" stroke="var(--fg)" stroke-width="2"/><text x="450" y="251" text-anchor="middle" class="lab">Subject</text>
+    <rect x="630" y="220" width="180" height="50" rx="8" fill="var(--learner)"/><text x="720" y="251" text-anchor="middle" fill="#fff" class="lab">Learner or group</text>
+    <path d="M270 245 H 355" stroke="var(--muted)" stroke-width="3" marker-end="url(#arr2)"/>
+    <text x="312" y="238" text-anchor="middle" class="mut">publishes</text>
+    <path d="M625 245 H 545" stroke="var(--muted)" stroke-width="3" marker-end="url(#arr2)"/>
+    <text x="585" y="238" text-anchor="middle" class="mut">reads</text>
+    <text x="450" y="305" text-anchor="middle" class="mut">Three rules: nobody grants more than they hold · nobody grants longer than they hold · after the end date the person sees "Your access ended on …", and nothing is deleted</text>
+  </svg></div>
+</section>
+
+<section>
+  <span class="eyebrow">The promise</span>
+  <h2>One sentence that release 1 must make true</h2>
+  <div style="padding:20px 22px; border-radius:12px; background:var(--surface); border:1px solid var(--line); border-inline-start:8px solid var(--owner); font-family:var(--display); font-size:clamp(18px,2.6vw,23px); font-weight:500; line-height:1.4;">
+    A non-technical owner shapes one organization's learning space (its name, language, theme and vocabulary), appoints its admin, and that organization's publishers share chapters, lessons and materials with exactly the learners assigned to them, from beginning to end, at zero hosting cost.
+  </div>
+  <p class="note">Not in this release: grading, quizzes, certificates, messaging, attendance, video hosting, email, billing, gamification, more than one owner. Each is listed in Later with the trigger that brings it back.</p>
+</section>
+
+<section>
+  <span class="eyebrow">How we know it is done</span>
+  <h2>Five tests. Each one you can watch with your own eyes.</h2>
+  <p>Every test runs automatically on GitHub for every change, as its own named step, and the Verifier judges from those results. You see the finished thing once, on the public address, and accept it by merging.</p>
+  <div class="tests">
+    <div class="test" style="--c:var(--owner)"><div class="id">AT-1<small>built first</small></div><div><h3>You shape a space and appoint its admin</h3><p>Create "Mesk School" on the School kit, Arabic first, with logo and colour. Appoint an admin with an end date 30 days away.</p><div class="see"><b>You will see:</b> the admin signs in to مدرسة مسك, right-to-left, with your logo. After the end date, the same admin sees "Your access ended on <i>date</i>. Contact the owner." Your home shows storage and today's usage against the free lines.</div></div></div>
+    <div class="test" style="--c:var(--learner)"><div class="id">AT-4<small>built second</small></div><div><h3>A learner sees exactly what was assigned</h3><p>The assigned learner changes their password, opens the lesson and all five materials. A second, unassigned learner tries the direct addresses. Then the first learner's end date passes.</p><div class="see"><b>You will see:</b> the first learner reaches everything; the second is refused on both addresses; after expiry the first learner gets the "access ended" message too. No learner ever sees an edit button.</div></div></div>
+    <div class="test" style="--c:var(--publisher)"><div class="id">AT-3<small>built third</small></div><div><h3>A publisher builds the subject</h3><p>Open Mathematics, add chapter Fractions, lesson Adding fractions, then a PDF, an image, a video link, a web link and a note. Publish.</p><div class="see"><b>You will see:</b> the five materials in order; PDF and image open from our storage, the video plays from its link. A file that is not a PDF or image is refused with a plain message.</div></div></div>
+    <div class="test" style="--c:var(--admin)"><div class="id">AT-2<small>built fourth</small></div><div><h3>The admin staffs the space</h3><p>Appoint Hadeer and Shimaa as teachers and two learners, each with an end date and a registered mobile number (a parent's number for a learner). Form the group Science with one learner, create a subject, assign Hadeer and the group. Hadeer forgets her password: the admin presses "Send reset link by WhatsApp", confirms the number, WhatsApp opens with the link typed, the admin presses Send, Hadeer types her username and sets a new password. The same for a learner, to the parent's number.</p><div class="see"><b>You will see:</b> Hadeer and the first learner list the subject, Shimaa and the second learner list nothing yet, the new password works, the old one does not, and a reused, wrong-username or 30-minute-old link is refused. The admin cannot appoint another admin or outlast their own end date. The real WhatsApp send is something you watch once on a phone; everything else is checked automatically.</div></div></div>
+    <div class="test" style="--c:var(--owner)"><div class="id">AT-5<small>built last</small></div><div><h3>The kit changes every word, and no code changes</h3><p>Create a second space on the Company kit. Switch Mesk School to the Company kit and rename Trainer to Coach / مرشد there.</p><div class="see"><b>You will see:</b> every Mesk School page says Coach, Employee, Team, Course; the lesson and materials are untouched; the second space still says Trainer; English flips the layout; the code is the same commit before and after.</div></div></div>
+  </div>
+  <p class="note">The order (1, 4, 3, 2, 5) is the Project Lead's proposal: sign-in and refusal come first because they protect every other test.</p>
+</section>
+
+<section>
+  <span class="eyebrow">How the work travels</span>
+  <h2>The same roles as the platform, one line, no extra approval layers</h2>
+  <div class="diagram"><svg viewBox="0 0 900 250" role="img" aria-label="Delivery line from owner approval to owner merge">
+    <defs><marker id="arr3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="var(--muted)"/></marker></defs>
+    <g>
+      <rect x="10" y="40" width="130" height="64" rx="8" fill="var(--owner)"/><text x="75" y="67" text-anchor="middle" fill="#fff" class="lab">You approve</text><text x="75" y="88" text-anchor="middle" fill="#fff" style="font-size:12px">the contract</text>
+      <path d="M140 72 H 160" stroke="var(--muted)" stroke-width="3" marker-end="url(#arr3)"/>
+      <rect x="165" y="40" width="130" height="64" rx="8" fill="var(--surface)" stroke="var(--fg)" stroke-width="2"/><text x="230" y="67" text-anchor="middle" class="lab">Project Lead</text><text x="230" y="88" text-anchor="middle" class="mut">cuts one task</text>
+      <path d="M295 72 H 315" stroke="var(--muted)" stroke-width="3" marker-end="url(#arr3)"/>
+      <rect x="320" y="40" width="130" height="64" rx="8" fill="var(--surface)" stroke="var(--fg)" stroke-width="2"/><text x="385" y="67" text-anchor="middle" class="lab">Builder</text><text x="385" y="88" text-anchor="middle" class="mut">failing test, then code</text>
+      <path d="M450 72 H 470" stroke="var(--muted)" stroke-width="3" marker-end="url(#arr3)"/>
+      <rect x="475" y="40" width="130" height="64" rx="8" fill="var(--surface)" stroke="var(--fg)" stroke-width="2"/><text x="540" y="67" text-anchor="middle" class="lab">GitHub tests</text><text x="540" y="88" text-anchor="middle" class="mut">clean machine, AT-1…5</text>
+      <path d="M605 72 H 625" stroke="var(--muted)" stroke-width="3" marker-end="url(#arr3)"/>
+      <rect x="630" y="40" width="120" height="64" rx="8" fill="var(--surface)" stroke="var(--fg)" stroke-width="2"/><text x="690" y="67" text-anchor="middle" class="lab">Lead stamp</text><text x="690" y="88" text-anchor="middle" class="mut">fits the plan?</text>
+      <path d="M750 72 H 770" stroke="var(--muted)" stroke-width="3" marker-end="url(#arr3)"/>
+      <rect x="775" y="40" width="115" height="64" rx="8" fill="var(--surface)" stroke="var(--fg)" stroke-width="2"/><text x="832" y="67" text-anchor="middle" class="lab">Verifier</text><text x="832" y="88" text-anchor="middle" class="mut">other vendor, PASS</text>
+    </g>
+    <path d="M832 104 V 150 H 75 V 165" stroke="var(--muted)" stroke-width="3" fill="none" marker-end="url(#arr3)"/>
+    <rect x="10" y="170" width="130" height="64" rx="8" fill="var(--owner)"/><text x="75" y="197" text-anchor="middle" fill="#fff" class="lab">You merge</text><text x="75" y="218" text-anchor="middle" fill="#fff" style="font-size:12px">that is acceptance</text>
+    <text x="500" y="135" text-anchor="middle" class="mut">REWORK sends it back to the Builder on the same pull request · REPLAN sends it up to the Product Manager · HOLD from the Verifier lists every failure once</text>
+    <text x="500" y="200" text-anchor="middle">You see only RED decisions: money, accounts, anything public, deleting data, serious risk.</text>
+    <text x="500" y="222" text-anchor="middle" class="mut">Everything else is done, logged, and undoable without asking you.</text>
+  </svg></div>
+  <p>This is the operating model adopted in the platform repository on 15 October 2026, in its short form: Product Manager writes the contract, one critic reviews it once, the Lead owns completion, the Builder writes the failing test before the code, an Independent Verifier from another AI vendor gives one PASS or HOLD, and your merge is the acceptance. What this repository does not carry over is the platform's own machinery: Paperclip packages, the Publisher watcher and the laptop scripts.</p>
+</section>
+
+<section>
+  <span class="eyebrow">Hosting</span>
+  <h2>Zero recurring cost, with room to spare</h2>
+  <p>Cloudflare's free plan runs the whole product: pages, database and files. The bars show how much of each free line a school of 300 people would use on a busy day, by our estimate.</p>
+  <div class="lines" id="lines">
+    <div class="lineRow"><span>Page requests</span><div class="track"><div class="fill" style="width:30%"></div></div><span class="n">100,000 / day</span></div>
+    <div class="lineRow"><span>Database writes</span><div class="track"><div class="fill" style="width:45%"></div></div><span class="n">100,000 / day</span></div>
+    <div class="lineRow"><span>Database reads</span><div class="track"><div class="fill" style="width:12%"></div></div><span class="n">5 million / day</span></div>
+    <div class="lineRow"><span>File storage</span><div class="track"><div class="fill" style="width:25%"></div></div><span class="n">10 GB</span></div>
+    <div class="lineRow"><span>File downloads</span><div class="track"><div class="fill" style="width:4%"></div></div><span class="n">free, unlimited</span></div>
+  </div>
+  <p class="note">Videos are links to YouTube, Vimeo or Drive, so they never touch our storage. Passwords are set by the appointing person, so no email service is needed. If a line is ever crossed on two days in a month, the one paid step is a $5 per month plan, and that is your decision. Your home page shows these bars for real, so you see a line approaching before a school goes dark.</p>
+</section>
+
+<section>
+  <span class="eyebrow">Your answers · 31 October</span>
+  <h2>Seven answered, one explained below</h2>
+  <div class="qs">
+    <div class="q"><div><b>Pilot: Mesk School, teachers Hadeer and Shimaa, class Science.</b><div class="rec">The five tests now use these names. Hadeer and Shimaa will name the real subjects; "Mathematics" stands in until then.</div></div></div>
+    <div class="q"><div><b>Sign-in by username and password, no email: yes.</b></div></div>
+    <div class="q"><div><b>Videos as links only: yes.</b></div></div>
+    <div class="q"><div><b>Cloudflare account: you create it.</b><div class="rec">Needed only for the first public address. Nobody else holds the password.</div></div></div>
+    <div class="q"><div><b>Tasks and reviews: GitHub.</b><div class="rec">Pull requests are the record. The roles stay the same.</div></div></div>
+    <div class="q"><div><b>Owner recovery: by the registered mobile number.</b><div class="rec">Adopted as the goal, with one step in between. The free WhatsApp shape works because someone above you presses Send; nobody is above the owner. So release 1 shows you a recovery code once at setup and registers your number; the moment the product can send messages itself (release 3), your number takes over with no further decision.</div></div></div>
+    <div class="q"><div><b>Free address for the pilot, your own domain later: agreed.</b></div></div>
+  </div>
+
+  <h3>Question 8, explained: the reset link by WhatsApp</h3>
+  <div class="diagram"><svg viewBox="0 0 900 170" role="img" aria-label="Five steps: Hadeer forgets her password, admin presses the button, WhatsApp opens with the link typed, admin presses Send, Hadeer taps the link and sets a new password">
+    <defs><marker id="arr4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="var(--muted)"/></marker></defs>
+    <rect x="10" y="30" width="160" height="70" rx="8" fill="var(--publisher)"/><text x="90" y="58" text-anchor="middle" fill="#222" class="lab">Hadeer</text><text x="90" y="80" text-anchor="middle" fill="#222" style="font-size:12px">forgot her password</text>
+    <path d="M170 65 H 190" stroke="var(--muted)" stroke-width="3" marker-end="url(#arr4)"/>
+    <rect x="195" y="30" width="160" height="70" rx="8" fill="var(--admin)"/><text x="275" y="58" text-anchor="middle" fill="#fff" class="lab">Admin</text><text x="275" y="80" text-anchor="middle" fill="#fff" style="font-size:12px">presses one button</text>
+    <path d="M355 65 H 375" stroke="var(--muted)" stroke-width="3" marker-end="url(#arr4)"/>
+    <rect x="380" y="30" width="160" height="70" rx="8" fill="var(--surface)" stroke="var(--fg)" stroke-width="2"/><text x="460" y="58" text-anchor="middle" class="lab">WhatsApp opens</text><text x="460" y="80" text-anchor="middle" class="mut">number and link typed</text>
+    <path d="M540 65 H 560" stroke="var(--muted)" stroke-width="3" marker-end="url(#arr4)"/>
+    <rect x="565" y="30" width="160" height="70" rx="8" fill="var(--admin)"/><text x="645" y="58" text-anchor="middle" fill="#fff" class="lab">Admin</text><text x="645" y="80" text-anchor="middle" fill="#fff" style="font-size:12px">presses Send</text>
+    <path d="M725 65 H 745" stroke="var(--muted)" stroke-width="3" marker-end="url(#arr4)"/>
+    <rect x="750" y="30" width="140" height="70" rx="8" fill="var(--publisher)"/><text x="820" y="58" text-anchor="middle" fill="#222" class="lab">Hadeer</text><text x="820" y="80" text-anchor="middle" fill="#222" style="font-size:12px">taps, sets password</text>
+    <text x="450" y="135" text-anchor="middle" class="mut">The link works once and dies after 30 minutes. The product never talks to Meta: it only opens the admin's own WhatsApp, the way a website's "chat with us" button does. Cost: nothing.</text>
+    <text x="450" y="155" text-anchor="middle" class="mut">For a child, the registered number is the parent's. A fully automatic code (no admin involved) is release 3: about half a cent per message in Egypt, and a Meta Business account you must open.</text>
+  </svg></div>
+  <p>This is in version 0.3 as one step of test 2, because it is free and it removes the help desk the critic warned about. The critic then looked at this step on its own and asked for seven safeguards, all now in the contract: the admin confirms the number's last digits before WhatsApp opens; the reset page also asks for the username, so a mis-sent link alone is useless; a Copy button sits beside the WhatsApp button for an admin at a PC; the message is a fixed product text in the space's language naming the school and the admin, so it does not look like phishing; numbers typed as 010… are stored in international form; a parent's number for a child; and your recovery code can be regenerated while signed in. Merging pull request 1 confirms it; saying "remove it" sends it back to Later.</p>
+</section>
+
+<section>
+  <span class="eyebrow">Roadmap</span>
+  <h2>Why release 1 is small, and when each idea arrives</h2>
+  <p>Parked is not rejected. Every idea you raised is written down with a one-sentence promise, the tables it adds, the decision it needs, and the event that starts it. The order is forced by four things.</p>
+  <div class="roles">
+    <div class="role" style="--c:var(--owner)"><b>Each idea stands on release 1</b><small>Guardians need learners to watch. Exam results need subjects, groups and learners. Print orders need materials and guardians. Automatic WhatsApp codes need registered numbers. Nothing above the floor can be built, or tested, before the floor exists.</small></div>
+    <div class="role" style="--c:var(--admin)"><b>Done must stay a yes-or-no question</b><small>Five tests you can check in one sitting. With the four ideas inside it would be fifteen or more, and "finished" would drift. Your own manifesto: narrow and complete beats broad and partial.</small></div>
+    <div class="role" style="--c:var(--publisher)"><b>Each parked idea needs a decision only you can take</b><small>Money and a Meta account, a contract with a print shop and its access to files, whether a parent may see that a child opened a lesson. Bundling them would stop release 1 on decisions unrelated to sharing lessons.</small></div>
+    <div class="role" style="--c:var(--learner)"><b>Small releases arrive, and teach</b><small>The brainstorm rejected Moodle and Open edX for carrying everything at once. Release 1 is the opposite: the smallest space Mesk School can use next week. Release 2 starts from real teachers' feedback, which is worth more than any plan.</small></div>
+  </div>
+  <div class="diagram"><svg viewBox="0 0 900 210" role="img" aria-label="Five releases on one line: the space, guardians and results, self-service reset, print orders, gamification">
+    <path d="M40 60 H 860" stroke="var(--line)" stroke-width="6"/>
+    <g><circle cx="90" cy="60" r="18" fill="var(--owner)"/><text x="90" y="65" text-anchor="middle" fill="#fff" class="lab">R1</text><text x="90" y="100" text-anchor="middle" class="lab">The space</text><text x="90" y="120" text-anchor="middle" class="mut">contract 0.3</text><text x="90" y="138" text-anchor="middle" class="mut">starts: your merge</text></g>
+    <g><circle cx="280" cy="60" r="18" fill="var(--admin)"/><text x="280" y="65" text-anchor="middle" fill="#fff" class="lab">R2</text><text x="280" y="100" text-anchor="middle" class="lab">Guardians + results</text><text x="280" y="120" text-anchor="middle" class="mut">ideas A and B</text><text x="280" y="138" text-anchor="middle" class="mut">starts: one term at Mesk</text></g>
+    <g><circle cx="470" cy="60" r="18" fill="var(--learner)"/><text x="470" y="65" text-anchor="middle" fill="#fff" class="lab">R3</text><text x="470" y="100" text-anchor="middle" class="lab">Self-service reset</text><text x="470" y="120" text-anchor="middle" class="mut">idea D2, owner by mobile</text><text x="470" y="138" text-anchor="middle" class="mut">starts: your Meta account</text></g>
+    <g><circle cx="660" cy="60" r="18" fill="var(--owner)"/><text x="660" y="65" text-anchor="middle" fill="#fff" class="lab">R4</text><text x="660" y="100" text-anchor="middle" class="lab">Print orders</text><text x="660" y="120" text-anchor="middle" class="mut">idea C</text><text x="660" y="138" text-anchor="middle" class="mut">starts: a shop signs</text></g>
+    <g><circle cx="830" cy="60" r="18" fill="var(--publisher)"/><text x="830" y="65" text-anchor="middle" fill="#222" class="lab">R5</text><text x="830" y="100" text-anchor="middle" class="lab">Gamification</text><text x="830" y="120" text-anchor="middle" class="mut">themed packs</text><text x="830" y="138" text-anchor="middle" class="mut">starts: a school asks</text></g>
+    <text x="450" y="185" text-anchor="middle" class="mut">Each release gets its own one-page contract, one critic review and five tests when its turn comes. You can move any of them; it is your product.</text>
+  </svg></div>
+</section>
+
+<section>
+  <span class="eyebrow">Later</span>
+  <h2>Kept, not forgotten</h2>
+  <h3>Added by you on 31 October, after the critic review</h3>
+  <div class="roles">
+    <div class="role" style="--c:var(--admin)"><b>A · Guardian accounts</b><small>A parent (or, in a company, a supervisor) sees read-only what their learners are assigned and how they are doing. Appointed by the admin with an end date. A ninth brick: Parent / ولي أمر in a school, Supervisor / مشرف at work.</small></div>
+    <div class="role" style="--c:var(--publisher)"><b>B · Exam results in one step</b><small>Each subject has exams. The teacher opens one page listing the group, types a mark per learner, presses Publish once. Learners and guardians see only their own; corrections keep history.</small></div>
+    <div class="role" style="--c:var(--learner)"><b>D · Password reset by WhatsApp</b><small>Proof through the registered mobile number (a parent's number for a child). Free shape: the appointer taps "Send reset link by WhatsApp" and their own WhatsApp opens with the link typed. Automatic codes cost about half a cent each in Egypt and need a Meta Business account, so they wait.</small></div>
+    <div class="role" style="--c:var(--owner)"><b>C · Print orders through a shop</b><small>Learner asks, guardian approves the purchase, a contracted print shop prints, learner collects. RED before any work: money, an outside contract, and file access. Needs A first.</small></div>
+  </div>
+  <p class="note">Each is written in the repository as a future release promise with the tables it will add and the trigger that starts it. Release 1 is unchanged, so the contract stays at version 0.2.</p>
+  <h3>Parked earlier</h3>
+  <div class="later">
+    <span>Gamification packs with figures per environment</span><span>Subject editions by different publishers</span><span>Kit marketplace</span><span>Sub-admins by department</span><span>Per-space data export</span><span>Usage dashboards</span><span>Quizzes and grading</span><span>Certificates</span><span>Video uploads</span><span>Email invitations</span><span>Google or Microsoft sign-in</span><span>Parents, payments, CRM</span><span>Mobile app</span>
+  </div>
+  <p class="note">Each one comes forward only when a named trigger happens, for example: an organization completes one subject end to end and asks for motivation features.</p>
+  <div class="files">
+    <span>Everything on this page lives in the LMS_LEGO repository:</span>
+    <span><code>docs/01-PRODUCT-CONTRACT.md</code> the contract and the seven questions</span>
+    <span><code>docs/02-LEGO-MODEL.md</code> kits, roles, rules, data model, screens</span>
+    <span><code>docs/03-HOSTING-DECISION.md</code> the zero-cost choice and the alternatives</span>
+    <span><code>docs/04-LATER.md</code> parked ideas with their triggers</span>
+    <span><code>AGENTS.md</code> the roles and rules every agent follows</span>
+  </div>
+</section>
+</div>
+
+<script>
+(function () {
+  var kits = {
+    school: { color: 'var(--owner)', space: { en: 'Mesk School', ar: 'مدرسة مسك' },
+      labels: { en: { admin: 'Administrator', publisher: 'Teacher', learner: 'Student', group: 'Class', subject: 'Subject', chapter: 'Chapter', lesson: 'Lesson' },
+                ar: { admin: 'مدير', publisher: 'معلّم', learner: 'طالب', group: 'فصل', subject: 'مادّة', chapter: 'وحدة', lesson: 'درس' } } },
+    company: { color: 'var(--admin)', space: { en: 'Mesk School', ar: 'مدرسة مسك' },
+      labels: { en: { admin: 'HR administrator', publisher: 'Trainer', learner: 'Employee', group: 'Team', subject: 'Course', chapter: 'Module', lesson: 'Session' },
+                ar: { admin: 'مسؤول التدريب', publisher: 'مدرّب', learner: 'موظّف', group: 'فريق', subject: 'دورة', chapter: 'وحدة', lesson: 'جلسة' } } },
+    university: { color: 'var(--learner)', space: { en: 'Mesk School', ar: 'مدرسة مسك' },
+      labels: { en: { admin: 'Registrar', publisher: 'Lecturer', learner: 'Student', group: 'Section', subject: 'Module', chapter: 'Unit', lesson: 'Lecture' },
+                ar: { admin: 'مسجّل', publisher: 'محاضر', learner: 'طالب', group: 'شعبة', subject: 'مقرّر', chapter: 'وحدة', lesson: 'محاضرة' } } }
+  };
+  var ui = { en: { people: 'People', content: 'Content', one: '1', valid: 'until 30 Nov', math: 'Mathematics', frac: 'Fractions', add: 'Adding fractions', mats: '5 materials', sci: 'Science' },
+             ar: { people: 'الأشخاص', content: 'المحتوى', one: '١', valid: 'حتى ٣٠ نوفمبر', math: 'الرياضيات', frac: 'الكسور', add: 'جمع الكسور', mats: '٥ مواد', sci: 'العلوم' } };
+  var kit = 'school', lang = 'en';
+  function li(a, b) { return '<li><span>' + a + '</span><span>' + b + '</span></li>'; }
+  function render() {
+    var k = kits[kit], L = k.labels[lang], U = ui[lang];
+    var mock = document.getElementById('mock');
+    mock.setAttribute('dir', lang === 'ar' ? 'rtl' : 'ltr');
+    document.getElementById('mockBar').style.background = k.color;
+    document.getElementById('mockSpace').textContent = k.space[lang];
+    document.getElementById('hPeople').textContent = U.people;
+    document.getElementById('hContent').textContent = U.content;
+    document.getElementById('people').innerHTML =
+      li(L.admin + ' · Mona', U.valid) + li(L.publisher + ' · Hadeer', U.valid) + li(L.publisher + ' · Shimaa', U.valid) + li(L.learner + ' · Sara', U.valid) + li(L.group + ' · ' + U.sci, U.one);
+    document.getElementById('content').innerHTML =
+      li(L.subject + ' · ' + U.math, L.publisher + ' Hadeer') + li(L.chapter + ' · ' + U.frac, '') + li(L.lesson + ' · ' + U.add, U.mats);
+    document.querySelectorAll('.tabs button').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.kit === kit)); });
+    document.querySelectorAll('.lang button').forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.lang === lang)); });
+  }
+  document.querySelectorAll('.tabs button').forEach(function (b) { b.addEventListener('click', function () { kit = b.dataset.kit; render(); }); });
+  document.querySelectorAll('.lang button').forEach(function (b) { b.addEventListener('click', function () { lang = b.dataset.lang; render(); }); });
+  render();
+})();
+</script>

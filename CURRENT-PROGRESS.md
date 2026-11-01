@@ -17,6 +17,8 @@
 
 **Active priority:** none in build. Release 1 is in use at Mesk School.
 
+**Handover:** the owner is moving the work from Claude Code on the cloud to Claude Desktop. Everything needed to continue is in the repository; start with [docs/08-HANDOVER.md](docs/08-HANDOVER.md). The founding brainstorm and the source of the two visual pages are now in `docs/history/` and `docs/visual/`; brief templates are in `docs/templates/`.
+
 **Next, by the roadmap ([docs/05-ROADMAP.md](docs/05-ROADMAP.md)):** R2 (guardians and exam results) starts when Mesk School has used R1 for one term, or earlier if the school asks for results. Its first step is a new contract from the Product Manager, one critic review, and one batch of owner questions, including the open privacy decision on whether a guardian may see that a lesson was opened.
 
 **Welcome any time:** subject names from Hadeer and Shimaa; the owner's pass over the Arabic kit labels (the owner can now edit labels directly in the kit editor); feedback from the school's first weeks.
