@@ -51,18 +51,24 @@ const ROLE_WORDS = /\/(admin|publish|publisher|owner|edit|editor)(\/|$)/;
 
 const under = (path: string, prefix: string) => path === prefix || path.startsWith(prefix + '/');
 
-/** Middleware takes (c, next); a handler takes (c). Hono stores both as given. */
-const isMiddleware = (r: RouteEntry) => r.method === 'ALL' && r.handler.length >= 2;
+/** Hono stores app.use() middleware and app.all() handlers alike, as method
+ * ALL with the function as given, and a handler may declare (c, next) too, so
+ * neither the method nor the shape tells them apart. The router declares its
+ * middleware instead (MIDDLEWARE in src/app.ts, filled by its use() helper):
+ * an ALL route is middleware only when its function is declared; anything
+ * else is a handler, whatever its shape. */
+type Declared = ReadonlySet<unknown>;
+const isMiddleware = (r: RouteEntry, declared: Declared) => r.method === 'ALL' && declared.has(r.handler);
 
 /** Reasons the route table lets a role route through without its gate (empty when every one is gated). */
-export function ungated(routes: readonly RouteEntry[]): string[] {
+export function ungated(routes: readonly RouteEntry[], declared: Declared): string[] {
   const problems: string[] = [];
   routes.forEach((r, index) => {
-    if (isMiddleware(r)) return;
+    if (isMiddleware(r, declared)) return;
     const name = `${r.method} ${r.path}`;
     const zone = GATES.find((g) => under(r.path, g.prefix));
     if (zone) {
-      const gateAt = routes.findIndex((m) => isMiddleware(m) && (m.path === zone.gate || m.path === zone.alsoGate) && matchesBase(m.path, r.path));
+      const gateAt = routes.findIndex((m) => isMiddleware(m, declared) && (m.path === zone.gate || m.path === zone.alsoGate) && matchesBase(m.path, r.path));
       if (gateAt < 0 || gateAt > index) problems.push(`${name} is not behind the gate ${zone.gate} (registered before it, or no gate)`);
       return;
     }
@@ -80,6 +86,7 @@ function matchesBase(gate: string, path: string): boolean {
 
 // ------------------------------------------------------------ self-check ----
 const gate: MiddlewareHandler = async (_c, next) => { await next(); };
+const declared = new Set<unknown>([gate]);
 const page = (c: { text: (s: string) => Response }) => c.text('ok');
 
 test('role guard: the checker catches a planted violation (self-check)', () => {
@@ -93,7 +100,7 @@ test('role guard: the checker catches a planted violation (self-check)', () => {
   clean.get('/s/:spaceId/publish', page);
   clean.post('/s/:spaceId/publish/subjects/:subjectId/chapters', page);
   clean.post('/owner/spaces', page);
-  assert.deepEqual(ungated(clean.routes), [], 'a correctly gated table passes');
+  assert.deepEqual(ungated(clean.routes, declared), [], 'a correctly gated table passes');
 
   const planted = (build: (app: Hono) => void) => {
     const app = new Hono();
@@ -102,7 +109,7 @@ test('role guard: the checker catches a planted violation (self-check)', () => {
     app.use('/s/:spaceId/admin/*', gate);
     app.use('/s/:spaceId/publish/*', gate);
     build(app);
-    return ungated(app.routes);
+    return ungated(app.routes, declared);
   };
   assert.deepEqual(planted((a) => a.post('/s/:spaceId/subjects/:subjectId/chapters', page)),
     ['POST /s/:spaceId/subjects/:subjectId/chapters changes data outside the role-gated prefixes'], 'a write outside the prefixes');
@@ -128,35 +135,45 @@ test('role guard: the checker catches a planted violation (self-check)', () => {
   early.use('/s/:spaceId/publish/*', gate);
   early.get('/owner/spaces/new', page);
   early.use('/owner/*', gate);
-  assert.deepEqual(ungated(early.routes), [
+  assert.deepEqual(ungated(early.routes, declared), [
     'POST /s/:spaceId/publish/subjects/:subjectId/publish is not behind the gate /s/:spaceId/publish/* (registered before it, or no gate)',
     'GET /owner/spaces/new is not behind the gate /owner/* (registered before it, or no gate)',
   ]);
   // The owner home itself needs the gate on "/owner" or "/owner/*".
   const noBase = new Hono();
   noBase.get('/owner', page);
-  assert.equal(ungated(noBase.routes).length, 1, 'a gated prefix with no gate at all');
+  assert.equal(ungated(noBase.routes, declared).length, 1, 'a gated prefix with no gate at all');
+  // Middleware registered without being declared counts as a handler.
+  const undeclared = new Hono();
+  undeclared.use('/s/:spaceId/admin/*', async (_c, next) => { await next(); });
+  undeclared.get('/s/:spaceId/admin/people', page);
+  assert.deepEqual(ungated(undeclared.routes, declared), [
+    'ALL /s/:spaceId/admin/* is not behind the gate /s/:spaceId/admin/* (registered before it, or no gate)',
+    'GET /s/:spaceId/admin/people is not behind the gate /s/:spaceId/admin/* (registered before it, or no gate)',
+  ], 'an undeclared gate is no gate');
 });
 
 // ---------------------------------------------------------- the product ----
-async function productRoutes(): Promise<RouteEntry[]> {
+async function productRoutes(): Promise<{ routes: RouteEntry[]; declared: Declared }> {
   // The router reads the build constant at load time; true includes the test
   // hooks, so the table checked here is the larger of the two builds.
   (globalThis as { __TEST_HOOKS__?: boolean }).__TEST_HOOKS__ = true;
-  const { app } = await import('../../src/app.ts');
-  return app.routes as RouteEntry[];
+  const { app, MIDDLEWARE } = await import('../../src/app.ts');
+  assert.ok(MIDDLEWARE instanceof Set && MIDDLEWARE.size >= 5, 'the router declares its middleware (MIDDLEWARE in src/app.ts)');
+  return { routes: app.routes as RouteEntry[], declared: MIDDLEWARE };
 }
 
 test('role guard: every route that changes data or serves an admin or publisher page is behind its role gate', async () => {
-  const routes = await productRoutes();
-  const handlers = routes.filter((r) => !isMiddleware(r));
+  const { routes, declared } = await productRoutes();
+  const handlers = routes.filter((r) => !isMiddleware(r, declared));
   assert.ok(handlers.length >= 20, `expected the product's routes, found ${handlers.length}`);
   const publishWrites = handlers.filter((r) => WRITE_METHODS.has(r.method) && under(r.path, '/s/:spaceId/publish'));
   assert.ok(publishWrites.length >= 1, 'the publisher\'s editing routes exist under /s/:spaceId/publish (so this check is meaningful)');
   for (const g of GATES) {
-    assert.ok(routes.some((r) => isMiddleware(r) && r.path === g.gate), `the gate ${g.gate} is registered`);
+    assert.ok(routes.some((r) => isMiddleware(r, declared) && r.path === g.gate), `the gate ${g.gate} is registered`);
   }
-  assert.deepEqual(ungated(routes), [], 'register role routes under their gated prefix, after the gate');
+  assert.ok(routes.filter((r) => r.method === 'ALL').every((r) => declared.has(r.handler)), 'every ALL route of the product is declared middleware');
+  assert.deepEqual(ungated(routes, declared), [], 'register role routes under their gated prefix, after the gate');
 });
 
 // ------------------------------------------------------- live sweep ----
@@ -207,7 +224,8 @@ describe('role guard: in the running product, every gated route refuses people w
   });
 
   it('a learner (who may read the subject) is refused on every admin, publisher and owner route, by every method, with real ids', async () => {
-    const routes = (await productRoutes()).filter((r) => !isMiddleware(r) && GATES.some((g) => under(r.path, g.prefix)));
+    const { routes: all, declared } = await productRoutes();
+    const routes = all.filter((r) => !isMiddleware(r, declared) && GATES.some((g) => under(r.path, g.prefix)));
     assert.ok(routes.some((r) => r.method === 'POST' && under(r.path, '/s/:spaceId/publish')), 'publisher writes are in the sweep');
     const learner = await signedIn(worker.url, people.salma.username, people.salma.password);
     // Positive control: the learner reads the subject these ids belong to.

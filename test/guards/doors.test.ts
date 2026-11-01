@@ -27,7 +27,8 @@ const OMAR = person('omar', 'learner', '01055556666');
 const HADEER = person('hadeer', 'publisher', '01022223333');
 const MIN = 60_000;
 const TOO_MANY = 'Too many failed attempts.';
-const text = (html: string) => html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
+// The words of a page as a reader sees them: tags removed (inline marks such as <bdi> add no space), spaces collapsed.
+const text = (html: string) => html.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ');
 
 let worker: RunningWorker;
 let spaceId = '';
