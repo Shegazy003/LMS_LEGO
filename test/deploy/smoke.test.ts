@@ -90,4 +90,13 @@ describe('Deploy rails: the post-deploy smoke check', { concurrency: false }, ()
     assert.equal(e.status, 1, e.out);
     assert.match(e.out, /FAIL GET \/ answered 302/);
   });
+
+  it('fails when the home page answers 200 instead of redirecting to /setup or /signin', async () => {
+    // Every other check would pass: the cross-origin post is refused and the
+    // test hooks are absent. Only the missing redirect on GET / is wrong.
+    const flat = await fakeSite((method, path) => (method === 'POST' ? { status: 403 } : path === '/__test/clock' ? { status: 404 } : { status: 200 }));
+    const r = await smoke(flat);
+    assert.equal(r.status, 1, r.out);
+    assert.match(r.out, /FAIL GET \/ answered 200; expected a redirect to \/setup or \/signin/);
+  });
 });
