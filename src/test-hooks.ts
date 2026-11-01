@@ -15,10 +15,17 @@ import { now, setClockOffset } from './clock.ts';
 import type { Db, Param } from './db.ts';
 import { normaliseMobile } from './phone.ts';
 
+// The running Worker instance's identity, made on its first request (random
+// values cannot be made at load time in a Worker). It changes only when the
+// Worker is loaded again (a new deploy, or a reload of changed code), so a test
+// can show that the same instance served two moments (AT-5: no code changed).
+let boot: string | null = null;
+
 export function registerTestHooks(app: Hono<AppEnv>): void {
   app.get('/__test/clock', (c) => {
     if (c.env.TEST_HOOKS !== '1') return c.notFound();
-    return c.json({ now: new Date(now()).toISOString() });
+    boot ??= crypto.randomUUID();
+    return c.json({ now: new Date(now()).toISOString(), boot });
   });
 
   app.post('/__test/clock', async (c) => {

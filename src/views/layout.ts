@@ -99,15 +99,23 @@ ${header ?? ''}
  * date, a number or a name in the other script keeps its own order and does not
  * break across lines, in Arabic and in English. The words are unchanged. */
 export function sentence(t: Label, key: LabelKey, vars: Record<string, string>): Html[] | string[] {
+  return isolated(t, key, vars, (value) =>
+    /[\p{L}]/u.test(value) ? html`<bdi>${value}</bdi>` : html`<bdi dir="ltr" class="nowrap">${value}</bdi>`);
+}
+
+/** A product sentence whose inserted values are Latin text written left to
+ * right (such as http://): each is isolated with <bdi dir="ltr">, so an Arabic
+ * sentence around it reads cleanly right-to-left. */
+export function ltrSentence(t: Label, key: LabelKey, vars: Record<string, string>): Html[] | string[] {
+  return isolated(t, key, vars, (value) => html`<bdi dir="ltr">${value}</bdi>`);
+}
+
+function isolated(t: Label, key: LabelKey, vars: Record<string, string>, wrap: (value: string) => Html): Html[] | string[] {
   const names = Object.keys(vars);
   const marked = Object.fromEntries(names.map((n, i) => [n, `\u0001${i}\u0002`]));
   return t(key, marked)
     .split(/\u0001(\d+)\u0002/)
-    .map((part, i) => {
-      if (i % 2 === 0) return part;
-      const value = vars[names[Number(part)]];
-      return /[\p{L}]/u.test(value) ? html`<bdi>${value}</bdi>` : html`<bdi dir="ltr" class="nowrap">${value}</bdi>`;
-    }) as Html[];
+    .map((part, i) => (i % 2 === 0 ? part : wrap(vars[names[Number(part)]]))) as Html[];
 }
 
 export function errorBox(message: string | undefined): Html | string {

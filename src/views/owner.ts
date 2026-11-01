@@ -1,7 +1,9 @@
 // The owner's pages: home (spaces, usage panel, recovery code), new space,
-// one space (its kit and its admins).
+// one space (its kit editor and its admins), and the kit switch's confirm step.
 import { html } from 'hono/html';
-import type { KitJson, Label, Lang } from '../labels.ts';
+import { CONCEPTS, dirFor, makeLabel, type Concept, type KitJson, type Label, type Lang, type LabelKey } from '../labels.ts';
+import { LABEL_MAX, labelField } from '../kits/edit.ts';
+import { DISPLAY_NAME_MAX, USERNAME_MAX } from '../names.ts';
 import { formatBytes } from '../usage.ts';
 import { errorBox, layout, sentence, type Html } from './layout.ts';
 
@@ -103,15 +105,93 @@ export interface AppointValues {
   valid_until?: string;
 }
 
+/** What the owner's space page shows besides the space itself: a plain
+ * message in the section a refused form came from, and the values the owner
+ * typed in the names form. */
+export interface OwnerSpaceExtra {
+  errors?: { appoint?: string; kit?: string; labels?: string; theme?: string };
+  labelValues?: Record<string, string>;
+}
+
+/** What each concept is, so the owner knows which name they are editing (the names themselves come from the kit). */
+const CONCEPT_NOTE: Record<Concept, LabelKey> = {
+  space: 'conceptSpace', admin: 'conceptAdmin', publisher: 'conceptPublisher', learner: 'conceptLearner', group: 'conceptGroup',
+  subject: 'conceptSubject', chapter: 'conceptChapter', lesson: 'conceptLesson', material: 'conceptMaterial',
+};
+
+/** Each language named in its own words. */
+const langName = (l: Lang) => makeLabel(l)(l === 'ar' ? 'langNameAr' : 'langNameEn');
+
+/** The kit editor: the current kit and the switch (with its warning), the names, the logo and colour. */
+function kitEditor(
+  t: Label,
+  lang: Lang,
+  space: { id: string; kit: KitJson },
+  kits: { id: string; name: string }[],
+  extra: OwnerSpaceExtra,
+): Html {
+  const action = `/owner/spaces/${space.id}`;
+  const value = (l: Lang, c: Concept) => extra.labelValues?.[labelField(l, c)] ?? space.kit.labels[l][c];
+  const rows = CONCEPTS.map(
+    (c) => html`<fieldset class="checks" data-concept="${c}"><legend>${t(CONCEPT_NOTE[c])}</legend>
+    ${space.kit.languages.map(
+      (l) => html`<label>${langName(l)}<input name="${labelField(l, c)}" required maxlength="${LABEL_MAX}" lang="${l}" dir="${dirFor(l)}" value="${value(l, c)}"></label>`,
+    )}</fieldset>`,
+  );
+  return html`<h2 id="kit">${t('kitSection')}</h2>
+<div class="card">
+  <p>${t('kitCurrent')}: <strong id="kit-name">${space.kit.name[lang]}</strong></p>
+  ${errorBox(extra.errors?.kit)}
+  <form id="switch-kit" class="stack" method="post" action="${action}/kit">
+    <h3>${t('kitSwitchTitle')}</h3>
+    <p id="switch-warning" class="draft">${t('kitSwitchWarning')}</p>
+    <label>${t('kitChoice')}<select name="kit">${kits.map(
+      (k) => html`<option value="${k.id}" ${k.id === space.kit.seed ? 'selected' : ''}>${k.name}</option>`,
+    )}</select></label>
+    <button type="submit">${t('kitSwitchButton')}</button>
+  </form>
+</div>
+<h2 id="labels-title">${t('labelsTitle')}</h2>
+${errorBox(extra.errors?.labels)}
+<form id="labels" class="stack card" method="post" action="${action}/labels">
+  <p class="muted">${t('labelsNote')}</p>
+  ${rows}
+  <button type="submit">${t('saveLabels')}</button>
+</form>
+<h2 id="theme-title">${t('themeTitle')}</h2>
+${errorBox(extra.errors?.theme)}
+<form id="theme" class="stack card" method="post" action="${action}/theme" enctype="multipart/form-data">
+  <label>${t('logoField')}<input name="logo" type="file" accept="image/png,image/jpeg,image/svg+xml"><span class="hint">${t('logoKeep')}</span></label>
+  <label>${t('primaryColor')}<input name="primary_color" type="color" value="${space.kit.theme.primaryColor}"></label>
+  <button type="submit">${t('saveTheme')}</button>
+</form>`;
+}
+
+/** The kit switch's confirm step: what will be replaced, then one confirming press or a way back. */
+export function kitConfirmPage(t: Label, lang: Lang, v: { space: { id: string; name: string }; kit: { id: string; name: string } }): Html {
+  const body = html`<h1>${sentence(t, 'kitConfirmTitle', { space: v.space.name, kit: v.kit.name })}</h1>
+<div class="card">
+  <p id="confirm-warning" class="draft">${t('kitSwitchWarning')}</p>
+  <form id="confirm-switch" method="post" action="/owner/spaces/${v.space.id}/kit">
+    <input type="hidden" name="kit" value="${v.kit.id}">
+    <input type="hidden" name="confirm" value="yes">
+    <button type="submit">${t('kitConfirmYes')}</button>
+  </form>
+  <p><a id="cancel-switch" href="/owner/spaces/${v.space.id}#kit">${t('cancel')}</a></p>
+</div>`;
+  return layout({ t, lang, title: t('kitConfirmTitle', { space: v.space.name, kit: v.kit.name }), body, signedIn: true });
+}
+
 export function ownerSpacePage(
   t: Label, // the owner's language, this space's kit
   lang: Lang,
-  v: {
+  v: OwnerSpaceExtra & {
     space: { id: string; name: string; countryCode: string; kit: KitJson };
     admins: AdminRow[];
-    error?: string;
     values: AppointValues;
     today: string;
+    kits: { id: string; name: string }[];
+    done?: string;
   },
 ): Html {
   const { space } = v;
@@ -125,19 +205,21 @@ export function ownerSpacePage(
   const body = html`<h1 style="display:flex;align-items:center;gap:12px">
   ${space.kit.theme.logoKey ? html`<img src="/owner/spaces/${space.id}/logo" alt="" width="48" height="48" style="object-fit:contain">` : ''}
   <span>${space.name}</span></h1>
+${v.done ? html`<p id="done" class="done" role="status">${v.done}</p>` : ''}
 <div class="card">
   <div>${t('kitIs', { kit: space.kit.name[lang] })}</div>
   <div>${t('languagesAre', { languages: langNames })}</div>
   <div>${t('primaryColor')}: <span dir="ltr" style="display:inline-block;width:1em;height:1em;vertical-align:middle;border-radius:3px;background:${space.kit.theme.primaryColor}"></span> <bdi>${space.kit.theme.primaryColor}</bdi></div>
   <div>${t('countryCode')}: <bdi>${space.countryCode}</bdi></div>
 </div>
+${kitEditor(t, lang, space, v.kits, v)}
 <h2>${t('admin')}</h2>
 <div class="card">${admins}</div>
 <h2>${t('appointAdmin')}</h2>
-${errorBox(v.error)}
+${errorBox(v.errors?.appoint)}
 <form id="appoint-admin" class="stack card" method="post" action="/owner/spaces/${space.id}/admins">
-  <label>${t('displayName')}<input name="display_name" required maxlength="100" value="${v.values.display_name ?? ''}"></label>
-  <label>${t('username')}<input name="username" required autocomplete="off" value="${v.values.username ?? ''}"><span class="hint">${t('usernameHint')}</span></label>
+  <label>${t('displayName')}<input name="display_name" required maxlength="${DISPLAY_NAME_MAX}" value="${v.values.display_name ?? ''}"></label>
+  <label>${t('username')}<input name="username" required maxlength="${USERNAME_MAX}" autocomplete="off" value="${v.values.username ?? ''}"><span class="hint">${t('usernameHint')}</span></label>
   <label>${t('firstPassword')}<input name="password" type="password" required minlength="8" autocomplete="new-password"><span class="hint">${t('passwordHint')}</span></label>
   <label>${t('mobile')}<input name="mobile" type="tel" required dir="ltr" value="${v.values.mobile ?? ''}"><span class="hint">${t('mobileLocalHint')}</span></label>
   <label>${t('endDate')}<input name="valid_until" type="date" required min="${v.today}" value="${v.values.valid_until ?? ''}"></label>

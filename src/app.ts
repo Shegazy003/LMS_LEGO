@@ -2,7 +2,6 @@
 import { Hono, type Context, type MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
-import { csrf } from 'hono/csrf';
 import type { AppEnv, CurrentSpace } from './app-env.ts';
 import { isIsoDate, membershipStatus, utcDate } from './access.ts';
 import {
@@ -18,7 +17,9 @@ import { Db } from './db.ts';
 import {
   LOGO_MAX_BYTES, MATERIAL_MAX_BYTES, fileHeaders, materialBodyTooLarge, materialFileHeaders, sniffLogo, sniffMaterial,
 } from './files.ts';
-import { makeLabel, productLang, type Concept, type KitJson, type Label, type Lang, type LabelKey } from './labels.ts';
+import { LANGS, makeLabel, productLang, type Concept, type KitJson, type Label, type Lang, type LabelKey } from './labels.ts';
+import { cleanDisplayName, isUsername, typedUsername } from './names.ts';
+import { readLabels, switchedKit } from './kits/edit.ts';
 import {
   findFile, findLesson, lessonMaterials, outline, readableSubject, subjectsForLearner, subjectsForPublisher, type SubjectRow,
 } from './learning.ts';
@@ -35,12 +36,14 @@ import {
 } from './reset.ts';
 import { registerTestHooks } from './test-hooks.ts';
 import { FREE_PLAN, UsageMeter, type FlushBatch } from './usage.ts';
-import { accountPage } from './views/account.ts';
+import { accountPage, languagePage } from './views/account.ts';
 import { peoplePage, setPage, setsPage, topicPage, topicsPage, type AppointForm } from './views/admin.ts';
 import { recoverPage, recoveryCodePage, setupPage, signInPage } from './views/auth.ts';
 import { layout, messagePage, type Html } from './views/layout.ts';
 import { learnerHome, lessonPage, spacePage, subjectPage } from './views/learn.ts';
-import { newSpacePage, ownerHome, ownerSpacePage, type AdminRow, type AppointValues, type NewSpaceValues } from './views/owner.ts';
+import {
+  kitConfirmPage, newSpacePage, ownerHome, ownerSpacePage, type AdminRow, type AppointValues, type NewSpaceValues, type OwnerSpaceExtra,
+} from './views/owner.ts';
 import { confirmLinkPage, linkReadyPage, personPage, type PersonFrame, type PersonView } from './views/people.ts';
 import { lessonEditor, publisherHome, subjectEditor } from './views/publish.ts';
 import { resetDeadPage, resetDonePage, resetPage, type ResetSpace } from './views/reset.ts';
@@ -48,7 +51,6 @@ import { accessEndedPage, adminHome, membershipsPage, type SpaceView } from './v
 
 type C = Context<AppEnv>;
 
-const USERNAME = /^[a-z0-9._-]{3,32}$/;
 const COLOUR = /^#[0-9a-fA-F]{6}$/;
 const MIN_PASSWORD = 8;
 const logoKey = (spaceId: string) => `spaces/${spaceId}/logo`;
@@ -156,8 +158,20 @@ use('*', async (c, next) => {
   if (batch) c.executionCtx.waitUntil(flushUsage(c.env.DB, batch));
 });
 
-// Forms are accepted only from this site's own pages.
-use('*', csrf());
+// Writes are accepted only from this site's own pages. A request that may
+// change something (any method but GET, HEAD and OPTIONS), whatever its body
+// type, must carry this site's own Origin, or a browser's same-origin
+// Sec-Fetch-Site. This is Hono's csrf check without its exemption for bodies
+// that are not forms, so a JSON or other body is held to the same rule; a
+// request with no Origin at all is refused too (task 5, cross-origin guard).
+const SAFE_METHOD = /^(GET|HEAD|OPTIONS)$/;
+use('*', async (c, next) => {
+  const sameOrigin = c.req.header('sec-fetch-site') === 'same-origin' || c.req.header('origin') === new URL(c.req.url).origin;
+  if (!SAFE_METHOD.test(c.req.method) && !sameOrigin) {
+    throw new HTTPException(403, { res: new Response('Forbidden', { status: 403 }) });
+  }
+  await next();
+});
 
 // Server-side session from the HTTP-only cookie.
 use('*', async (c, next) => {
@@ -165,14 +179,17 @@ use('*', async (c, next) => {
   if (token) {
     const db = c.get('db');
     const id = await tokenHash(token);
-    const row = await db.first<{ expires_at: number; id: string; username: string; display_name: string; is_owner: number }>(
-      'SELECT s.expires_at, u.id, u.username, u.display_name, u.is_owner FROM session s JOIN user u ON u.id = s.user_id WHERE s.id = ?',
+    const row = await db.first<{ expires_at: number; id: string; username: string; display_name: string; is_owner: number; lang: string | null }>(
+      'SELECT s.expires_at, u.id, u.username, u.display_name, u.is_owner, u.lang FROM session s JOIN user u ON u.id = s.user_id WHERE s.id = ?',
       id,
     );
     const decision = row ? sessionDecision(row.expires_at, now()) : 'expired';
     if (row && decision !== 'expired') {
       if (decision === 'refresh') await db.run('UPDATE session SET expires_at = ? WHERE id = ?', now() + SESSION_IDLE_MS, id);
-      c.set('user', { id: row.id, username: row.username, display_name: row.display_name, is_owner: row.is_owner, sessionId: id });
+      const lang = LANGS.find((l) => l === row.lang) ?? null;
+      c.set('user', { id: row.id, username: row.username, display_name: row.display_name, is_owner: row.is_owner, sessionId: id, lang });
+      // A person's own language choice (My account) also decides their pages outside any space.
+      if (lang) c.set('lang', lang);
     } else {
       if (row) await db.run('DELETE FROM session WHERE id = ?', id);
       deleteCookie(c, SESSION_COOKIE, { path: '/' });
@@ -200,11 +217,11 @@ app.post('/setup', async (c) => {
   if (await ownerExists(db)) return refuse(c, 403, 'setupClosed');
   const t = label(c);
   const body = await c.req.parseBody();
-  const username = field(body, 'username').toLowerCase();
+  const username = typedUsername(field(body, 'username'));
   const password = typeof body.password === 'string' ? body.password : '';
   const mobileInput = field(body, 'mobile');
   const mobile = normaliseMobile(mobileInput);
-  const error = !USERNAME.test(username)
+  const error = !isUsername(username)
     ? t('usernameInvalid')
     : password.length < MIN_PASSWORD
       ? t('passwordTooShort')
@@ -241,7 +258,7 @@ app.post('/signin', async (c) => {
   const db = c.get('db');
   const t = label(c);
   const body = await c.req.parseBody();
-  const username = field(body, 'username').toLowerCase();
+  const username = typedUsername(field(body, 'username'));
   const password = typeof body.password === 'string' ? body.password : '';
   const door = await openDoor(db, username, clientAddress(c));
   const block = attemptBlock(door.rows, now());
@@ -270,7 +287,7 @@ app.post('/recover', async (c) => {
   const db = c.get('db');
   const t = label(c);
   const body = await c.req.parseBody();
-  const username = field(body, 'username').toLowerCase();
+  const username = typedUsername(field(body, 'username'));
   const code = field(body, 'code');
   const password = typeof body.password === 'string' ? body.password : '';
   const door = await openDoor(db, username, clientAddress(c));
@@ -397,16 +414,20 @@ app.post('/owner/spaces', async (c) => {
 });
 
 async function ownerSpace(c: C, spaceId: string) {
-  const row = await c.get('db').first<{ id: string; name: string; default_country_code: string; json: string }>(
-    'SELECT s.id, s.name, s.default_country_code, k.json FROM space s JOIN kit k ON k.id = s.kit_id WHERE s.id = ?',
+  const row = await c.get('db').first<{ id: string; name: string; default_country_code: string; kit_id: string; json: string }>(
+    'SELECT s.id, s.name, s.default_country_code, s.kit_id, k.json FROM space s JOIN kit k ON k.id = s.kit_id WHERE s.id = ?',
     spaceId,
   );
-  return row ? { id: row.id, name: row.name, countryCode: row.default_country_code, kit: loadKit(row.json) } : null;
+  return row ? { id: row.id, name: row.name, countryCode: row.default_country_code, kitId: row.kit_id, kit: loadKit(row.json) } : null;
 }
 
-async function renderOwnerSpace(c: C, spaceId: string, extra: { error?: string; values?: AppointValues } = {}, status: 200 | 400 = 200) {
+const OWNER_DONE = { kit: 'kitSwitched', labels: 'labelsSaved', theme: 'themeSaved' } as const;
+
+async function renderOwnerSpace(c: C, spaceId: string, extra: OwnerSpaceExtra & { values?: AppointValues } = {}, status: 200 | 400 = 200) {
   const space = await ownerSpace(c, spaceId);
   if (!space) return refuse(c, 404, 'notFound');
+  const done = c.req.method === 'GET' ? c.req.query('done') ?? '' : '';
+  const doneKey = Object.hasOwn(OWNER_DONE, done) ? OWNER_DONE[done as keyof typeof OWNER_DONE] : undefined;
   const admins = await c.get('db').all<AdminRow>(
     `SELECT u.id, u.username, u.display_name, u.mobile, m.valid_until
        FROM membership m JOIN user u ON u.id = m.user_id
@@ -414,7 +435,11 @@ async function renderOwnerSpace(c: C, spaceId: string, extra: { error?: string; 
     spaceId,
   );
   const t = makeLabel(c.get('lang'), space.kit);
-  return page(c, ownerSpacePage(t, c.get('lang'), { space, admins, error: extra.error, values: extra.values ?? {}, today: utcDate(now()) }), status);
+  const body = ownerSpacePage(t, c.get('lang'), {
+    space, admins, values: extra.values ?? {}, today: utcDate(now()), kits: kitChoices(c.get('lang')),
+    errors: extra.errors, labelValues: extra.labelValues, done: doneKey && t(doneKey),
+  });
+  return page(c, body, status);
 }
 
 app.get('/owner/spaces/:id', (c) => renderOwnerSpace(c, c.req.param('id')));
@@ -434,11 +459,12 @@ app.post('/owner/spaces/:id/admins', async (c) => {
   };
   const password = typeof body.password === 'string' ? body.password : '';
   const mobile = normaliseMobile(values.mobile ?? '', space.countryCode);
+  const displayName = cleanDisplayName(values.display_name ?? '');
   const today = utcDate(now());
   const error =
-    !values.display_name || values.display_name.length > 100
-      ? t('nameRequired')
-      : !USERNAME.test(values.username ?? '')
+    !displayName
+      ? t('displayNameInvalid')
+      : !isUsername(values.username ?? '')
         ? t('usernameInvalid')
         : password.length < MIN_PASSWORD
           ? t('passwordTooShort')
@@ -449,14 +475,14 @@ app.post('/owner/spaces/:id/admins', async (c) => {
               : (await db.first('SELECT 1 AS one FROM user WHERE username = ?', values.username!))
                 ? t('usernameTaken')
                 : undefined;
-  if (error || !mobile) return renderOwnerSpace(c, spaceId, { error, values }, 400);
+  if (error || !mobile || !displayName) return renderOwnerSpace(c, spaceId, { errors: { appoint: error }, values }, 400);
 
   const userId = crypto.randomUUID();
   try {
     await db.batch([
       [
         'INSERT INTO user (id, username, password_hash, display_name, mobile, is_owner, created_at) VALUES (?, ?, ?, ?, ?, 0, ?)',
-        userId, values.username!, await hashPassword(password), values.display_name!, mobile, now(),
+        userId, values.username!, await hashPassword(password), displayName, mobile, now(),
       ],
       [
         'INSERT INTO membership (id, space_id, user_id, role, valid_from, valid_until, granted_by) VALUES (?, ?, ?, ?, ?, ?, ?)',
@@ -464,9 +490,77 @@ app.post('/owner/spaces/:id/admins', async (c) => {
       ],
     ]);
   } catch {
-    return renderOwnerSpace(c, spaceId, { error: t('usernameTaken'), values }, 400); // taken in the same instant
+    return renderOwnerSpace(c, spaceId, { errors: { appoint: t('usernameTaken') }, values }, 400); // taken in the same instant
   }
   return c.redirect(`/owner/spaces/${spaceId}`);
+});
+
+// The owner's kit editor (AT-5), on the owner's space page. Each form writes
+// only this space's own kit row (src/kits/edit.ts), one statement each, and
+// only the part it edits (json_set), so the three forms never overwrite each
+// other: switching the kit (after a confirm step on the page) replaces the
+// name and labels with a fresh copy of the chosen seed kit and keeps the
+// languages and theme; the names form replaces the labels; the theme form
+// replaces the colour and, when a file is sent, the logo.
+app.post('/owner/spaces/:id/kit', async (c) => {
+  const space = await ownerSpace(c, c.req.param('id'));
+  if (!space) return refuse(c, 404, 'notFound');
+  const t = makeLabel(c.get('lang'), space.kit);
+  const body = await c.req.parseBody();
+  const next = switchedKit(space.kit, field(body, 'kit'));
+  if (!next) return renderOwnerSpace(c, space.id, { errors: { kit: t('kitInvalid') } }, 400);
+  if (field(body, 'confirm') !== 'yes') {
+    return page(c, kitConfirmPage(t, c.get('lang'), { space: { id: space.id, name: space.name }, kit: { id: next.seed, name: next.name[c.get('lang')] } }));
+  }
+  await c.get('db').run(
+    `UPDATE kit SET name = ?, json = json_set(json, '$.seed', ?, '$.name', json(?), '$.labels', json(?), '$.gamification', json(?)) WHERE id = ?`,
+    next.name.en, next.seed, JSON.stringify(next.name), JSON.stringify(next.labels), JSON.stringify(next.gamification), space.kitId,
+  );
+  return c.redirect(`/owner/spaces/${space.id}?done=kit#kit`, 303);
+});
+
+app.post('/owner/spaces/:id/labels', async (c) => {
+  const space = await ownerSpace(c, c.req.param('id'));
+  if (!space) return refuse(c, 404, 'notFound');
+  const t = makeLabel(c.get('lang'), space.kit);
+  const body = await c.req.parseBody();
+  const read = readLabels(body, space.kit.languages);
+  if (!read.ok) {
+    const labelValues = Object.fromEntries(Object.entries(body).filter((e): e is [string, string] => typeof e[1] === 'string'));
+    return renderOwnerSpace(c, space.id, { errors: { labels: t(read.error) }, labelValues }, 400);
+  }
+  await c.get('db').run(`UPDATE kit SET json = json_set(json, '$.labels', json(?)) WHERE id = ?`, JSON.stringify(read.labels), space.kitId);
+  return c.redirect(`/owner/spaces/${space.id}?done=labels#labels`, 303);
+});
+
+app.post('/owner/spaces/:id/theme', async (c) => {
+  const space = await ownerSpace(c, c.req.param('id'));
+  if (!space) return refuse(c, 404, 'notFound');
+  const t = makeLabel(c.get('lang'), space.kit);
+  const body = await c.req.parseBody();
+  const fail = (key: 'colorInvalid' | 'logoTooLarge' | 'logoType') => renderOwnerSpace(c, space.id, { errors: { theme: t(key) } }, 400);
+  const colour = field(body, 'primary_color');
+  if (!COLOUR.test(colour)) return fail('colorInvalid');
+  const file = body.logo;
+  let logo: { bytes: Uint8Array; type: string } | null = null;
+  if (file instanceof File && file.size > 0) {
+    if (file.size > LOGO_MAX_BYTES) return fail('logoTooLarge');
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const type = sniffLogo(bytes);
+    if (!type) return fail('logoType');
+    logo = { bytes, type };
+  }
+  const db = c.get('db');
+  if (logo) {
+    await c.env.FILES.put(logoKey(space.id), logo.bytes, { httpMetadata: { contentType: logo.type } });
+    await db.run(
+      `UPDATE kit SET json = json_set(json, '$.theme.primaryColor', ?, '$.theme.logoKey', ?, '$.theme.logoType', ?) WHERE id = ?`,
+      colour.toLowerCase(), logoKey(space.id), logo.type, space.kitId,
+    );
+  } else {
+    await db.run(`UPDATE kit SET json = json_set(json, '$.theme.primaryColor', ?) WHERE id = ?`, colour.toLowerCase(), space.kitId);
+  }
+  return c.redirect(`/owner/spaces/${space.id}?done=theme#theme`, 303);
 });
 
 // Called only after the access check for the address has passed.
@@ -537,7 +631,9 @@ use('/s/:spaceId/*', async (c, next) => {
     id: spaceId, name: main.name, kit, role: main.role, roles: active.map((r) => r.role), validUntil: main.valid_until,
   };
   c.set('space', space);
-  c.set('lang', first);
+  // The person's own choice (My account) when this space offers it; otherwise the space's first language.
+  const chosen = user.lang;
+  c.set('lang', chosen && kit.languages.includes(chosen) ? chosen : first);
   await next();
 });
 
@@ -557,9 +653,10 @@ function spaceView(space: CurrentSpace): SpaceView {
   return { id: space.id, name: space.name, primaryColor: space.kit.theme.primaryColor, hasLogo: Boolean(space.kit.theme.logoKey) };
 }
 
+/** Words, language and theme of a page inside the space, in the language of this person's pages. */
 function spaceLabel(c: C) {
   const space = c.get('space');
-  const lang = space.kit.languages[0];
+  const lang = c.get('lang');
   return { t: makeLabel(lang, space.kit), lang, view: spaceView(space) };
 }
 
@@ -678,9 +775,10 @@ app.post('/s/:spaceId/admin/people', async (c) => {
   const today = utcDate(now());
   const end = values.valid_until ?? '';
   const role = values.role ?? '';
+  const displayName = cleanDisplayName(values.display_name ?? '');
   const error =
-    !values.display_name || values.display_name.length > NAME_MAX ? t('nameRequired')
-      : !USERNAME.test(values.username ?? '') ? t('usernameInvalid')
+    !displayName ? t('displayNameInvalid')
+      : !isUsername(values.username ?? '') ? t('usernameInvalid')
         : password.length < MIN_PASSWORD ? t('passwordTooShort')
           : !isAppointable(role) ? t('roleInvalid')
             : !mobile ? t('mobileInvalid')
@@ -688,11 +786,11 @@ app.post('/s/:spaceId/admin/people', async (c) => {
                 : end > space.validUntil ? t('endDateBeyondOwn', { date: space.validUntil })
                   : (await db.first('SELECT 1 AS one FROM user WHERE username = ?', values.username!)) ? t('usernameTaken')
                     : undefined;
-  if (error || !mobile || !isAppointable(role)) return renderPeople(c, { values, error }, 400);
+  if (error || !mobile || !displayName || !isAppointable(role)) return renderPeople(c, { values, error }, 400);
   try {
     await appoint(db, {
       spaceId: space.id, grantedBy: c.get('user')!.id, username: values.username!, passwordHash: await hashPassword(password),
-      displayName: values.display_name!, mobile, role, validFrom: today, validUntil: end, now: now(),
+      displayName, mobile, role, validFrom: today, validUntil: end, now: now(),
     });
   } catch {
     return renderPeople(c, { values, error: t('usernameTaken') }, 400); // taken in the same instant
@@ -719,6 +817,9 @@ async function adminPlace(c: C): Promise<PersonPlace | null> {
   const { t, lang, view } = spaceLabel(c);
   const person = await managedPerson(c.get('db'), view.id, c.req.param('userId') ?? '');
   if (!person) return null;
+  // The WhatsApp message is always in the space's first language, whatever the admin reads.
+  const kit = c.get('space').kit;
+  const firstT = makeLabel(kit.languages[0], kit);
   return {
     frame: {
       t,
@@ -729,7 +830,7 @@ async function adminPlace(c: C): Promise<PersonPlace | null> {
     view: personView(person, t(person.role as Concept)),
     person,
     spaceId: view.id,
-    message: { t, spaceName: view.name, role: t('admin') },
+    message: { t: firstT, spaceName: view.name, role: firstT('admin') },
   };
 }
 
@@ -948,7 +1049,7 @@ app.post('/r/:token', async (c) => {
   const { t, lang, space, link } = r;
   const action = new URL(c.req.url).pathname;
   const body = await c.req.parseBody();
-  const username = field(body, 'username').toLowerCase();
+  const username = typedUsername(field(body, 'username'));
   const password = typeof body.new_password === 'string' ? body.new_password : '';
   const door = await openDoor(db, link.username, clientAddress(c));
   const block = attemptBlock(door.rows, now());
@@ -1128,29 +1229,54 @@ app.post('/s/:spaceId/publish/item/:materialId/move', async (c) => {
 });
 
 // ------------------------------------------------------------ my account ----
-// Everyone can change their own password. The page follows the language of the
-// person's space (their latest membership), else the browser's.
-async function accountLang(c: C): Promise<Lang> {
+// Everyone can change their own password and choose the language of their own
+// pages. The choice is among the languages of the person's space (their latest
+// membership; for the owner, who has none, both product languages) and is
+// stored on the person (user.lang). Inside a space it decides the page
+// language and direction when the space offers it; outside any space it
+// decides every signed-in page. Without a choice: the space's first language,
+// else the browser's, as before.
+async function accountLanguages(c: C): Promise<{ lang: Lang; choices: readonly Lang[] }> {
+  const user = c.get('user')!;
   const row = await c.get('db').first<{ json: string }>(
     `SELECT k.json FROM membership m JOIN space s ON s.id = m.space_id JOIN kit k ON k.id = s.kit_id
       WHERE m.user_id = ? ORDER BY m.valid_until DESC LIMIT 1`,
-    c.get('user')!.id,
+    user.id,
   );
-  return row ? loadKit(row.json).languages[0] : c.get('lang');
+  const choices = row ? loadKit(row.json).languages : LANGS;
+  const lang = user.lang && choices.includes(user.lang) ? user.lang : row ? choices[0] : c.get('lang');
+  return { lang, choices };
 }
 
 use('/account/*', async (c, next) => {
   if (!c.get('user')) return c.redirect('/signin');
-  c.set('lang', await accountLang(c));
+  c.set('lang', (await accountLanguages(c)).lang);
   await next();
 });
 
-function renderAccount(c: C, extra: { error?: string; done?: boolean } = {}, status: 200 | 400 = 200) {
+function renderAccount(c: C, extra: { error?: string; done?: boolean; languageDone?: boolean } = {}, status: 200 | 400 = 200) {
   const user = c.get('user')!;
   return page(c, accountPage(label(c), c.get('lang'), { displayName: user.display_name, username: user.username, ...extra }), status);
 }
 
-app.get('/account', (c) => renderAccount(c));
+app.get('/account', (c) => renderAccount(c, { languageDone: c.req.query('done') === 'language' }));
+
+async function renderLanguage(c: C, error?: string) {
+  const { choices } = await accountLanguages(c);
+  return page(c, languagePage(label(c), c.get('lang'), { languages: choices, error }), error ? 400 : 200);
+}
+
+app.get('/account/language', (c) => renderLanguage(c));
+
+app.post('/account/language', async (c) => {
+  const user = c.get('user')!;
+  const { choices } = await accountLanguages(c);
+  const typed = field(await c.req.parseBody(), 'lang');
+  const chosen = choices.find((l) => l === typed);
+  if (!chosen) return renderLanguage(c, label(c)('languageInvalid'));
+  await c.get('db').run('UPDATE user SET lang = ? WHERE id = ?', chosen, user.id);
+  return c.redirect('/account?done=language', 303);
+});
 
 app.post('/account/password', async (c) => {
   const db = c.get('db');
@@ -1172,7 +1298,7 @@ app.post('/account/password', async (c) => {
 // ------------------------------------------------------- not found, errors ----
 app.notFound((c) => {
   const space = c.var.space;
-  const lang = space ? space.kit.languages[0] : c.get('lang') ?? 'en';
+  const lang = c.var.lang ?? (space ? space.kit.languages[0] : 'en');
   const t = makeLabel(lang, space?.kit);
   return page(c, messagePage(t, lang, t('notFound'), Boolean(c.var.user)), 404);
 });

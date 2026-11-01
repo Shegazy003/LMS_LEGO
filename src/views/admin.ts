@@ -6,6 +6,7 @@
 import { html } from 'hono/html';
 import type { Label, Lang } from '../labels.ts';
 import type { Choice, PersonRow, SetRow, TopicRow } from '../admin.ts';
+import { DISPLAY_NAME_MAX, USERNAME_MAX } from '../names.ts';
 import { lastDigits } from '../reset.ts';
 import { errorBox, sentence, type Html } from './layout.ts';
 import { spacePage } from './learn.ts';
@@ -40,8 +41,8 @@ ${rows.length ? html`<ul id="people" class="list card">${rows}</ul>` : html`<p i
 <h2>${t('appointPerson')}</h2>
 ${errorBox(v.error)}
 <form id="appoint" class="stack card" method="post" action="${base(space)}/people">
-  <label>${t('displayName')}<input name="display_name" required maxlength="${NAME_MAX}" value="${v.values.display_name ?? ''}"></label>
-  <label>${t('username')}<input name="username" required autocomplete="off" dir="ltr" value="${v.values.username ?? ''}"><span class="hint">${t('usernameHint')}</span></label>
+  <label>${t('displayName')}<input name="display_name" required maxlength="${DISPLAY_NAME_MAX}" value="${v.values.display_name ?? ''}"></label>
+  <label>${t('username')}<input name="username" required maxlength="${USERNAME_MAX}" autocomplete="off" dir="ltr" value="${v.values.username ?? ''}"><span class="hint">${t('usernameHint')}</span></label>
   <label>${t('firstPassword')}<input name="password" type="password" required minlength="8" autocomplete="new-password"><span class="hint">${t('passwordHint')}</span></label>
   <label>${t('roleField')}<select name="role">
     <option value="publisher" ${role === 'publisher' ? 'selected' : ''}>${t('publisher')}</option>

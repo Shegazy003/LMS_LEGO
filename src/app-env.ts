@@ -9,6 +9,8 @@ export interface CurrentUser {
   display_name: string;
   is_owner: number;
   sessionId: string;
+  /** The person's own language choice (My account), or null for the default. */
+  lang: Lang | null;
 }
 
 export interface CurrentSpace {
