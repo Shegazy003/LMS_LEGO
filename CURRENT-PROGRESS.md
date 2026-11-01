@@ -1,6 +1,39 @@
 # Current progress
 
-## Current state, 1 November 2026 (midday): AT-1, AT-4, AT-3 and AT-2 delivered; build task 5 (AT-5) in progress
+## Current state, 1 November 2026 (afternoon): release 1 code-complete (AT-1 to AT-5 delivered); build task 6 (first-deploy rails) in progress
+
+**What is true now**
+
+- **All five acceptance tests of release 1 are delivered and merged**, each Builder → Lead ACCEPTED → Verifier PASS → merged, with CI green on `main` (track record in [decision 002](docs/06-DELEGATION-AND-ROLES.md)):
+  - AT-1 (#4, `c9a69e3`): the owner shapes a space and appoints its admin.
+  - AT-4 (#6, `b47eca6`): a learner sees exactly what was assigned.
+  - AT-3 (#8, `58f8ba6`): the publisher builds the subject.
+  - AT-2 (#10, `d75f138`): the admin staffs the space, assigns a subject, sends WhatsApp reset links.
+  - AT-5 (#13, `8133ded`): the owner's kit editor and per-person language; a kit switch changes every word with no code change; every form refuses a cross-origin post; usernames, display names and labels are bounded.
+- **Release 1 is not yet accepted**: two owner-only steps remain, and both need the public address. AT-1 step 4 is the owner's acceptance on the public address; AT-2 step 6 is one real WhatsApp send from a phone. The PDF viewer and its sandbox are re-checked in a real browser at the same sitting.
+- Contract 0.3 stays frozen. Nothing is deployed.
+
+**Active priority:** build task 6, the first-deploy rails. It adds a deploy workflow that runs only on a manual start, the owner's last-resort reset (tested against local emulation), the README's first-deploy section, and a re-read of the official free-tier figures and WhatsApp rates. It deploys nothing by itself. Steps and decisions for the owner are in [docs/07-FIRST-DEPLOY.md](docs/07-FIRST-DEPLOY.md).
+
+**Waiting on the human owner (RED, one bundle):**
+1. **File storage:** A (recommended), add a payment card when Cloudflare asks before creating R2 storage, with 10 GB free; or B, no card, files moved to Workers KV with 1 GB free, which costs one more build task.
+2. **The Cloudflare account and one deploy key**, pasted into GitHub's repository secrets (`CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`).
+3. **A go-live sitting:** the delegate starts the first deploy; the owner completes first setup immediately and keeps the recovery code on paper; then AT-1 step 4 and AT-2 step 6.
+
+Still welcome any time: the subject names from Hadeer and Shimaa ("Mathematics" stands in); the owner's pass over the Arabic kit labels.
+
+**Carried notes (none block release 1):** sweep cases for a null Origin, another port or scheme, and a subdomain; the theme save writes the logo before the colour; one stale test title; Safari before 16.4 is refused on the reset form (unchanged from Hono's rule).
+
+**Known limits of release 1:**
+- The admin cannot rename, end early or remove people, groups or subjects.
+- The editor cannot rename or delete.
+- Five wrong passwords lock a username for 15 minutes.
+- Uploads are buffered in memory up to 25 MB.
+- Usage counts are approximate, and end dates are UTC days.
+- One language choice per person.
+- The Verifier ran on a different Anthropic model rather than a different vendor (exception in decision 002).
+
+## Earlier on 1 November 2026 (midday): AT-1, AT-4, AT-3 and AT-2 delivered, task 5 opened (historical)
 
 **What is true now**
 
