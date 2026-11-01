@@ -9,7 +9,7 @@
 // real pages in a real browser. Screenshots go to evidence/at-3/.
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 import { startWorker, type RunningWorker } from '../support/worker.ts';
@@ -61,8 +61,8 @@ const externalRequests: string[] = [];
 
 const at = (path: string) => worker.url + path;
 const mathId = () => seededA.subjects.Mathematics.id;
-const editorPath = (subjectId = mathId()) => `/s/${spaceA}/publish/subjects/${subjectId}`;
-const lessonEditorPath = () => `/s/${spaceA}/publish/lessons/${made.lesson}`;
+const editorPath = (subjectId = mathId()) => `/s/${spaceA}/publish/edit/${subjectId}`;
+const lessonEditorPath = () => `/s/${spaceA}/publish/compose/${made.lesson}`;
 const readPath = () => `/s/${spaceA}/read/${made.lesson}`;
 
 async function shot(page: Page, name: string): Promise<void> {
@@ -142,18 +142,18 @@ function fileForm(title: string, bytes: Uint8Array, name: string, type: string):
 function editingActions(space: string, ids: { subject: string; chapter: string; lesson: string; material: string }) {
   const p = `/s/${space}/publish`;
   return [
-    [`${p}/subjects/${ids.subject}/chapters`, () => ({ title: 'Forged chapter' })],
-    [`${p}/subjects/${ids.subject}/publish`, () => ({})],
-    [`${p}/subjects/${ids.subject}/unpublish`, () => ({})],
-    [`${p}/chapters/${ids.chapter}/lessons`, () => ({ title: 'Forged lesson' })],
-    [`${p}/chapters/${ids.chapter}/move`, () => ({ direction: 'up' })],
-    [`${p}/chapters/${ids.chapter}/move`, () => ({ direction: 'down' })],
-    [`${p}/lessons/${ids.lesson}/move`, () => ({ direction: 'down' })],
-    [`${p}/lessons/${ids.lesson}/materials`, () => fileForm('Forged PDF', PDF, 'forged.pdf', 'application/pdf')],
-    [`${p}/lessons/${ids.lesson}/materials`, () => ({ kind: 'video_link', title: 'Forged video', url: VIDEO_URL })],
-    [`${p}/lessons/${ids.lesson}/materials`, () => ({ kind: 'link', title: 'Forged link', url: WEB_URL })],
-    [`${p}/lessons/${ids.lesson}/materials`, () => ({ kind: 'note', title: 'Forged note', text: 'forged' })],
-    [`${p}/materials/${ids.material}/move`, () => ({ direction: 'up' })],
+    [`${p}/edit/${ids.subject}/add`, () => ({ title: 'Forged chapter' })],
+    [`${p}/edit/${ids.subject}/publish`, () => ({})],
+    [`${p}/edit/${ids.subject}/unpublish`, () => ({})],
+    [`${p}/part/${ids.chapter}/add`, () => ({ title: 'Forged lesson' })],
+    [`${p}/part/${ids.chapter}/move`, () => ({ direction: 'up' })],
+    [`${p}/part/${ids.chapter}/move`, () => ({ direction: 'down' })],
+    [`${p}/compose/${ids.lesson}/move`, () => ({ direction: 'down' })],
+    [`${p}/compose/${ids.lesson}/add`, () => fileForm('Forged PDF', PDF, 'forged.pdf', 'application/pdf')],
+    [`${p}/compose/${ids.lesson}/add`, () => ({ kind: 'video_link', title: 'Forged video', url: VIDEO_URL })],
+    [`${p}/compose/${ids.lesson}/add`, () => ({ kind: 'link', title: 'Forged link', url: WEB_URL })],
+    [`${p}/compose/${ids.lesson}/add`, () => ({ kind: 'note', title: 'Forged note', text: 'forged' })],
+    [`${p}/item/${ids.material}/move`, () => ({ direction: 'up' })],
   ] as const;
 }
 
@@ -287,7 +287,7 @@ describe('AT-3 the publisher builds the subject', { concurrency: false }, () => 
     const big = new Uint8Array(MAX_UPLOAD + 1);
     big.set(new TextEncoder().encode('%PDF-1.4\n'));
     const hadeerHttp = await signedIn(worker.url, HADEER.username, HADEER.password);
-    const tooBig = await hadeerHttp.post(`/s/${spaceA}/publish/lessons/${made.lesson}/materials`, fileForm('Too big', big, 'big.pdf', 'application/pdf'));
+    const tooBig = await hadeerHttp.post(`/s/${spaceA}/publish/compose/${made.lesson}/add`, fileForm('Too big', big, 'big.pdf', 'application/pdf'));
     assert.equal(tooBig.status, 413, 'a file over 25 MB is refused');
     assert.ok((await tooBig.text()).includes(REFUSED_SIZE), 'with the plain size message in Arabic');
 
@@ -409,8 +409,14 @@ describe('AT-3 the publisher builds the subject', { concurrency: false }, () => 
     const note = salma.locator('#items > li[data-kind=note] .note');
     assert.equal(await note.innerText(), NOTE, 'the note as typed');
     assert.equal(await note.locator('script, b').count(), 0, 'shown escaped');
-    await salma.goto(at(pdfHref!));
-    await shot(salma, '09-learner-opens-the-pdf');
+
+    // Clicking the PDF in the browser fetches it from our storage (headless
+    // Chromium has no PDF viewer, so it arrives as a download).
+    const [download] = await Promise.all([salma.waitForEvent('download'), salma.locator('#items > li[data-kind=pdf] a.open').click()]);
+    assert.equal(download.url(), at(pdfHref!), 'the PDF comes from our address');
+    assert.deepEqual(new Uint8Array(readFileSync(await download.path())), PDF, 'the uploaded PDF bytes');
+    await salma.goto(at(`/s/${spaceA}/file/${made.materials[1]}`));
+    await shot(salma, '09-learner-opens-the-image-from-storage');
   });
 
   it('AT-3.6 unpublishing hides the subject from the learner again', async () => {
@@ -456,8 +462,8 @@ describe('AT-3 the publisher builds the subject', { concurrency: false }, () => 
     const shimaa = await signedIn(worker.url, SHIMAA.username, SHIMAA.password);
     // Positive control: Shimaa edits her own subject, so the refusals below are about ownership.
     const physics = seededA.subjects.Physics.id;
-    assert.equal((await shimaa.get(`/s/${spaceA}/publish/subjects/${physics}`)).status, 200, 'Shimaa opens her own editor');
-    assert.equal((await shimaa.post(`/s/${spaceA}/publish/subjects/${physics}/chapters`, { title: 'Motion' })).status, 303, 'and adds a chapter to it');
+    assert.equal((await shimaa.get(`/s/${spaceA}/publish/edit/${physics}`)).status, 200, 'Shimaa opens her own editor');
+    assert.equal((await shimaa.post(`/s/${spaceA}/publish/edit/${physics}/add`, { title: 'Motion' })).status, 303, 'and adds a chapter to it');
     const shimaaHome = await (await shimaa.get(`/s/${spaceA}/publish`)).text();
     assert.ok(shimaaHome.includes('Physics') && !shimaaHome.includes('Mathematics'), 'Shimaa\'s home lists only her own subject');
 
@@ -477,7 +483,7 @@ describe('AT-3 the publisher builds the subject', { concurrency: false }, () => 
     assert.equal(await storedBytes(), stored, 'nothing was stored');
 
     // And the other way round: Hadeer cannot open Shimaa's subject.
-    const res = await hadeer.goto(at(`/s/${spaceA}/publish/subjects/${physics}`));
+    const res = await hadeer.goto(at(`/s/${spaceA}/publish/edit/${physics}`));
     assert.equal(res?.status(), 403, 'Hadeer is refused on Shimaa\'s editor');
     assert.equal((await hadeer.locator('p.message').innerText()).trim(), NO_ACCESS);
     await shot(hadeer, '12-hadeer-refused-on-shimaas-subject');
@@ -498,7 +504,7 @@ describe('AT-3 the publisher builds the subject', { concurrency: false }, () => 
       }
     }
     // The expired publisher is refused on her own subject too, with the plain "access ended" message.
-    const own = await expired.get(`/s/${spaceA}/publish/subjects/${seededA.subjects.Chemistry.id}`);
+    const own = await expired.get(`/s/${spaceA}/publish/edit/${seededA.subjects.Chemistry.id}`);
     assert.equal(own.status, 403);
     assert.ok((await own.text()).includes('انتهى وصولك إلى'), 'the expired publisher sees "access ended"');
     assert.equal(await fingerprint(mathId()), fp, 'nothing changed');
@@ -511,7 +517,7 @@ describe('AT-3 the publisher builds the subject', { concurrency: false }, () => 
     const fp = await fingerprint(b.id);
     const c = await signedIn(worker.url, HADEER.username, HADEER.password);
     for (const space of [spaceA, spaceB]) {
-      for (const path of [`/s/${space}/publish/subjects/${ids.subject}`, `/s/${space}/publish/lessons/${ids.lesson}`]) {
+      for (const path of [`/s/${space}/publish/edit/${ids.subject}`, `/s/${space}/publish/compose/${ids.lesson}`]) {
         const res = await c.get(path);
         assert.equal(res.status, 403, `GET ${path} refused`);
         assert.ok(!(await res.text()).includes('Pallet rules'), `${path}: nothing of space B leaks`);
@@ -537,8 +543,8 @@ describe('AT-3 the publisher builds the subject', { concurrency: false }, () => 
     assert.equal(await fingerprint(mathId()), fp, 'nothing changed');
     assert.equal(await storedBytes(), stored, 'nothing was stored');
     // Positive control: the same session, from our own pages, may edit.
-    assert.equal((await c.post(`/s/${spaceA}/publish/materials/${ids.material}/move`, { direction: 'up' })).status, 303);
-    assert.equal((await c.post(`/s/${spaceA}/publish/materials/${ids.material}/move`, { direction: 'down' })).status, 303);
+    assert.equal((await c.post(`/s/${spaceA}/publish/item/${ids.material}/move`, { direction: 'up' })).status, 303);
+    assert.equal((await c.post(`/s/${spaceA}/publish/item/${ids.material}/move`, { direction: 'down' })).status, 303);
     assert.equal(await fingerprint(mathId()), fp, 'moved up and back: the same order');
   });
 });
