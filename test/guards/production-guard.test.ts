@@ -2,6 +2,11 @@
 // switched on in production: the production build does not contain the code at
 // all (it is compiled out by a build-time constant), and the production
 // configuration does not set the constant or the runtime flag.
+//
+// Build task 7: production also states its password strength
+// (PASSWORD_ITERATIONS) and it is the decided value, 100,000, today's strength.
+// The owner's decision 2 (docs/07-FIRST-DEPLOY.md) changes that value and the
+// DECIDED_ITERATIONS line below together, in one reviewed pull request.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -9,11 +14,14 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { PASSWORD_CEILING, PASSWORD_FLOOR, passwordIterations } from '../../src/auth/password.ts';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 const wrangler = join(root, 'node_modules', '.bin', 'wrangler');
 // A sentence that exists only inside the test seeding code (src/test-hooks.ts).
 const SEED_MARKER = 'test seeding refused';
+// The production password strength the owner has decided on (none yet: today's strength stays).
+const DECIDED_ITERATIONS = 100_000;
 
 function readConfig(): any {
   const text = readFileSync(join(root, 'wrangler.jsonc'), 'utf8');
@@ -62,4 +70,22 @@ test('production guard: the production bundle contains no clock control and no t
   assert.ok(!production.includes('/__test/seed'), 'production bundle must not contain the seeding route');
   assert.ok(!production.includes(SEED_MARKER), 'production bundle must not contain the seeding code');
   assert.ok(!production.includes('TEST_HOOKS'), 'production bundle must not read the test flag');
+});
+
+test('production guard: production states its password strength, and it is the decided 100,000, within the floor and ceiling', () => {
+  const config = readConfig();
+  assert.equal(DECIDED_ITERATIONS, 100_000, 'the decided strength is today\'s strength');
+  assert.equal(config.vars?.PASSWORD_ITERATIONS, String(DECIDED_ITERATIONS), 'wrangler.jsonc sets PASSWORD_ITERATIONS for production');
+  assert.equal(passwordIterations(config.vars.PASSWORD_ITERATIONS), DECIDED_ITERATIONS, 'the Worker reads it as that strength');
+  assert.ok(PASSWORD_FLOOR <= DECIDED_ITERATIONS && DECIDED_ITERATIONS <= PASSWORD_CEILING);
+  // Any other environment that states a strength must state one the Worker accepts.
+  for (const [name, env] of Object.entries<any>(config.env ?? {})) {
+    const value = env.vars?.PASSWORD_ITERATIONS;
+    if (value !== undefined) assert.doesNotThrow(() => passwordIterations(value), `env ${name}`);
+  }
+});
+
+test('production guard: the production bundle reads the password strength setting', () => {
+  const production = bundle('');
+  assert.ok(production.includes('PASSWORD_ITERATIONS'), 'production bundle reads PASSWORD_ITERATIONS');
 });

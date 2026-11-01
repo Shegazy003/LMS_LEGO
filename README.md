@@ -24,7 +24,7 @@ A learning space that a non-technical owner can shape like Lego bricks and hand 
 One Cloudflare Worker (TypeScript, [Hono](https://hono.dev) router, server-rendered HTML, no front-end framework), D1 for data (`migrations/`), R2 for files. Code in `src/`:
 
 - `app.ts` the routes; `views/` the page templates; `labels.ts` the one label function; `i18n/ui.ts` the product sentences in Arabic and English; `kits/seed.ts` the School, Company and University kits.
-- `auth/` passwords (PBKDF2-SHA256, Web Crypto, 100,000 iterations), sessions (HTTP-only cookie, server-side row, 30 days without use), the owner's recovery code.
+- `auth/` passwords (PBKDF2-SHA256, Web Crypto; the strength is a setting, 100,000 iterations by default, see "Password strength"), sessions (HTTP-only cookie, server-side row, 30 days without use), the owner's recovery code.
 - `phone.ts` mobile numbers to international form; `files.ts` logo rules (PNG, JPEG or SVG by content, at most 1 MB); `usage.ts` the owner's usage panel; `access.ts` end dates.
 - `publishing.ts` the publisher's writes (chapters, lessons, materials, publish, move up and down): each finds its item only inside the space and only in a subject the publisher is responsible for, and each insert or update repeats that check inside its own SQL statement. `views/publish.ts` the publisher's pages. `files.ts` also holds the lesson upload rules.
 - `learning.ts` reading subjects, chapters, lessons and materials inside one space: every query names the `space_id` of every table it touches, and visibility follows assignment (admin: the whole space; publisher: their subjects; learner: published subjects assigned to them directly or through a group). `links.ts` keeps only http and https addresses as links.
@@ -122,6 +122,50 @@ Failed attempts at every password door (sign-in, the owner's recovery code, a re
 
 Why this design fits the free plan (100,000 database writes a day): a success writes nothing (it removes the username's count only when there is one); a failure writes two rows (one per key) and removes rows whose window has ended, each once; a refused attempt only reads. One client can spend at most about 150 writes an hour, whatever it sends. Counting in each Worker's memory would cost nothing but would not hold: Cloudflare runs many short-lived instances, and an attacker would simply reach a fresh one.
 
+### Password strength
+
+Passwords are hashed with PBKDF2-SHA256. How much work one hash takes (the iteration count) is a **deploy-time setting**, not code, so the owner's decision 2 in [docs/07-FIRST-DEPLOY.md](docs/07-FIRST-DEPLOY.md) changes one value and nothing else.
+
+**The setting.** `PASSWORD_ITERATIONS` in the `vars` of `wrangler.jsonc`, read by the Worker on every request (`src/auth/password.ts`).
+
+| Value | What the Worker does |
+|---|---|
+| `"100000"` (production today) | today's strength, unchanged by this setting |
+| absent | the same default, 100,000 |
+| a whole number from **10,000** (floor) to **100,000** (ceiling) | hashes every new or re-written password at that strength |
+| anything else (below 10,000, above 100,000, `100,000`, `1e5`, empty, words) | **refuses to serve**: every request answers a server error, and the Worker log says `PASSWORD_ITERATIONS must be a whole number from 10000 to 100000 …`. The deploy's smoke check fails on it, so the mistake is seen at once and rolled back |
+
+The floor stops a typo from silently weakening every password. The ceiling is the highest count Cloudflare's Workers runtime accepts for PBKDF2, and it stops a typo from making every sign-in slower than today. A refusal was chosen over quietly falling back to the floor: nobody should end up on a weaker strength they did not choose. CI also checks the value before anything ships: the production guard (run by CI and by the deploy workflow) fails unless production states exactly the decided value, today 100,000.
+
+**Each password carries its strength.** A stored hash looks like `pbkdf2-sha256$<iterations>$<salt>$<hash>`, the same format as before this setting existed, so every hash already written (at 100,000) keeps working. A check reads the count from the stored value, so passwords made at different strengths live side by side. A count that has been tampered with (negative, outside the floor and ceiling, not a plain whole number) never verifies and costs no hashing. The comparison stays constant-time. For an unknown username the Worker checks against a dummy hash made at the configured strength, so the time it takes does not reveal whether the username exists.
+
+**Re-written at the next sign-in.** When someone signs in successfully and their stored hash was made at a different strength, the Worker re-hashes the password they just typed at the configured strength: one database write, only then, never on an ordinary sign-in. This works in both directions, so a later move from B to A strengthens everyone gradually as they sign in. Every password the product writes is already at the configured strength: owner setup, appointing an admin, publisher or learner, a password set by the appointer, change own password, and the reset-link and recovery-code paths (which end with a new password).
+
+**The owner's decision and the setting.**
+
+| Owner's answer (docs/07, decision 2) | `PASSWORD_ITERATIONS` |
+|---|---|
+| **A.** Workers Paid ($5 a month) | keep `"100000"` (no change) |
+| **B.** Stay on the free plan | set `"10000"` (the proposal below), and change the decided value in `test/guards/production-guard.test.ts` in the same pull request |
+| B now, then A when a second organization joins | `"10000"` now, back to `"100000"` later; passwords strengthen at each person's next sign-in |
+
+**Measured cost (local).** `npm run measure:password-cost` runs the product's own hashing code inside the local Workers runtime (`wrangler dev`, workerd) and prints milliseconds. On the build machine (Intel Xeon at 2.80 GHz, 4 cores; 1 November 2026), median of 9 trials × 5 runs:
+
+| Iterations | Hash (ms) | Verify (ms) | Hash + verify (ms) |
+|---:|---:|---:|---:|
+| 10,000 | 4.6 | 4.4 | 9.0 |
+| 20,000 | 9.0 | 8.8 | 17.8 |
+| 50,000 | 23.0 | 23.0 | 46.0 |
+| 100,000 | 45.4 | 44.4 | 89.8 |
+
+(A separate run measured 15,000 at 6.6 ms to hash and 6.8 ms to verify.) The cost grows in a straight line with the count: about 0.45 ms per 1,000 iterations here. A sign-in costs one verify. A password change, and a sign-in that re-writes an older hash, cost a verify and a hash. Setup, appointing, a password set by the appointer, the reset link and the recovery code cost one hash.
+
+**Proposed value for option B: 10,000.** It is the highest count measured here that leaves a safe margin under the free plan's 10 ms. A sign-in takes about 4.4 ms, under half the limit, which leaves room for the rest of the request and for a slower moment. 15,000 would make a sign-in about 6.8 ms and a password change about 13 ms, over the limit. 20,000 leaves no margin even for a plain sign-in. Even at 10,000, the requests that do two hashes (a password change, a one-time re-write) come to about 9 ms here, close to the line.
+
+**What is uncertain.** These numbers are from this machine. Cloudflare's edge runs other processors (possibly faster), and Cloudflare allows some short bursts over the limit. CI therefore never turns timing into a pass or a fail. The real check happens live, at the go-live sitting:
+
+**How to check the CPU live.** In the Cloudflare dashboard, open **Workers & Pages** → `lms-lego` → **Logs** (Workers Logs). Sign in a few times, change a password once, and read the **CPU time** column for `POST /signin` and `POST /account/password`. Look for "exceeded CPU time limit" (error 1102). If sign-in stays well under 10 ms, the setting is right. If it goes over, the only remaining choice is option A, because the floor does not go lower. If it has plenty of room, a higher value can be proposed afterwards, measured the same way.
+
 ## Run it locally
 
 Needs Node 22. No Cloudflare account: Wrangler emulates the Worker, D1 and R2 on your machine (data in `.wrangler/`).
@@ -194,6 +238,8 @@ npm run test:guard:cross-origin   # every POST route refuses another site's or a
 npm run test:guard:bounds         # usernames, display names and kit labels are bounded
 npm run test:deploy-rails         # the production bundle, deploy.yml's safety rules, migrations applied twice, the smoke check
 npm run test:last-resort          # the owner's last-resort reset against the local database
+npm run test:password-strength    # password strength: stored per password, re-written at sign-in, production default 100,000
+npm run measure:password-cost     # prints what one hash and one check cost locally (not a test)
 npm run typecheck
 ```
 
@@ -236,6 +282,9 @@ The space guard (`test/guards/space-isolation.test.ts`) scans every SQL statemen
 - **A custom kit keeps its kit name.** After renaming labels, the owner's pages still call the kit by the seed's name (for example Company); there is no "save as a new kit" or copy between spaces.
 - **A replaced logo** shows at the next page load; browsers revalidate it (no-cache). The theme form writes the new logo under a new name, switches colour and logo in one database statement, then removes the old logo; if that removal fails, the old file is only left over (counted in storage).
 - **Validation messages for labels** say which rule was broken, not which box; the owner's typing is kept in the form.
+- **Password strength is a setting; the default is today's 100,000.** Proposed value for option B: 10,000 (see "Password strength"). That figure comes from this build machine; whether it fits Cloudflare's 10 ms is checked live in Workers Logs at the go-live sitting. Even at 10,000, a password change and a one-time re-write (two hashes) measured about 9 ms here, close to the line. If a sign-in at 10,000 goes over the limit on the edge, the floor stops the strength going lower, and option A is the answer.
+- **A move to a lower strength on the free plan needs each older password checked once at its old strength.** That check (about 45 ms at 100,000) could exceed the free plan's limit. If B is chosen before the first deploy, as planned, no such password exists. If B were chosen later, people whose sign-in fails that way get a reset link or a new password from their appointer, which writes at the new strength without checking the old one.
+- **Until a person signs in again, their hash keeps its old strength.** While two strengths exist side by side, the time a sign-in takes could show that a username exists with an older hash; it ends at that person's next sign-in. A tampered or unreadable stored hash fails to verify and is not re-written.
 - **Owner last resort** (both password and recovery code lost): a script and one Wrangler command for the Cloudflare account holder (see "First deploy"); there is no web route for it, by design.
 - **Pages outside a space** (sign-in, setup, owner) follow the browser's language (Arabic if the browser prefers it, otherwise English), unless the signed-in person stored a language choice. Inside a space, pages use the person's choice when the space offers it, else the space's first language.
 - **Dev tooling:** `npm audit` reports advisories in the `undici` copy bundled with Wrangler 4.149 (used only for local emulation and tests, never deployed). The fixed Wrangler releases were under two weeks old when this was pinned; update Wrangler in a later task.

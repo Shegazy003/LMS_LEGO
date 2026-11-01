@@ -2,6 +2,8 @@
 // D1 and R2) with the test environment, on a free port, with a fresh database.
 // With { production: true } it starts the production build instead (the
 // configuration that is deployed: no test hooks), for the deploy-rails tests.
+// With { vars: { NAME: 'value' } } it overrides a Wrangler variable for this
+// run only (wrangler dev --var), e.g. PASSWORD_ITERATIONS (build task 7).
 // No Cloudflare account is used.
 import { spawn, type ChildProcess } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -53,8 +55,9 @@ export interface RunningWorker {
   sqlAll(query: string): Promise<Record<string, unknown>[][]>;
 }
 
-export async function startWorker(options: { production?: boolean } = {}): Promise<RunningWorker> {
+export async function startWorker(options: { production?: boolean; vars?: Record<string, string> } = {}): Promise<RunningWorker> {
   const envArgs = options.production ? [] : ['--env', 'test'];
+  const varArgs = Object.entries(options.vars ?? {}).flatMap(([name, value]) => ['--var', `${name}:${value}`]);
   const persist = mkdtempSync(join(tmpdir(), 'lms-lego-test-'));
   await run(['d1', 'migrations', 'apply', 'lms-lego', '--local', ...envArgs, '--persist-to', persist]);
   const port = await freePort();
@@ -63,7 +66,7 @@ export async function startWorker(options: { production?: boolean } = {}): Promi
   const child: ChildProcess = spawn(
     wrangler,
     [
-      'dev', ...envArgs, '--ip', '127.0.0.1', '--port', String(port),
+      'dev', ...envArgs, ...varArgs, '--ip', '127.0.0.1', '--port', String(port),
       '--persist-to', persist, '--show-interactive-dev-session=false', '--log-level', 'warn',
     ],
     { cwd: root, env: quietEnv, detached: true },
