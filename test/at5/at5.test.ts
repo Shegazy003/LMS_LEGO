@@ -446,6 +446,8 @@ describe('AT-5 the kit changes every word, and no code changes', { concurrency: 
     await a.goto(at(`/s/${mesk}`));
     await follow(a, 'a#nav-account');
     await assertPage(a, 'My account (Arabic)', 'ar');
+    await follow(a, 'a#change-language');
+    await assertPage(a, 'the language page (Arabic)', 'ar');
     const options = await a.locator('form#language select[name=lang] option').evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value));
     assert.deepEqual(options, ['ar', 'en'], 'a choice among the space\'s languages');
     assert.equal(await a.inputValue('form#language select[name=lang]'), 'ar', 'the default is the space\'s first language');
@@ -470,7 +472,7 @@ describe('AT-5 the kit changes every word, and no code changes', { concurrency: 
     assert.ok(message.includes('(مسؤول التدريب)'), 'and names the admin with this kit\'s Arabic word');
 
     const s = salma.page;
-    await s.goto(at('/account'));
+    await s.goto(at('/account/language'));
     await s.selectOption('form#language select[name=lang]', 'en');
     assert.equal(await submit(s, 'form#language'), 303);
     const seen = await openTheLesson(salma, 'en');
@@ -488,7 +490,7 @@ describe('AT-5 the kit changes every word, and no code changes', { concurrency: 
     assert.deepEqual(langs.map((r) => [r.username, r.lang]), [[ADMIN.username, 'en'], [OMAR.username, null], [SALMA.username, 'en']], 'stored per person');
 
     // And back to Arabic.
-    await a.goto(at('/account'));
+    await a.goto(at('/account/language'));
     await a.selectOption('form#language select[name=lang]', 'ar');
     assert.equal(await submit(a, 'form#language'), 303);
     await a.goto(at(`/s/${mesk}`));
