@@ -31,8 +31,9 @@ let hadeerId = '';
 const count = async (sql: string) => Number((await worker.sql(sql))[0].n);
 const kitJson = async () =>
   JSON.parse(String((await worker.sql(`SELECT k.json FROM kit k JOIN space s ON s.kit_id = k.id WHERE s.id = '${spaceId}'`))[0].json));
+/** The maxlength of the named input inside the form (read from that input's own tag). */
 const maxlengthOf = (html: string, form: string, name: string) =>
-  html.match(new RegExp(`<form[^>]*id="${form}"[\\s\\S]*?<input[^>]*name="${name}"[^>]*>`))?.[0].match(/maxlength="(\d+)"/)?.[1];
+  html.match(new RegExp(`<form[^>]*id="${form}"[\\s\\S]*?(<input[^>]*name="${name}"[^>]*>)`))?.[1].match(/maxlength="(\d+)"/)?.[1];
 
 function labelsOf(kit: { labels: Record<string, Record<string, string>> }): Record<string, string> {
   return Object.fromEntries(['ar', 'en'].flatMap((l) => CONCEPTS.map((c) => [`${l}.${c}`, kit.labels[l][c]])));
