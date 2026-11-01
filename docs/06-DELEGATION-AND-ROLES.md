@@ -32,6 +32,7 @@ The platform's rule asks for a Verifier from a **different AI vendor** than the 
 |---|---|---|---|---|---|---|---|
 | 1 · AT-1 | #4 | Opus 5.5, worktree, `build/at-1` | 41247378486, 41248452055, 41248931525 | 41249055975 on `6362b97` | ACCEPTED | PASS (Sonnet 5.5) | `c9a69e3`, 31 October 2026 |
 | 2 · AT-4 | #6 | Opus 5.5, worktree, `build/at-4` | 41250965673 | 41252824667 on `cc20ec3` | ACCEPTED | PASS (Sonnet 5.5) | `b47eca6`, 1 November 2026 |
+| 3 · AT-3 | #8 | Opus 5.5, worktree, `build/at-3` | 41254729207, 41255636678 | 41255924519 on `5ce7c4d` | ACCEPTED | PASS (Sonnet 5.5) | `58f8ba6`, 1 November 2026 |
 
 ## Working rules for the agents (in addition to AGENTS.md)
 

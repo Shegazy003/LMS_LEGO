@@ -1,6 +1,32 @@
 # Current progress
 
-## Current state, 1 November 2026: AT-1 and AT-4 delivered, build task 3 (AT-3) in progress
+## Current state, 1 November 2026 (morning): AT-1, AT-4 and AT-3 delivered; build task 4 (AT-2) in progress
+
+**What is true now**
+
+- **AT-1 delivered** (pull request #4, merge `c9a69e3`): owner setup and recovery code, spaces on kits, admins with end dates, the admin's themed view, the "access ended" refusal, the usage panel.
+- **AT-4 delivered** (pull request #6, merge `b47eca6`): the learner sees exactly the assigned, published subjects; files behind access checks; change own password; role gating; cross-space isolation in queries, schema and live tests.
+- **AT-3 delivered** (pull request #8, merge `58f8ba6`): the publisher's home, subject editor and lesson editor; content-sniffed PDF and image uploads up to 25 MB (SVG refused for lesson files); video and web links (http and https only); notes; move up and down; publish and unpublish, observed from the learner's side; another publisher refused on every editing action; a guard that every admin and publisher route is role-gated; CI browser install cached and retried. Red before green; Lead ACCEPTED; Verifier PASS on `5ce7c4d`; CI green on `main` after the merge.
+- Contract 0.3 stays frozen. Nothing is deployed.
+
+**Active priority:** build task 4, acceptance test **AT-2** (the admin appoints Hadeer, Shimaa and two learners with end dates and registered mobiles, forms the Science group, creates the subject and assigns it, and sends a one-time reset link through WhatsApp with the safeguards in contract section 8). Same route as before.
+
+**Carried into task 4:**
+- a sign-in rate limit (the reset link adds a second door);
+- membership checks honour `valid_from` as well as `valid_until`;
+- make the AT-1 test independent of the time of day (it fails if a run crosses midnight UTC; a test flaw, not a product flaw);
+- the role guard also catches a two-parameter `app.all` handler;
+- add the runner image version to the CI browser cache key.
+
+**Carried to the first-deploy task (before AT-1 step 4):** the owner's last-resort reset documented and tested; owner setup immediately after the first deploy; re-check PDF viewing and its sandbox in a real browser during the owner's acceptance.
+
+**Owner's Arabic label pass (collected):** «تواصل مع مدير» should read «المدير»; the link hint that mixes Arabic and Latin renders oddly in right-to-left.
+
+**Waiting on the human owner:** nothing for task 4. Still open: subject names from Hadeer and Shimaa ("Mathematics" stands in), the Cloudflare account (before the first public address).
+
+**Known limits of this checkpoint:** the editor cannot rename or delete yet; uploads are buffered in memory up to 25 MB; usage counts are approximate; end dates are UTC days; no sign-in rate limit until task 4; the Verifier runs on a different Anthropic model rather than a different vendor (exception in decision 002); free-tier figures and WhatsApp rates must be re-read before the first deploy.
+
+## Earlier on 1 November 2026: AT-1 and AT-4 delivered, task 3 opened (historical)
 
 **What is true now**
 
