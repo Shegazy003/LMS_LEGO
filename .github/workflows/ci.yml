@@ -99,6 +99,15 @@ jobs:
       - name: AT-2 guard - failed sign-ins are rate-limited and access starts on its start date
         if: success() || failure()
         run: npm run test:guard:doors
+      - name: AT-5 the kit changes every word, and no code changes
+        if: success() || failure()
+        run: npm run test:at5
+      - name: AT-5 guard - every form refuses a cross-origin post
+        if: success() || failure()
+        run: npm run test:guard:cross-origin
+      - name: AT-5 guard - usernames, display names and kit labels are bounded
+        if: success() || failure()
+        run: npm run test:guard:bounds
       - name: Upload evidence (screenshots, reports)
         if: always() && hashFiles('evidence/**') != ''
         uses: actions/upload-artifact@v4

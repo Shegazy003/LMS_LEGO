@@ -55,6 +55,13 @@ export class Client {
     return res;
   }
 
+  /** Posts any body (text, JSON, …) with this client's cookies and exactly the given headers. */
+  async postBody(path: string, body: BodyInit, headers: Record<string, string>): Promise<Response> {
+    const res = await fetch(this.base + path, { method: 'POST', redirect: 'manual', body, headers: this.headers(headers) });
+    this.remember(res);
+    return res;
+  }
+
   async postRaw(path: string, init: RequestInit): Promise<Response> {
     const res = await fetch(this.base + path, { redirect: 'manual', ...init });
     this.remember(res);

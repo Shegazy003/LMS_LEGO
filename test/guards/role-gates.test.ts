@@ -40,6 +40,7 @@ export const OPEN_WRITES: Record<string, string> = {
   'POST /signout': 'signing out',
   'POST /recover': 'the owner\'s recovery code',
   'POST /account/password': 'everyone changes their own password (signed in)',
+  'POST /account/language': 'everyone chooses the language of their own pages (signed in, task 5)',
   'POST /r/:token': 'a one-time reset link: the link is the permission, bound to the username (task 4)',
   'POST /__test/clock': 'test builds only (production guard)',
   'POST /__test/seed': 'test builds only (production guard)',
