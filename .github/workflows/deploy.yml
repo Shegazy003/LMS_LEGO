@@ -1,0 +1,123 @@
+# Deploy LMS Lego to the owner's Cloudflare account (docs/07-FIRST-DEPLOY.md,
+# README "First deploy"). It runs ONLY when someone starts it by hand
+# (Actions > deploy > Run workflow, on main). It never runs on a push or a
+# pull request. CI holds it to these rules on every pull request
+# (test/deploy/workflow.test.ts, step "Deploy rails - ...").
+name: deploy
+on:
+  workflow_dispatch:
+# The GitHub token can only read this repository; Cloudflare access comes
+# from the owner's two repository secrets, read below by the steps that need them.
+permissions:
+  contents: read
+# One deploy at a time: a second start waits for the first to finish. A
+# deploy that has started is never cancelled half-way.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+jobs:
+  deploy:
+    # Refuse any branch or tag other than main.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      WRANGLER_SEND_METRICS: "false"
+      # The names in wrangler.jsonc. No account id or database id lives in
+      # the repository: Wrangler finds both resources by name at deploy time.
+      DB_NAME: lms-lego
+      BUCKET: lms-lego-files
+    steps:
+      # Stop at once, with a plain message, if a deploy secret is missing.
+      # Only whether each is set is tested; neither value is ever printed.
+      - name: Check the two deploy secrets are present
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          missing=""
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then missing="$missing CLOUDFLARE_API_TOKEN"; fi
+          if [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then missing="$missing CLOUDFLARE_ACCOUNT_ID"; fi
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secret(s):$missing. The owner adds them in Settings > Secrets and variables > Actions (docs/07-FIRST-DEPLOY.md, step C). Nothing was deployed."
+            exit 1
+          fi
+          echo "Both deploy secrets are present."
+      # The commit of main this run was started on (GitHub's own action,
+      # pinned to a full commit). No GitHub credential is left in the folder.
+      - name: Check out main
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      # The same Node.js version as CI.
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+      # Exact versions from the lockfile. No secret is visible to this step.
+      - name: Install (lockfile only)
+        run: npm ci
+      # The code compiles.
+      - name: Type check
+        run: npm run typecheck
+      # The production bundle is built with Wrangler's dry run and must not
+      # contain the test hooks (the same guard CI runs on every pull request).
+      - name: Production guard - the test hooks are absent from the bundle that ships
+        run: npm run test:guard:clock
+      # Create the database and the file bucket on the first deploy; on later
+      # deploys just confirm they exist. Data is never touched here.
+      - name: Provision or confirm the database and the file bucket
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if npx wrangler d1 info "$DB_NAME" > /dev/null 2>&1; then
+            echo "Database $DB_NAME exists."
+          else
+            echo "Creating database $DB_NAME."
+            npx wrangler d1 create "$DB_NAME"
+          fi
+          if npx wrangler r2 bucket info "$BUCKET" > /dev/null 2>&1; then
+            echo "File bucket $BUCKET exists."
+          else
+            echo "Creating file bucket $BUCKET (Cloudflare asks for a payment method on file before the first bucket)."
+            npx wrangler r2 bucket create "$BUCKET"
+          fi
+      # Apply new database migrations BEFORE the new code goes live. They are
+      # additive, so the version still serving keeps working on the new
+      # schema; already-applied migrations are skipped (a re-run is a no-op).
+      - name: Apply database migrations to the live database
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx wrangler d1 migrations apply "$DB_NAME" --remote
+      # Upload the production Worker and switch traffic to it. Wrangler binds
+      # the database and bucket by name. Its report goes to a file that the
+      # next line reads for the address and the version id.
+      - name: Deploy the Worker
+        id: deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_OUTPUT_FILE_PATH: ${{ runner.temp }}/wrangler-output.ndjson
+        run: |
+          set -o pipefail
+          npx wrangler deploy | tee "$RUNNER_TEMP/deploy.log"
+          node scripts/deploy-result.mjs "$WRANGLER_OUTPUT_FILE_PATH" "$RUNNER_TEMP/deploy.log" >> "$GITHUB_OUTPUT"
+      # Show the live address and the version id (needed for a rollback), in
+      # the log and on the run's summary page.
+      - name: Print the address and version id
+        env:
+          ADDRESS: ${{ steps.deploy.outputs.url }}
+          VERSION: ${{ steps.deploy.outputs.version }}
+        run: |
+          echo "Address: $ADDRESS"
+          echo "Version id: $VERSION"
+          printf '### Deployed\n\n- Address: %s\n- Version id: %s\n- Roll back: `npx wrangler rollback` or the Cloudflare dashboard (README, "First deploy")\n' "$ADDRESS" "$VERSION" >> "$GITHUB_STEP_SUMMARY"
+      # Read-only check of the live address: the home page answers (redirect
+      # to /setup or /signin), a cross-origin post is refused with 403, and
+      # the test hooks are absent. If it fails, roll back (README).
+      - name: Smoke check the live address
+        env:
+          ADDRESS: ${{ steps.deploy.outputs.url }}
+        run: node scripts/smoke-check.mjs "$ADDRESS"

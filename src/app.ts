@@ -49,7 +49,7 @@ import { lessonEditor, publisherHome, subjectEditor } from './views/publish.ts';
 import { resetDeadPage, resetDonePage, resetPage, type ResetSpace } from './views/reset.ts';
 import { accessEndedPage, adminHome, membershipsPage, type SpaceView } from './views/space.ts';
 import { isSameOrigin } from './origin.ts';
-import { logoKey, saveTheme } from './theme.ts';
+import { logoKey, saveTheme, storedLogoKey } from './theme.ts';
 
 type C = Context<AppEnv>;
 
@@ -559,9 +559,11 @@ app.post('/owner/spaces/:id/theme', async (c) => {
   return c.redirect(`/owner/spaces/${space.id}?done=theme#theme`, 303);
 });
 
-// Called only after the access check for the address has passed.
-async function serveLogo(c: C, spaceId: string) {
-  const obj = await c.env.FILES.get(logoKey(spaceId));
+// Called only after the access check for the address has passed. The logo
+// object is the one the space's kit points to (src/theme.ts).
+async function serveLogo(c: C, spaceId: string, kitLogoKey: string | null) {
+  const key = storedLogoKey(spaceId, kitLogoKey);
+  const obj = key ? await c.env.FILES.get(key) : null;
   if (!obj) return refuse(c, 404, 'notFound');
   const headers = fileHeaders(obj.httpMetadata?.contentType ?? 'application/octet-stream', obj.httpEtag);
   if (c.req.header('if-none-match') === obj.httpEtag) {
@@ -571,7 +573,11 @@ async function serveLogo(c: C, spaceId: string) {
   return new Response(obj.body, { headers });
 }
 
-app.get('/owner/spaces/:id/logo', (c) => serveLogo(c, c.req.param('id')));
+app.get('/owner/spaces/:id/logo', async (c) => {
+  const space = await ownerSpace(c, c.req.param('id'));
+  if (!space) return refuse(c, 404, 'notFound');
+  return serveLogo(c, space.id, space.kit.theme.logoKey);
+});
 
 // ---------------------------------------------------------------- spaces ----
 app.get('/home', async (c) => {
@@ -686,7 +692,7 @@ app.get('/s/:spaceId', (c) => {
 app.get('/s/:spaceId/admin', (c) => renderAdminHome(c));
 app.get('/s/:spaceId/publish', (c) => renderPublisherHome(c));
 
-app.get('/s/:spaceId/logo', (c) => serveLogo(c, c.get('space').id));
+app.get('/s/:spaceId/logo', (c) => serveLogo(c, c.get('space').id, c.get('space').kit.theme.logoKey));
 
 // Reading: a subject, a lesson, a stored file. Anything the person may not
 // read here (another space's id, a subject not assigned, unpublished, or no
