@@ -10,12 +10,21 @@
   "workers_dev": true,
   // Production build: the test hooks (controllable clock) are compiled out.
   "define": { "__TEST_HOOKS__": "false" },
+  // Password strength in PBKDF2 iterations (README "Password strength").
+  // 100000 is today's strength and the default. The Worker accepts a whole
+  // number from 10000 to 100000 and refuses to serve with anything else.
+  // Owner decision 2 (docs/07-FIRST-DEPLOY.md): A keeps 100000; B sets the
+  // value proposed in the README. Stored passwords are re-written at the new
+  // value on their next sign-in. The production guard asserts this value.
+  "vars": { "PASSWORD_ITERATIONS": "100000" },
   "d1_databases": [
     { "binding": "DB", "database_name": "lms-lego", "migrations_dir": "migrations" }
   ],
   "r2_buckets": [{ "binding": "FILES", "bucket_name": "lms-lego-files" }],
   "env": {
     // Local and CI test runs only (`wrangler dev --env test`). Never deployed.
+    // Vars are not inherited by an environment: without PASSWORD_ITERATIONS
+    // here, tests run at the code's default, 100000, the same as production.
     "test": {
       "define": { "__TEST_HOOKS__": "true" },
       "vars": { "TEST_HOOKS": "1" },

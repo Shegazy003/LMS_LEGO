@@ -9,7 +9,7 @@ import {
   saveSetMembers, saveTopic, setPassword, setsOf, spaceAdmin, topicReaders, topicsOf, type PersonRow,
 } from './admin.ts';
 import { attemptBlock, clearUser, minutesUntil, openDoor, recordFailure } from './auth/limits.ts';
-import { dummyHash, hashPassword, verifyPassword } from './auth/password.ts';
+import { dummyHash, hashPassword, passwordIterations, rehashIfNeeded, verifyPassword } from './auth/password.ts';
 import { SESSION_COOKIE, SESSION_IDLE_MS, sessionDecision } from './auth/session.ts';
 import { newRecoveryCode, randomToken, recoveryCodeHash, tokenHash } from './auth/tokens.ts';
 import { now } from './clock.ts';
@@ -148,7 +148,12 @@ function use<P extends string>(path: P, handler: MiddlewareHandler<AppEnv, P>): 
 }
 
 // Count every request in memory; flush at most once a minute, after the response.
+// The password strength (PASSWORD_ITERATIONS, src/auth/password.ts) is read
+// first: a value outside the floor and ceiling refuses every request with a
+// server error, logged with the reason, instead of hashing at a strength
+// nobody chose.
 use('*', async (c, next) => {
+  c.set('iterations', passwordIterations(c.env.PASSWORD_ITERATIONS));
   const m = getMeter();
   m.recordRequest(now());
   c.set('db', new Db(c.env.DB, (rows) => m.recordWrites(rows, now())));
@@ -236,7 +241,7 @@ app.post('/setup', async (c) => {
   try {
     await db.run(
       'INSERT INTO user (id, username, password_hash, display_name, mobile, is_owner, recovery_hash, created_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?)',
-      id, username, await hashPassword(password), username, mobile, await recoveryCodeHash(code), now(),
+      id, username, await hashPassword(password, c.get('iterations')), username, mobile, await recoveryCodeHash(code), now(),
     );
   } catch {
     return refuse(c, 403, 'setupClosed'); // a second owner, created in the same instant
@@ -265,12 +270,15 @@ app.post('/signin', async (c) => {
   const block = attemptBlock(door.rows, now());
   if (block) return page(c, signInPage(t, c.get('lang'), { error: tooMany(t, block.until), username }), 429);
   const user = await db.first<{ id: string; password_hash: string }>('SELECT id, password_hash FROM user WHERE username = ?', username);
-  const ok = await verifyPassword(password, user?.password_hash ?? (await dummyHash()));
+  // An unknown username spends the same work, at the configured strength.
+  const ok = await verifyPassword(password, user?.password_hash ?? (await dummyHash(c.get('iterations'))));
   if (!user || !ok) {
     await recordFailure(db, door, now());
     return page(c, signInPage(t, c.get('lang'), { error: t('signInFailed'), username }), 401);
   }
   await clearUser(db, door);
+  // A hash made at another strength is re-written at the configured one (one write, only then).
+  await rehashIfNeeded(db, user, password, c.get('iterations'));
   await startSession(c, user.id);
   return c.redirect('/');
 });
@@ -309,7 +317,7 @@ app.post('/recover', async (c) => {
   const next = newRecoveryCode();
   const changed = await db.run(
     'UPDATE user SET password_hash = ?, recovery_hash = ? WHERE id = ? AND recovery_hash = ?',
-    await hashPassword(password), await recoveryCodeHash(next), owner.id, oldHash,
+    await hashPassword(password, c.get('iterations')), await recoveryCodeHash(next), owner.id, oldHash,
   );
   if (changed !== 1) return page(c, recoverPage(t, c.get('lang'), { error: t('recoverFailed'), username }), 401);
   await db.run('DELETE FROM session WHERE user_id = ?', owner.id); // every old sign-in ends
@@ -483,7 +491,7 @@ app.post('/owner/spaces/:id/admins', async (c) => {
     await db.batch([
       [
         'INSERT INTO user (id, username, password_hash, display_name, mobile, is_owner, created_at) VALUES (?, ?, ?, ?, ?, 0, ?)',
-        userId, values.username!, await hashPassword(password), displayName, mobile, now(),
+        userId, values.username!, await hashPassword(password, c.get('iterations')), displayName, mobile, now(),
       ],
       [
         'INSERT INTO membership (id, space_id, user_id, role, valid_from, valid_until, granted_by) VALUES (?, ?, ?, ?, ?, ?, ?)',
@@ -791,7 +799,7 @@ app.post('/s/:spaceId/admin/people', async (c) => {
   if (error || !mobile || !displayName || !isAppointable(role)) return renderPeople(c, { values, error }, 400);
   try {
     await appoint(db, {
-      spaceId: space.id, grantedBy: c.get('user')!.id, username: values.username!, passwordHash: await hashPassword(password),
+      spaceId: space.id, grantedBy: c.get('user')!.id, username: values.username!, passwordHash: await hashPassword(password, c.get('iterations')),
       displayName, mobile, role, validFrom: today, validUntil: end, now: now(),
     });
   } catch {
@@ -891,7 +899,7 @@ function personRoutes(path: string, place: (c: C) => Promise<PersonPlace | null>
     const body = await c.req.parseBody();
     const password = typeof body.new_password === 'string' ? body.new_password : '';
     if (password.length < MIN_PASSWORD) return page(c, personPage(p.frame, p.view, { error: p.frame.t('passwordTooShort') }), 400);
-    await setPassword(c.get('db'), p.person.id, await hashPassword(password));
+    await setPassword(c.get('db'), p.person.id, await hashPassword(password, c.get('iterations')));
     return page(c, personPage(p.frame, p.view, { done: true }));
   });
 }
@@ -1062,7 +1070,7 @@ app.post('/r/:token', async (c) => {
     return page(c, resetPage(t, lang, space, { action, username, error: t('resetWrongUser') }), 401);
   }
   if (password.length < MIN_PASSWORD) return page(c, resetPage(t, lang, space, { action, username, error: t('passwordTooShort') }), 400);
-  if (!(await useResetLink(db, link, await hashPassword(password), now()))) return deadLink(c, r);
+  if (!(await useResetLink(db, link, await hashPassword(password, c.get('iterations')), now()))) return deadLink(c, r);
   await clearUser(db, door);
   return page(c, resetDonePage(t, lang, space));
 });
@@ -1291,7 +1299,7 @@ app.post('/account/password', async (c) => {
   if (!row || !(await verifyPassword(current, row.password_hash))) return renderAccount(c, { error: t('currentPasswordWrong') }, 400);
   if (next.length < MIN_PASSWORD) return renderAccount(c, { error: t('passwordTooShort') }, 400);
   await db.batch([
-    ['UPDATE user SET password_hash = ? WHERE id = ?', await hashPassword(next), user.id],
+    ['UPDATE user SET password_hash = ? WHERE id = ?', await hashPassword(next, c.get('iterations')), user.id],
     ['DELETE FROM session WHERE user_id = ? AND id <> ?', user.id, user.sessionId], // every other sign-in ends
   ]);
   return renderAccount(c, { done: true });

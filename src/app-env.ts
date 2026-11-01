@@ -31,5 +31,7 @@ export interface AppEnv {
     user: CurrentUser | null;
     lang: Lang;
     space: CurrentSpace;
+    /** The configured password strength (PASSWORD_ITERATIONS), read on every request. */
+    iterations: number;
   };
 }

@@ -24,6 +24,7 @@
     "test:deploy-rails": "node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./test/support/github-reporter.mjs --test-reporter-destination=stdout test/guards/production-guard.test.ts test/deploy/workflow.test.ts test/deploy/migrations.test.ts test/deploy/smoke.test.ts",
     "test:last-resort": "node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./test/support/github-reporter.mjs --test-reporter-destination=stdout test/deploy/last-resort.test.ts",
     "test:password-strength": "node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./test/support/github-reporter.mjs --test-reporter-destination=stdout test/unit/password.test.ts test/unit/password-strength.test.ts test/password/strength.test.ts test/guards/production-guard.test.ts",
+    "measure:password-cost": "node scripts/measure-password-cost.mjs",
     "typecheck": "tsc --noEmit",
     "dev": "wrangler d1 migrations apply lms-lego --local && wrangler dev",
     "dev:test": "wrangler d1 migrations apply lms-lego --local --env test && wrangler dev --env test"

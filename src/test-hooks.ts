@@ -40,7 +40,7 @@ export function registerTestHooks(app: Hono<AppEnv>): void {
   app.post('/__test/seed', async (c) => {
     if (c.env.TEST_HOOKS !== '1') return c.notFound();
     try {
-      return c.json(await seed(c.get('db'), c.env.FILES, await c.req.json<SeedBody>()));
+      return c.json(await seed(c.get('db'), c.env.FILES, await c.req.json<SeedBody>(), c.get('iterations')));
     } catch (err) {
       if (err instanceof SeedRefused) return c.json({ error: err.message }, 400);
       throw err;
@@ -105,7 +105,7 @@ function bytesOf(base64: string): Uint8Array {
   }
 }
 
-async function seed(db: Db, files: R2Bucket, body: SeedBody): Promise<SeedOut> {
+async function seed(db: Db, files: R2Bucket, body: SeedBody, iterations: number): Promise<SeedOut> {
   const space = await db.first<{ id: string; default_country_code: string }>(
     'SELECT id, default_country_code FROM space WHERE id = ?',
     String(body.spaceId),
@@ -129,7 +129,7 @@ async function seed(db: Db, files: R2Bucket, body: SeedBody): Promise<SeedOut> {
     statements.push(
       [
         'INSERT INTO user (id, username, password_hash, display_name, mobile, is_owner, created_at) VALUES (?, ?, ?, ?, ?, 0, ?)',
-        id, p.username, await hashPassword(p.password), p.display_name, mobile, now(),
+        id, p.username, await hashPassword(p.password, iterations), p.display_name, mobile, now(),
       ],
       [
         'INSERT INTO membership (id, space_id, user_id, role, valid_from, valid_until, granted_by) VALUES (?, ?, ?, ?, ?, ?, ?)',
