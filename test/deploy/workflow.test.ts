@@ -95,7 +95,7 @@ test('deploy workflow: the two secrets are read only through secrets.*, only int
 
   const uses: string[] = [];
   for (const [path, value] of strings(wf)) {
-    if (!/secrets/i.test(value)) continue;
+    if (!/\bsecrets\s*\./i.test(value)) continue; // a secrets.NAME expression (bulk forms are refused above)
     const [jobsKey, jobId, stepsKey, index, envKey, name] = path;
     const where = path.join('.');
     assert.ok(jobsKey === 'jobs' && stepsKey === 'steps' && envKey === 'env' && path.length === 6, `a secret is read only in a step's env (found at ${where})`);

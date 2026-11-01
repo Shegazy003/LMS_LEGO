@@ -5,7 +5,7 @@
 // Cloudflare account.
 import { describe, it, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { createServer, type Server } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { startWorker, type RunningWorker } from '../support/worker.ts';
@@ -15,18 +15,25 @@ const root = fileURLToPath(new URL('../..', import.meta.url));
 const running: RunningWorker[] = [];
 const servers: Server[] = [];
 
-function smoke(address: string): { status: number | null; out: string } {
-  const r = spawnSync(process.execPath, ['scripts/smoke-check.mjs', address], {
-    cwd: root, encoding: 'utf8', env: { ...process.env, SMOKE_WAIT_SECONDS: '3' },
+/** Runs the smoke check as the workflow does. Asynchronous, so the fake sites below (in this process) can answer. */
+function smoke(address: string): Promise<{ status: number | null; out: string }> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, ['scripts/smoke-check.mjs', address], {
+      cwd: root, env: { ...process.env, SMOKE_WAIT_SECONDS: '3' },
+    });
+    let out = '';
+    child.stdout.on('data', (d) => (out += d));
+    child.stderr.on('data', (d) => (out += d));
+    child.on('error', reject);
+    child.on('exit', (status) => resolve({ status, out }));
   });
-  return { status: r.status, out: `${r.stdout}\n${r.stderr}` };
 }
 
 /** A plain HTTP server that answers every request with the given status, location and body. */
 async function fakeSite(answer: (method: string, path: string) => { status: number; location?: string }): Promise<string> {
   const server = createServer((req, res) => {
     const a = answer(req.method ?? 'GET', req.url ?? '/');
-    res.writeHead(a.status, a.location ? { location: a.location } : {});
+    res.writeHead(a.status, { connection: 'close', ...(a.location ? { location: a.location } : {}) });
     res.end('ok');
   });
   servers.push(server);
@@ -38,13 +45,13 @@ async function fakeSite(answer: (method: string, path: string) => { status: numb
 describe('Deploy rails: the post-deploy smoke check', { concurrency: false }, () => {
   after(async () => {
     for (const w of running) await w.stop();
-    for (const s of servers) s.close();
+    for (const s of servers) s.closeAllConnections(), s.close();
   });
 
   it('passes on the production build before setup (redirect to /setup) and after it (redirect to /signin)', async () => {
     const w = await startWorker({ production: true });
     running.push(w);
-    const before = smoke(w.url);
+    const before = await smoke(w.url);
     assert.equal(before.status, 0, before.out);
     assert.match(before.out, /GET \/ answers 302 -> \/setup/);
     assert.match(before.out, /must open the address and complete first setup now/);
@@ -54,7 +61,7 @@ describe('Deploy rails: the post-deploy smoke check', { concurrency: false }, ()
     assert.match(before.out, /same host over http: skipped \(the address is not https\)/);
     assert.match(before.out, /test hooks are absent/);
     await setUpOwner(w.url);
-    const afterSetup = smoke(w.url);
+    const afterSetup = await smoke(w.url);
     assert.equal(afterSetup.status, 0, afterSetup.out);
     assert.match(afterSetup.out, /GET \/ answers 302 -> \/signin/);
   });
@@ -62,24 +69,24 @@ describe('Deploy rails: the post-deploy smoke check', { concurrency: false }, ()
   it('fails on a test build (the test hooks answer)', async () => {
     const w = await startWorker();
     running.push(w);
-    const r = smoke(w.url);
+    const r = await smoke(w.url);
     assert.equal(r.status, 1, r.out);
     assert.match(r.out, /FAIL \/__test\/clock answered 200/);
   });
 
   it('fails on a site that accepts a cross-origin post, and on a site that does not answer', async () => {
     const lax = await fakeSite((method, path) => (path === '/' ? { status: 302, location: '/setup' } : path === '/__test/clock' ? { status: 404 } : { status: 200 }));
-    const r = smoke(lax);
+    const r = await smoke(lax);
     assert.equal(r.status, 1, r.out);
     assert.match(r.out, /FAIL a cross-origin POST answered 200/);
 
     const down = await fakeSite(() => ({ status: 503 }));
-    const d = smoke(down);
+    const d = await smoke(down);
     assert.equal(d.status, 1, d.out);
     assert.match(d.out, /did not answer in 3s/);
 
     const elsewhere = await fakeSite(() => ({ status: 302, location: 'https://evil.example/setup' }));
-    const e = smoke(elsewhere);
+    const e = await smoke(elsewhere);
     assert.equal(e.status, 1, e.out);
     assert.match(e.out, /FAIL GET \/ answered 302/);
   });
