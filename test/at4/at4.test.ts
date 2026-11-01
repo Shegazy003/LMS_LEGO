@@ -368,7 +368,7 @@ describe('AT-4 a learner sees exactly what was assigned', { concurrency: false }
     await salmaCtx.clearCookies();
     await signIn(salma, SALMA.username, salmaPassword);
     assert.ok(salma.url().endsWith(`/s/${spaceId}`), 'the learner can still sign in');
-    const arabic = `انتهى وصولك إلى ${SPACE} في ${salmaEnd}. تواصل مع مدير.`;
+    const arabic = `انتهى وصولك إلى ${SPACE} في ${salmaEnd}. للتواصل: مدير.`;
     const english = `Your access to ${SPACE} ended on ${salmaEnd}. Contact the Administrator.`;
     assert.equal((await salma.locator('#access-ended').innerText()).trim(), arabic, 'in the space\'s first language, contact = the kit\'s admin label');
     assert.equal((await salma.locator('#access-ended-alt').innerText()).trim(), english, 'and in its second language');

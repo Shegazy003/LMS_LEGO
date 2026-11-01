@@ -19,6 +19,7 @@
 //
 // The client's address is never stored: its key is a hash of it.
 import type { Db } from '../db.ts';
+import { typedUsername } from '../names.ts';
 import { sha256Hex } from './encoding.ts';
 
 export const LIMITS = {
@@ -45,8 +46,9 @@ export function attemptBlock(rows: readonly AttemptRow[], now: number): { until:
   return until ? { until } : null;
 }
 
+/** The username's key: bounded, because a username longer than the maximum is read as '' (src/names.ts). */
 export function userKey(username: string): string {
-  return 'u:' + username.trim().toLowerCase();
+  return 'u:' + typedUsername(username);
 }
 
 export async function clientKey(address: string): Promise<string> {

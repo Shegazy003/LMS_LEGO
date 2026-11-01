@@ -3,6 +3,7 @@
 // username and the new password. It never says whose link it is.
 import { html } from 'hono/html';
 import type { Label, Lang } from '../labels.ts';
+import { USERNAME_MAX } from '../names.ts';
 import { errorBox, layout, sentence, type Html } from './layout.ts';
 import { spaceHeader } from './space.ts';
 
@@ -21,7 +22,7 @@ export function resetPage(t: Label, lang: Lang, space: ResetSpace, v: { action: 
 <p id="reset-intro">${sentence(t, 'resetIntro', { space: space.name })}</p>
 ${errorBox(v.error)}
 <form id="reset" class="stack card" method="post" action="${v.action}">
-  <label>${t('username')}<input name="username" required autocomplete="username" autocapitalize="none" dir="ltr" value="${v.username ?? ''}"></label>
+  <label>${t('username')}<input name="username" required maxlength="${USERNAME_MAX}" autocomplete="username" autocapitalize="none" dir="ltr" value="${v.username ?? ''}"></label>
   <label>${t('newPassword')}<input name="new_password" type="password" required minlength="8" autocomplete="new-password"><span class="hint">${t('passwordHint')}</span></label>
   <button type="submit">${t('setNewPassword')}</button>
 </form>`;

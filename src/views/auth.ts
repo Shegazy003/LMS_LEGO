@@ -1,6 +1,7 @@
 // Owner first setup, the one-time recovery code, sign-in and recovery.
 import { html } from 'hono/html';
 import type { Label, Lang } from '../labels.ts';
+import { USERNAME_MAX } from '../names.ts';
 import { errorBox, layout, type Html } from './layout.ts';
 
 export function setupPage(t: Label, lang: Lang, v: { error?: string; username?: string; mobile?: string }): Html {
@@ -8,7 +9,7 @@ export function setupPage(t: Label, lang: Lang, v: { error?: string; username?: 
 <p>${t('setupIntro')}</p>
 ${errorBox(v.error)}
 <form id="setup" class="stack card" method="post" action="/setup">
-  <label>${t('username')}<input name="username" required autocomplete="username" value="${v.username ?? ''}"><span class="hint">${t('usernameHint')}</span></label>
+  <label>${t('username')}<input name="username" required maxlength="${USERNAME_MAX}" autocomplete="username" value="${v.username ?? ''}"><span class="hint">${t('usernameHint')}</span></label>
   <label>${t('password')}<input name="password" type="password" required minlength="8" autocomplete="new-password"><span class="hint">${t('passwordHint')}</span></label>
   <label>${t('mobile')}<input name="mobile" type="tel" required dir="ltr" value="${v.mobile ?? ''}"><span class="hint">${t('mobileInternationalHint')}</span></label>
   <button type="submit">${t('createAccount')}</button>
@@ -29,7 +30,7 @@ export function signInPage(t: Label, lang: Lang, v: { error?: string; username?:
   const body = html`<h1>${t('signIn')}</h1>
 ${errorBox(v.error)}
 <form id="signin" class="stack card" method="post" action="/signin">
-  <label>${t('username')}<input name="username" required autocomplete="username" value="${v.username ?? ''}"></label>
+  <label>${t('username')}<input name="username" required maxlength="${USERNAME_MAX}" autocomplete="username" value="${v.username ?? ''}"></label>
   <label>${t('password')}<input name="password" type="password" required autocomplete="current-password"></label>
   <button type="submit">${t('signIn')}</button>
 </form>
@@ -41,7 +42,7 @@ export function recoverPage(t: Label, lang: Lang, v: { error?: string; username?
   const body = html`<h1>${t('recoverTitle')}</h1>
 ${errorBox(v.error)}
 <form id="recover" class="stack card" method="post" action="/recover">
-  <label>${t('username')}<input name="username" required autocomplete="username" value="${v.username ?? ''}"></label>
+  <label>${t('username')}<input name="username" required maxlength="${USERNAME_MAX}" autocomplete="username" value="${v.username ?? ''}"></label>
   <label>${t('recoveryCode')}<input name="code" required dir="ltr" autocomplete="one-time-code"></label>
   <label>${t('newPassword')}<input name="password" type="password" required minlength="8" autocomplete="new-password"><span class="hint">${t('passwordHint')}</span></label>
   <button type="submit">${t('setNewPassword')}</button>

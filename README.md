@@ -17,9 +17,9 @@ A learning space that a non-technical owner can shape like Lego bricks and hand 
 **Rails already in place**
 
 - `npm test` runs every test file (`test/**`) with Node's built-in test runner, including the browser test.
-- `.github/workflows/ci.yml` runs the tests on every push to `main` and every pull request, on a fresh GitHub runner, one named step per check (`AT-1 owner shapes a space and appoints its admin`, `AT-4 a learner sees exactly what was assigned`, `AT-3 the publisher builds the subject`, `AT-2 the admin staffs the space and assigns a subject`, the AT-1, AT-4, AT-3 and AT-2 guards, unit tests, type check, rails). This is the trusted test location: the Builder cannot change its results. Chromium is cached between runs in Playwright's folder, keyed on the runner image (`ImageOS`, `ImageVersion`) and the exact Playwright version, and its install is bounded and retried (one earlier run timed out in the download).
+- `.github/workflows/ci.yml` runs the tests on every push to `main` and every pull request, on a fresh GitHub runner, one named step per check (`AT-1 owner shapes a space and appoints its admin`, `AT-4 a learner sees exactly what was assigned`, `AT-3 the publisher builds the subject`, `AT-2 the admin staffs the space and assigns a subject`, `AT-5 the kit changes every word, and no code changes`, the AT-1, AT-4, AT-3, AT-2 and AT-5 guards, unit tests, type check, rails). This is the trusted test location: the Builder cannot change its results. Chromium is cached between runs in Playwright's folder, keyed on the runner image (`ImageOS`, `ImageVersion`) and the exact Playwright version, and its install is bounded and retried (one earlier run timed out in the download).
 
-## What is built (release 1 so far: AT-1, AT-4, AT-3, AT-2)
+## What is built (release 1: AT-1, AT-4, AT-3, AT-2, AT-5)
 
 One Cloudflare Worker (TypeScript, [Hono](https://hono.dev) router, server-rendered HTML, no front-end framework), D1 for data (`migrations/`), R2 for files. Code in `src/`:
 
@@ -30,7 +30,29 @@ One Cloudflare Worker (TypeScript, [Hono](https://hono.dev) router, server-rende
 - `learning.ts` reading subjects, chapters, lessons and materials inside one space: every query names the `space_id` of every table it touches, and visibility follows assignment (admin: the whole space; publisher: their subjects; learner: published subjects assigned to them directly or through a group). `links.ts` keeps only http and https addresses as links.
 - `admin.ts` the admin's writes and lookups (people, groups, subjects, who may read a subject), each inside one space; `views/admin.ts` and `views/people.ts` the admin's pages and one person's page (shared with the owner for admins).
 - `reset.ts` one-time reset links (token, life, the wa.me link, the fixed message); `views/reset.ts` the page a link opens. `auth/limits.ts` the sign-in rate limit.
-- `clock.ts` and `test-hooks.ts`: a movable clock and a seeding route, for tests only (see below).
+- `kits/edit.ts` the owner's kit editor rules (labels, kit switch); `names.ts` the bounds on usernames, display names and labels.
+- `clock.ts` and `test-hooks.ts`: a movable clock, a seeding route and the running Worker's boot identity, for tests only (see below).
+
+### The kit editor (AT-5)
+
+On the owner's page for one space (`/owner/spaces/<id>`), owner only:
+
+- **Switch the kit** to School, Company or University. The form says, in place, that switching replaces every name in the space with the chosen kit's names, including names the owner edited. The first press opens a confirm step on its own page (no browser `confirm()`): it repeats the warning and offers **Yes, replace the names** or **Cancel**. Only the confirming press writes.
+- **What a switch replaces:** the space's own kit row takes a fresh copy of the chosen seed kit's name, labels and reserved settings. **What it keeps:** the space's languages and theme (logo and colour), and everything outside the kit row: people, memberships, groups, assignments, subjects, chapters, lessons and materials are not touched (AT-5 checks every row).
+- **Edit any name** of any of the nine concepts in each of the space's languages (one box per language and concept; each concept is described in plain words so the owner knows which name it is). Each name is 1 to 40 characters on one line; every language must carry exactly the nine keys; names are stored as typed and escaped wherever they are shown. Saving edits only this space's kit row: never the seed kits (product constants in `src/kits/seed.ts`) and never another space.
+- **Edit the theme:** a new colour and, optionally, a new logo (same rules as at creation: PNG, JPEG or SVG by content, at most 1 MB).
+- Each form writes one statement on this space's kit row, and only the part it edits (`json_set`), so the three forms never overwrite each other. **No code change and no deploy is needed to relabel**: every page reads its words through the one label function from the space's kit row.
+
+### My account: language (AT-5)
+
+My account shows the language of the person's pages and a link, **Change the language**, to `/account/language`: a choice among the languages of the person's space (their latest membership; for the owner, who has none, Arabic and English), each named in its own words. The choice is stored per person (`user.lang`, `migrations/0004_person_language.sql`). Inside a space it decides the page language and direction (`dir="rtl"` for Arabic, `dir="ltr"` for English) of that person's pages when the space offers that language; without a choice the space's first language applies, as before. Outside any space, a signed-in person's pages follow their stored choice when there is one (simpler than a separate rule); otherwise they keep today's behaviour (the browser's language). The WhatsApp reset message stays in the space's first language whatever the sender reads. The language choice has its own page so that My account keeps one form besides signing out (AT-4 checks that).
+
+### Bounds and cross-origin forms (AT-5 carried items)
+
+- **Usernames** are at most 32 characters wherever one is accepted (every username box says so with `maxlength`). At a password door (sign-in, recovery code, reset link) a longer one is read as no username at all: it matches no account and never builds a longer rate-limit key.
+- **Display names** are 1 to 100 characters on one line (no line breaks, tabs, separators or bidirectional controls) on both appoint forms, so the fixed WhatsApp message keeps its four lines and stays short.
+- **Every form refuses a post from another site or with no Origin**, whatever the body type (form, multipart, text or JSON): a request that may change something must carry this site's own Origin (or a browser's same-origin `Sec-Fetch-Site`).
+- The Arabic "access ended" sentence names whom to contact after «للتواصل:», so it reads correctly with any admin label; the Arabic link hint isolates `http://` and `https://` left-to-right.
 
 ### Pages inside a space (AT-4)
 
@@ -160,6 +182,7 @@ npm run test:at1                  # AT-1 in Chromium against the Worker running 
 npm run test:at4                  # AT-4 in Chromium, phone width, Arabic
 npm run test:at3                  # AT-3 in Chromium, phone width, Arabic
 npm run test:at2                  # AT-2 in Chromium, phone width, Arabic
+npm run test:at5                  # AT-5 in Chromium, phone width, Arabic first, then English
 npm run test:at1:midnight         # AT-1 with the Worker's clock starting at 23:59:58 UTC
 npm run test:guard:reset          # reset links: single use, username, 30 minutes, who may issue, the number kept private
 npm run test:guard:doors          # the sign-in rate limit, and access starting on its start date
@@ -167,6 +190,8 @@ npm run test:guard:labels         # no role word hard-coded in a page
 npm run test:guard:clock          # the test clock and the seeding route are absent from the production bundle
 npm run test:guard:spaces         # a space never reads another space's rows
 npm run test:guard:roles          # every admin and publisher route is behind its role gate
+npm run test:guard:cross-origin   # every POST route refuses another site's or an origin-less post
+npm run test:guard:bounds         # usernames, display names and kit labels are bounded
 npm run typecheck
 ```
 
@@ -179,6 +204,8 @@ The AT-3 test seeds only the starting point (people, the group Science, the empt
 The role guard (`test/guards/role-gates.test.ts`) reads the router's own route table (and the middleware the router declares through its `use()` helper, so a catch-all handler that happens to take two parameters is still a handler) and fails if a route that changes data, or that serves an admin, publisher or owner page, is registered outside `/s/<space>/admin/*`, `/s/<space>/publish/*` or `/owner`, or before that prefix's gate, apart from a short named list (setup, sign-in, sign-out, recovery, own password, the test-only hooks). A self-check proves it catches planted violations. A live sweep then calls every gated route, by its own method and with real ids, as a learner, an admin and a publisher, and expects 403 wherever the role is missing.
 
 The AT-2 test needs no seeding route at all: the owner, the space and its admin come from the owner's real forms; every admin action goes through the admin's real pages in Chromium at phone width in Arabic: appointing Hadeer, Shimaa and two learners (an unreadable number, an admin role and an end date past the admin's own are refused), the group Science, the subject Mathematics and its assignments, reset links for Hadeer and the first learner (last digits, one tap, the WhatsApp and Copy buttons side by side, the decoded message compared word for word, the clipboard, a wrong username, a second use, a fresh link killing the old one, 30-minute expiry), a new password set directly, and the four homes (Hadeer publishes through her own screen). Screenshots go to `evidence/at-2/`. The reset-link guard (`test/guards/reset-links.test.ts`) checks the same rules at request level, plus the stored hash, the bounded attempts, sessions ending, who may issue (and that refusals store nothing), the number never in a page or the log, and the owner's side. The doors guard (`test/guards/doors.test.ts`) checks the rate limit (per username, per client, no writes when refused, reset usernames counted) and `valid_from`.
+
+The AT-5 test needs no seeding route: Mesk School, its people, the group Science, Mathematics and its five materials are made through the real owner, admin and publisher screens (AT-1, AT-2, AT-3) in Chromium at phone width in Arabic. Then the owner creates Delta Logistics on the Company kit, switches Mesk School to the Company kit through the confirm step and renames Trainer to Coach / مرشد. It checks every admin, publisher and learner page for مرشد, موظّف, فريق, دورة and for the absence of the old words; the first learner's lesson (titles, order, addresses, file bytes) and every people and content row unchanged; Delta Logistics and the seed kit untouched; the admin and the first learner switching to English (left-to-right) while another learner stays Arabic; and the theme. **"No code changes" is checked three ways** around the owner's kit change: the same commit and no change on disk to the code or its configuration; the production bundle built as a deploy builds it (`wrangler deploy --dry-run`) hashes to the same SHA-256; and the same running Worker instance served before and after (the test build's boot identity is unchanged, so nothing was reloaded or redeployed). Every row of every product table is compared before and after: the only row written is Mesk School's own kit row (the usage counter table, which every page view moves, is left out of the comparison). Screenshots go to `evidence/at-5/`. The cross-origin guard posts to every POST route of the router (read from its route table, so a new form is swept too) as the person who may use it, from another site or with no Origin, as form, multipart with files, text and JSON: all 403, no session started, no row or file changed; a positive control then changes things through the same forms from the product's own pages. The bounds guard checks usernames, display names, labels (and their escaping), the kit choice, the theme inputs and the account language at request level.
 
 The AT-1 test takes "today" from the Worker's clock and sets the clock to fixed times of the end date, so it passes whenever it runs; `npm run test:at1:midnight` (a CI step) starts the Worker's clock two seconds before midnight UTC to prove it.
 
@@ -202,9 +229,13 @@ The space guard (`test/guards/space-isolation.test.ts`) scans every SQL statemen
 - **A file opened in the browser shows in its own viewer.** Chromium and Firefox show PDFs inline; a phone may download the PDF instead. Images show in the lesson page.
 - **Published is all or nothing.** Publishing shows the whole subject to whoever it is assigned to; there are no drafts of single lessons.
 - **Visibility is checked per request.** A learner removed from a group, or a subject unpublished, disappears at their next page; a file already downloaded stays on their device.
-- **One space's language per person on My account.** The page follows the person's latest membership; a person in two spaces with different first languages sees the language of that one.
+- **One language choice per person.** It is stored on the person, not per space; the choices offered are the languages of the person's latest membership. In a space that does not offer the chosen language, that space's first language applies. In this release every space has both Arabic and English.
+- **The "access ended" page** shows the message in the space's first language and then its second, whatever language the person chose.
+- **A custom kit keeps its kit name.** After renaming labels, the owner's pages still call the kit by the seed's name (for example Company); there is no "save as a new kit" or copy between spaces.
+- **A replaced logo** shows at the next page load; browsers revalidate it (no-cache).
+- **Validation messages for labels** say which rule was broken, not which box; the owner's typing is kept in the form.
 - **Owner last resort** (both password and recovery code lost): not built in this task. It needs a short documented step for the Cloudflare account holder; it belongs with the first deploy.
-- **Pages outside a space** (sign-in, setup, owner) follow the browser's language: Arabic if the browser prefers it, otherwise English. Inside a space, pages use the space's first language.
+- **Pages outside a space** (sign-in, setup, owner) follow the browser's language (Arabic if the browser prefers it, otherwise English), unless the signed-in person stored a language choice. Inside a space, pages use the person's choice when the space offers it, else the space's first language.
 - **Dev tooling:** `npm audit` reports advisories in the `undici` copy bundled with Wrangler 4.149 (used only for local emulation and tests, never deployed). The fixed Wrangler releases were under two weeks old when this was pinned; update Wrangler in a later task.
 
 ## Deploy and rollback
@@ -212,6 +243,6 @@ The space guard (`test/guards/space-isolation.test.ts`) scans every SQL statemen
 Deploying is the owner's step (it needs the owner's Cloudflare account; see the hosting decision). `wrangler.jsonc` holds no account id, database id or secret. On the first `wrangler deploy`, Wrangler's automatic provisioning creates the D1 database and the R2 bucket in the owner's account (if the installed Wrangler does not, create them with `wrangler d1 create lms-lego` and `wrangler r2 bucket create lms-lego-files`). Then `wrangler d1 migrations apply lms-lego --remote`. Re-read the free-plan figures in the hosting decision before the first deploy.
 
 - **Roll back the code:** Wrangler keeps previous versions of the Worker; `wrangler rollback` (or one click under the Worker's Deployments in the Cloudflare dashboard) returns to the previous version.
-- **Data:** migrations are additive (new tables and columns only), so older code keeps working with a newer database. D1 keeps 30 days of point-in-time history for recovery. Task 4 adds `migrations/0003_people.sql` (`reset_link`, `attempt_limit`); code from before it ignores both tables.
+- **Data:** migrations are additive (new tables and columns only), so older code keeps working with a newer database. D1 keeps 30 days of point-in-time history for recovery. Task 4 adds `migrations/0003_people.sql` (`reset_link`, `attempt_limit`); code from before it ignores both tables. Task 5 adds `migrations/0004_person_language.sql` (one nullable column, `user.lang`); older code ignores it. A kit switch or rename is data only: to undo one, the owner switches back or renames again (or the database's point-in-time history restores the kit row).
 
 **Origin.** The brainstorm that led here compared Moodle, Open edX, Canvas, Frappe Learning, LearnHouse, Chamilo, BookStack and Google Classroom, and ended at two conclusions: the owner's real need is small (subject, chapter, lesson, material, with controlled access), and zero recurring cost is a hard requirement. Both conclusions shaped the product contract and the hosting decision.

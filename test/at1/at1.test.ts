@@ -356,7 +356,7 @@ describe('AT-1 owner shapes a space and appoints its admin', { concurrency: fals
     await signIn(admin, ADMIN.username, ADMIN.password);
     assert.ok(admin.url().endsWith(`/s/${spaceId}`), 'the admin can still sign in');
     const english = `Your access to ${SPACE} ended on ${endDate}. Contact the owner.`;
-    const arabic = `انتهى وصولك إلى ${SPACE} في ${endDate}. تواصل مع المالك.`;
+    const arabic = `انتهى وصولك إلى ${SPACE} في ${endDate}. للتواصل: المالك.`;
     assert.equal((await admin.locator('#access-ended').innerText()).trim(), arabic, 'message in the first language');
     assert.equal((await admin.locator('#access-ended-alt').innerText()).trim(), english, 'and in the second');
     assert.equal(await admin.getAttribute('html', 'dir'), 'rtl');

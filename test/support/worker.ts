@@ -47,6 +47,8 @@ export interface RunningWorker {
   log(): string;
   /** Reads the local test database directly (to check what was stored). */
   sql(query: string): Promise<Record<string, unknown>[]>;
+  /** Runs several statements (separated by ;) in one call: one result list per statement. */
+  sqlAll(query: string): Promise<Record<string, unknown>[][]>;
 }
 
 export async function startWorker(): Promise<RunningWorker> {
@@ -106,6 +108,14 @@ export async function startWorker(): Promise<RunningWorker> {
       if (start < 0) throw new Error(`no JSON from wrangler d1 execute:\n${out}`);
       const parsed = JSON.parse(out.slice(start));
       return parsed[0]?.results ?? [];
+    },
+    async sqlAll(query: string) {
+      const out = await run([
+        'd1', 'execute', 'lms-lego', '--local', '--env', 'test', '--persist-to', persist, '--json', '--command', query,
+      ]);
+      const start = out.search(/^\[/m);
+      if (start < 0) throw new Error(`no JSON from wrangler d1 execute:\n${out}`);
+      return (JSON.parse(out.slice(start)) as { results?: Record<string, unknown>[] }[]).map((r) => r.results ?? []);
     },
     async stop() {
       if (child.exitCode === null && child.pid) {

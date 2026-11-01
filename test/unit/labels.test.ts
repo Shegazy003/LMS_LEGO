@@ -64,3 +64,20 @@ test('labels: writing direction follows the language', () => {
   assert.equal(dirFor('ar'), 'rtl');
   assert.equal(dirFor('en'), 'ltr');
 });
+
+// Task 5: the Arabic "access ended" sentence must read correctly whatever the
+// admin label is (with or without the definite article), so it no longer
+// builds «تواصل مع <label>»: it names whom to contact after «للتواصل:».
+test('labels: the Arabic "access ended" sentence reads correctly for any admin label and for the owner', () => {
+  for (const seed of ['school', 'company', 'university']) {
+    const t = makeLabel('ar', seedKit(seed));
+    const sentence = t('accessEnded', { space: 'مدرسة مسك', date: '2026-12-01', contact: t('admin') });
+    assert.equal(sentence, `انتهى وصولك إلى مدرسة مسك في 2026-12-01. للتواصل: ${t('admin')}.`, seed);
+  }
+  const t = makeLabel('ar', seedKit('school'));
+  assert.equal(
+    t('accessEnded', { space: 'مدرسة مسك', date: '2026-12-01', contact: t('ownerWord') }),
+    'انتهى وصولك إلى مدرسة مسك في 2026-12-01. للتواصل: المالك.',
+  );
+  assert.ok(!UI.ar.accessEnded.includes('تواصل مع'), 'no phrasing that needs the definite article');
+});

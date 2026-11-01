@@ -7,13 +7,14 @@ import { html } from 'hono/html';
 import type { Label, Lang } from '../labels.ts';
 import type { MaterialRow, OutlineChapter, SubjectItem, SubjectRow } from '../learning.ts';
 import type { EditableLesson } from '../publishing.ts';
-import { errorBox, type Html } from './layout.ts';
+import { errorBox, ltrSentence, type Html } from './layout.ts';
 import { materialItem, spacePage } from './learn.ts';
 import type { SpaceView } from './space.ts';
 
 const TITLE_MAX = 200;
 const NOTE_MAX = 10_000;
 const ACCEPT = 'application/pdf,image/png,image/jpeg,image/webp,image/gif';
+const addressField = (t: Label) => ltrSentence(t, 'addressField', { http: 'http://', https: 'https://' });
 
 const base = (space: SpaceView) => `/s/${space.id}/publish`;
 
@@ -123,14 +124,14 @@ ${items}
   <h3>${t('addVideo')}</h3>
   <input type="hidden" name="kind" value="video_link">
   ${titleField}
-  <label>${t('addressField')}<input name="url" required dir="ltr" inputmode="url" autocomplete="off"><span class="hint">${t('videoHint')}</span></label>
+  <label>${addressField(t)}<input name="url" required dir="ltr" inputmode="url" autocomplete="off"><span class="hint">${t('videoHint')}</span></label>
   <button type="submit">${t('add')}</button>
 </form>
 <form id="add-link" class="stack card" method="post" action="${action}">
   <h3>${t('addLink')}</h3>
   <input type="hidden" name="kind" value="link">
   ${titleField}
-  <label>${t('addressField')}<input name="url" required dir="ltr" inputmode="url" autocomplete="off"></label>
+  <label>${addressField(t)}<input name="url" required dir="ltr" inputmode="url" autocomplete="off"></label>
   <button type="submit">${t('add')}</button>
 </form>
 <form id="add-note" class="stack card" method="post" action="${action}">
