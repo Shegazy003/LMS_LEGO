@@ -1,6 +1,6 @@
 # First deploy: the owner's bundle
 
-**Date:** 1 November 2026. **Status:** the deploy rails are built and merged (build task 6, pull request #15); the deploy workflow exists and has never run. Used once the owner has answered the two decisions below and added the secrets. Everything here is a RED item for the human owner (accounts, credentials, money, first public publication); the delegate does not act on any of it alone (decision 002).
+**Date:** 1 November 2026. **Status:** DONE. First deploy run 41357099847 (1 November 2026) went live at `https://lms-lego.lmslego.workers.dev`; its smoke check failed only on a fresh-address 404, fixed in build task 9 (#21); the rerun 41361374176 on `258bbdb` passed every step including the smoke check. The owner completed first setup at once and accepted release 1 the same night.
 
 ## What happens, in order
 
