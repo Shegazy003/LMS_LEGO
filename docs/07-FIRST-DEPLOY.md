@@ -14,6 +14,12 @@
    - the PDF viewer and its sandbox are checked in a real browser.
 4. **Mesk School goes live** when those checks pass.
 
+## Owner's answers, 1 November 2026
+
+- **File storage: A.** Keep R2; the owner adds a payment card when Cloudflare asks.
+- **Password strength: B.** Stay on the free plan with `PASSWORD_ITERATIONS` = 10,000, applied before the first deploy (build task 8).
+- **Account and key:** the owner asked for the steps; they are in the visual guide (claude.ai artifact "LMS Lego Cloudflare Setup") and in steps A to C below.
+
 ## Decision needed first: file storage and a payment card
 
 Cloudflare's file storage (R2) has a free allowance of 10 GB, with downloads free. Current guides report that Cloudflare **asks for a payment card before the first storage bucket can be created**, even when usage stays inside the free allowance. Overage beyond the free lines is billed per use; there is no hard spending cap.
@@ -42,15 +48,16 @@ Build task 7 (pull request #17) made the strength a setting stored with each pas
 
 **A. Cloudflare account**
 
-1. Go to `dash.cloudflare.com` and sign up with your own email. Choose the Free plan.
-2. If you chose option A above: open **R2 Object Storage** in the left menu and accept Cloudflare's prompt to add a payment method. Do not create a bucket; the deploy does that.
-3. Note your **Account ID**: it is shown on the right side of the account home page. It is not a secret.
+1. Go to `dash.cloudflare.com/sign-up` and sign up with your own email. Choose the Free plan; no website or domain is needed.
+2. Open **Workers & Pages** once. The first visit assigns the account its free `workers.dev` subdomain, which the first deploy needs (otherwise it stops and must be restarted).
+3. Copy your **Account ID** from **Account details** on the Workers & Pages page (or "Copy account ID" from the menu next to the account name). It is not a secret.
+4. Option A: open **R2 object storage** and accept Cloudflare's prompt to subscribe and add a payment method. Do not create a bucket; the deploy does that.
 
 **B. A deploy key for the delivery line**
 
-1. In Cloudflare: your profile icon → **My Profile** → **API Tokens** → **Create Token** → start from the template **"Edit Cloudflare Workers"**.
-2. Add two permissions to it: **Account → D1 → Edit** and **Account → Workers R2 Storage → Edit** (skip the R2 line if you chose option B).
-3. Under **Account Resources**, choose only your account. Create the token and copy it once; Cloudflare will not show it again.
+1. In Cloudflare: your profile icon → **My Profile** → **API Tokens** → **Create Token** → **Use template** next to **"Edit Cloudflare Workers"**.
+2. Add one permission: **Account → D1 → Edit**. The template already includes **Workers R2 Storage → Edit**; check it is listed and add it only if missing.
+3. Under **Account Resources**, include only your account (leave Zone Resources on your account). Continue to summary, create the token, and copy it once; Cloudflare will not show it again.
 
 **C. Hand the key to GitHub, not to anyone**
 
