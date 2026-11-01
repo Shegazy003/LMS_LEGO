@@ -1,6 +1,31 @@
 # Current progress
 
-## Current state, 1 November 2026 (morning): AT-1, AT-4 and AT-3 delivered; build task 4 (AT-2) in progress
+## Current state, 1 November 2026 (midday): AT-1, AT-4, AT-3 and AT-2 delivered; build task 5 (AT-5) in progress
+
+**What is true now**
+
+- **AT-1 delivered** (pull request #4, merge `c9a69e3`): owner setup and recovery code, spaces on kits, admins with end dates, the admin's themed view, the "access ended" refusal, the usage panel.
+- **AT-4 delivered** (pull request #6, merge `b47eca6`): the learner sees exactly the assigned, published subjects; files behind access checks; change own password; role gating; cross-space isolation.
+- **AT-3 delivered** (pull request #8, merge `58f8ba6`): the publisher's editors; content-sniffed uploads; links; notes; publish and unpublish; another publisher refused; the role-gate guard.
+- **AT-2 delivered** (pull request #10, merge `d75f138`): the admin appoints publishers and learners with end dates and normalised mobiles, forms groups, creates subjects with a responsible publisher and readers, sets passwords directly, and sends one-time WhatsApp reset links (number confirmation, WhatsApp and Copy buttons, fixed message in the space language, username required, single use, 30 minutes). Also delivered: the owner's reset tools for admins; a rate limit on failed sign-ins, reset usernames and the recovery code; start dates honoured; the AT-1 midnight flaw fixed; the role guard's two-parameter gap closed; the runner image in the CI cache key. Red before green; Lead ACCEPTED; Verifier PASS on `11ae007`; CI green on `main`.
+- Contract 0.3 stays frozen. Nothing is deployed.
+
+**Active priority:** build task 5, acceptance test **AT-5** (the owner switches Mesk School's kit and renames a label; every page changes, content survives, another space is untouched, an account's language flips the layout, and no code changes). It is the last acceptance test of release 1.
+
+**Carried into task 5:**
+- a cross-origin sweep over the admin and reset forms, as AT-3 did for editing;
+- cap username length before building the rate-limit key;
+- bound the length of display names placed in the WhatsApp message;
+- the Arabic expiry sentence reads correctly whatever the admin label is (today «تواصل مع مدير»);
+- the mixed-script link hint renders cleanly right-to-left.
+
+**Carried to the first-deploy task (before AT-1 step 4 and AT-2 step 6):** the owner's last-resort reset documented and tested; owner setup immediately after the first deploy; re-check PDF viewing and its sandbox in a real browser; one real WhatsApp send on a phone; re-read the Cloudflare free-tier figures and WhatsApp rates.
+
+**Waiting on the human owner:** nothing for task 5. Still open: subject names from Hadeer and Shimaa ("Mathematics" stands in), the Cloudflare account (needed for the first deploy, which follows task 5).
+
+**Known limits of this checkpoint:** the admin cannot yet rename, end early or remove people, groups or subjects; the editor cannot rename or delete; a username can be locked for 15 minutes by five wrong passwords; uploads are buffered in memory up to 25 MB; usage counts are approximate; end dates are UTC days; the Verifier runs on a different Anthropic model rather than a different vendor (exception in decision 002).
+
+## Earlier on 1 November 2026 (morning): AT-1, AT-4 and AT-3 delivered, task 4 opened (historical)
 
 **What is true now**
 
