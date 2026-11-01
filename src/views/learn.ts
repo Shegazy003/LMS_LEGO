@@ -1,7 +1,7 @@
-// Reading pages inside a space: the learner's home, the publisher's home (a
-// read-only list until the subject editor exists), a subject with its chapters
-// and lessons, and a lesson with its materials. Shown in the space's first
-// language with its kit's labels and theme. Nothing here changes anything.
+// Reading pages inside a space: the learner's home, a subject with its
+// chapters and lessons, and a lesson with its materials. Shown in the space's
+// first language with its kit's labels and theme. Nothing here changes
+// anything (the publisher's pages are in publish.ts).
 import { html } from 'hono/html';
 import type { Label, Lang, LabelKey } from '../labels.ts';
 import type { LessonRow, MaterialKind, MaterialRow, OutlineChapter, SubjectItem } from '../learning.ts';
@@ -9,13 +9,13 @@ import { externalUrl } from '../links.ts';
 import { layout, type Html } from './layout.ts';
 import { spaceHeader, spaceNav, type SpaceView } from './space.ts';
 
-function spacePage(t: Label, lang: Lang, space: SpaceView, title: string, body: Html): Html {
+export function spacePage(t: Label, lang: Lang, space: SpaceView, title: string, body: Html): Html {
   return layout({ t, lang, title, signedIn: true, header: spaceHeader(space), body: html`${spaceNav(t, space)}${body}` });
 }
 
-function subjectList(t: Label, space: SpaceView, id: string, items: SubjectItem[], showDrafts: boolean): Html {
-  return html`<ul id="${id}" class="list card">${items.map(
-    (s) => html`<li><a href="/s/${space.id}/learn/${s.id}"><bdi>${s.title}</bdi></a>${showDrafts && !s.is_published ? html` <span class="muted">(${t('notPublished')})</span>` : ''}</li>`,
+function subjectList(space: SpaceView, items: SubjectItem[]): Html {
+  return html`<ul id="my-list" class="list card">${items.map(
+    (s) => html`<li><a href="/s/${space.id}/learn/${s.id}"><bdi>${s.title}</bdi></a></li>`,
   )}</ul>`;
 }
 
@@ -23,15 +23,7 @@ function subjectList(t: Label, space: SpaceView, id: string, items: SubjectItem[
 export function learnerHome(t: Label, lang: Lang, space: SpaceView, displayName: string, items: SubjectItem[]): Html {
   const body = html`<p>${t('welcome', { name: displayName })}</p>
 <h2>${t('assignedToYou')} <span class="muted">· ${t('subject')}</span></h2>
-${items.length ? subjectList(t, space, 'my-list', items, false) : html`<p id="nothing-yet" class="card message">${t('nothingAssigned')}</p>`}`;
-  return spacePage(t, lang, space, space.name, body);
-}
-
-/** A publisher's home: the subjects they are responsible for. */
-export function publisherHome(t: Label, lang: Lang, space: SpaceView, displayName: string, items: SubjectItem[]): Html {
-  const body = html`<p>${t('welcome', { name: displayName })}</p>
-<h2>${t('responsibleFor')} <span class="muted">· ${t('subject')}</span></h2>
-${items.length ? subjectList(t, space, 'publisher-list', items, true) : html`<p id="nothing-yet" class="card message">${t('nothingHere')}</p>`}`;
+${items.length ? subjectList(space, items) : html`<p id="nothing-yet" class="card message">${t('nothingAssigned')}</p>`}`;
   return spacePage(t, lang, space, space.name, body);
 }
 
@@ -55,7 +47,7 @@ export function subjectPage(t: Label, lang: Lang, space: SpaceView, head: { titl
   return spacePage(t, lang, space, head.title, body);
 }
 
-const KIND_LABEL: Record<MaterialKind, LabelKey> = {
+export const KIND_LABEL: Record<MaterialKind, LabelKey> = {
   pdf: 'kindPdf',
   image: 'kindImage',
   video_link: 'kindVideo',
@@ -63,7 +55,9 @@ const KIND_LABEL: Record<MaterialKind, LabelKey> = {
   note: 'kindNote',
 };
 
-function materialItem(t: Label, space: SpaceView, m: MaterialRow): Html {
+/** One material as it is read; the publisher's lesson editor adds its own
+ * controls after it. */
+export function materialItem(t: Label, space: SpaceView, m: MaterialRow, controls: Html | string = ''): Html {
   const head = html`<div class="kind muted">${t(KIND_LABEL[m.kind])}</div><div class="title" dir="auto">${m.title}</div>`;
   const file = `/s/${space.id}/file/${m.id}`;
   let content: Html | string = '';
@@ -80,7 +74,7 @@ function materialItem(t: Label, space: SpaceView, m: MaterialRow): Html {
   } else if (m.kind === 'note') {
     content = html`<div class="note" dir="auto">${m.note_text ?? ''}</div>`;
   }
-  return html`<li class="card" data-kind="${m.kind}" data-id="${m.id}">${head}${content}</li>`;
+  return html`<li class="card" data-kind="${m.kind}" data-id="${m.id}">${head}${content}${controls}</li>`;
 }
 
 /** A lesson: where it sits, then its materials in order. */

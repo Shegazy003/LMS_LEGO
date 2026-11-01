@@ -46,6 +46,15 @@ export class Client {
     return res;
   }
 
+  /** Posts with this client's cookies but the given request headers in place
+   * of the browser's Origin (a forged cross-site form, or one with no Origin). */
+  async postWith(path: string, fields: Record<string, string> | FormData, headers: Record<string, string>): Promise<Response> {
+    const body = fields instanceof FormData ? fields : new URLSearchParams(fields);
+    const res = await fetch(this.base + path, { method: 'POST', redirect: 'manual', body, headers: this.headers(headers) });
+    this.remember(res);
+    return res;
+  }
+
   async postRaw(path: string, init: RequestInit): Promise<Response> {
     const res = await fetch(this.base + path, { redirect: 'manual', ...init });
     this.remember(res);

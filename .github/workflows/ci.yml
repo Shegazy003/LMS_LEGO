@@ -14,7 +14,7 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     env:
       WRANGLER_SEND_METRICS: "false"
     steps:
@@ -24,8 +24,32 @@ jobs:
           node-version: 22
       - name: Install (lockfile only, when present)
         run: if [ -f package-lock.json ]; then npm ci; fi
+      # Browser install reliability (one run timed out inside the Chromium
+      # download before any test ran). Chromium is cached between runs in
+      # Playwright's own folder, keyed on the exact Playwright version from the
+      # lockfile: each Playwright release pins one Chromium build, so a new
+      # version gets a new cache entry and an old one is never reused. The
+      # cache holds only the downloaded browser; the install step below still
+      # runs every time (system libraries first, then the browser, which is
+      # only checked on a hit). Download attempts are bounded and retried.
+      - name: Read the Playwright version
+        id: playwright
+        run: echo "version=$(node -p "require('playwright/package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Cache Chromium for the browser test
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-chromium
       - name: Install Chromium for the browser test
-        run: npx playwright install --with-deps chromium
+        timeout-minutes: 10
+        run: |
+          npx playwright install-deps chromium
+          for attempt in 1 2 3; do
+            timeout 180 npx playwright install chromium && exit 0
+            echo "::warning::Chromium install attempt $attempt did not finish; retrying"
+            sleep 10
+          done
+          exit 1
       # Each check below runs even if an earlier one failed, so every result
       # is visible. The job fails if any of them fails.
       - name: Rails
@@ -53,6 +77,12 @@ jobs:
       - name: AT-4 guard - a space never reads another space's rows
         if: success() || failure()
         run: npm run test:guard:spaces
+      - name: AT-3 the publisher builds the subject
+        if: success() || failure()
+        run: npm run test:at3
+      - name: AT-3 guard - every admin and publisher route is role-gated
+        if: success() || failure()
+        run: npm run test:guard:roles
       - name: Upload evidence (screenshots, reports)
         if: always() && hashFiles('evidence/**') != ''
         uses: actions/upload-artifact@v4
