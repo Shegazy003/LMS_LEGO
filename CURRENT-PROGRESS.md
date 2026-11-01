@@ -1,6 +1,38 @@
 # Current progress
 
-## Current state, 1 November 2026 (afternoon): release 1 code-complete (AT-1 to AT-5 delivered); build task 6 (first-deploy rails) in progress
+## Current state, 1 November 2026 (evening): release 1 code-complete and deploy-ready; build task 7 (password strength as a setting) in progress
+
+**What is true now**
+
+- **All five acceptance tests of release 1 are delivered** (AT-1 #4, AT-4 #6, AT-3 #8, AT-2 #10, AT-5 #13), each Builder → Lead ACCEPTED → Verifier PASS → merged, with CI green on `main`.
+- **First-deploy rails delivered** (pull request #15, merge `196ada9`). This covers:
+  - a deploy workflow that runs only when started by hand on `main`, with read-only permissions; secrets reach only the Cloudflare steps;
+  - D1 and R2 created if missing, migrations applied before the new code, and a smoke check of the live address;
+  - the owner's last-resort reset: the code is made locally, and one command installs it;
+  - an ordered theme save, and near-origin sweep cases.
+  The Verifier gave HOLD on one item (the smoke check accepted a 200 on `/`). The fix was red first, and the re-check gave PASS. **The deploy workflow has never run.**
+- **A go-live risk found by task 6:** the Workers Free plan's 10 ms CPU limit against PBKDF2 at 100,000 iterations (about 45 to 65 ms locally). This is now decision 2 in the owner's bundle ([docs/07-FIRST-DEPLOY.md](docs/07-FIRST-DEPLOY.md)).
+- Contract 0.3 stays frozen. Nothing is deployed. Release 1 is accepted only after the go-live sitting: AT-1 step 4 and AT-2 step 6.
+
+**Active priority:** build task 7. It makes password strength a setting stored with each password, and upgrades a password at the next sign-in. **Today's strength stays the default,** so the owner's decision changes one setting, not code. This prepares either answer; it decides nothing.
+
+**Waiting on the human owner (RED, one bundle):**
+1. **File storage.** A (recommended): a card when Cloudflare asks, with 10 GB free. B: no card, Workers KV, 1 GB.
+2. **Password strength.** A: Workers Paid at $5 a month. B (recommended for the pilot): stay free with lighter hashing, then A when a second organization joins.
+3. **Account and secrets.** The Cloudflare account and one deploy key, stored as GitHub secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
+4. **A go-live sitting.** The delegate starts the deploy. The owner completes `/setup` at once and keeps the recovery code on paper. Then AT-1 step 4 and AT-2 step 6, and a check of the PDF viewer in a real browser.
+
+Still welcome any time: subject names from Hadeer and Shimaa; the owner's pass over the Arabic kit labels.
+
+**Live-sitting risks (documented):**
+- A first-time workers.dev subdomain: the owner opens Workers & Pages once.
+- The R2 payment method.
+- The deploy key needs D1 Edit and R2 Edit.
+- The CPU limit above.
+
+**Known limits of release 1:** unchanged from the previous state below.
+
+## Earlier on 1 November 2026 (afternoon): release 1 code-complete, task 6 opened (historical)
 
 **What is true now**
 

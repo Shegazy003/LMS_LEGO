@@ -35,6 +35,7 @@ The platform's rule asks for a Verifier from a **different AI vendor** than the 
 | 3 · AT-3 | #8 | Opus 5.5, worktree, `build/at-3` | 41254729207, 41255636678 | 41255924519 on `5ce7c4d` | ACCEPTED | PASS (Sonnet 5.5) | `58f8ba6`, 1 November 2026 |
 | 4 · AT-2 | #10 | Opus 5.5, worktree, `build/at-2` | 41258695307, 41260026068 | 41260452130 on `11ae007` | ACCEPTED | PASS (Sonnet 5.5) | `d75f138`, 1 November 2026 |
 | 5 · AT-5 | #13 | Opus 5.5, worktree, `build/at-5` | 41263260246, 41263926426, 41264571138 | 41264967169 on `4f9c40f` | ACCEPTED | PASS (Sonnet 5.5) | `8133ded`, 1 November 2026 |
+| 6 · first-deploy rails | #15 | Opus 5.5, worktree, `build/deploy`; rework by a fresh Opus Builder | 41268178967, 41269112439; rework 41271098299 | 41269301936 on `04c8d6e`; rework 41271638319 on `9f9a995` | ACCEPTED, then ACCEPTED (rework) | HOLD (smoke check accepted a 200 on `/`), then PASS on re-check | `196ada9`, 1 November 2026 |
 
 ## Working rules for the agents (in addition to AGENTS.md)
 
@@ -42,4 +43,5 @@ The platform's rule asks for a Verifier from a **different AI vendor** than the 
 - **The Builder works in its own worktree and branch** (`build/<task>`), never on `main`, and opens its pull request through the GitHub REST API. It commits the failing tests first (one commit, red in CI), then the implementation (green in CI), so the red/green evidence is in the branch history.
 - **Only the Lead edits `CURRENT-PROGRESS.md`.** The Builder reports in the pull request and in its hand-back.
 - **Reports carry milestones only**: `CANDIDATE READY` (with pull request, exact commit, CI run, named steps, known limits), `PASS` or `HOLD`, `ACCEPTED`, `REWORK`, `REPLAN`, `BLOCKED RED`.
+- **A Builder's worktree stays until its pull request is merged.** On task 6 the Lead removed it at `CANDIDATE READY`, so the Builder could not be resumed for the rework and a fresh Builder took a self-contained brief (recorded 1 November 2026).
 - **The Lead stamps before the Verifier reads.** The Verifier's verdict binds the commit hash. The delegate merges on `PASS`; a `HOLD` goes back to the same Builder branch as `REWORK`.

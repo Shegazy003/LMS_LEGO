@@ -1,6 +1,6 @@
 # First deploy: the owner's bundle
 
-**Date:** 1 November 2026. **Status:** prepared while build task 5 (AT-5) is in progress; used after AT-5 is delivered. Everything here is a RED item for the human owner (accounts, credentials, money, first public publication); the delegate does not act on any of it alone (decision 002).
+**Date:** 1 November 2026. **Status:** the deploy rails are built and merged (build task 6, pull request #15); the deploy workflow exists and has never run. Used once the owner has answered the two decisions below and added the secrets. Everything here is a RED item for the human owner (accounts, credentials, money, first public publication); the delegate does not act on any of it alone (decision 002).
 
 ## What happens, in order
 
@@ -24,6 +24,17 @@ Cloudflare's file storage (R2) has a free allowance of 10 GB, with downloads fre
 | **B. No card: move files to Workers KV** | Store PDFs and images in Cloudflare's key-value store, which needs no card | 1 GB stored in total, at most 1,000 uploads a day, 25 MB per file | No | One small build task (the file layer is already in one module) |
 
 **Recommendation: A.** Mesk School's pilot will stay far below 10 GB, the usage panel already warns before the line, and B would cap the whole product at 1 GB, about 200 lesson PDFs. If the owner prefers never to have a card on file, B is safe and reversible; say "B" and it becomes the next build task.
+
+## Decision needed second: password strength and the free plan's CPU limit
+
+The Workers Free plan allows **10 ms of CPU per request**; a request over it fails with error 1102. Signing in checks the password with PBKDF2 at 100,000 iterations, measured at about 45 to 65 ms of CPU locally (task 6, dated note in `docs/03-HOSTING-DECISION.md`). On the free plan, sign-in would likely fail.
+
+| Option | What it means | Cost | Security |
+|---|---|---|---|
+| **A. Workers Paid** | Keep today's password strength; every free-plan limit rises at once | $5 per month (breaks the zero-cost line) | Unchanged |
+| **B. Stay free (recommended for the pilot)** | Lower the password-hashing work until a sign-in fits inside 10 ms; stored passwords record their own strength and are upgraded at the next sign-in when the plan allows | $0 | Online guessing stays blocked by the wrong-password limit; weaker only if the database itself were ever stolen |
+
+**Recommendation: B for the Mesk School pilot,** then A when a second organization joins. Either way, the team first makes the strength a setting stored with each password (build task 7), with today's strength as the default, so the owner's answer changes one setting and no code.
 
 ## Owner's steps (A to C)
 
