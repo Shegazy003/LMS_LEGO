@@ -10,6 +10,7 @@ A learning space that a non-technical owner can shape like Lego bricks and hand 
 4. [docs/03-HOSTING-DECISION.md](docs/03-HOSTING-DECISION.md): the zero-cost hosting choice and when to revisit it.
 5. [docs/05-ROADMAP.md](docs/05-ROADMAP.md): the line of releases, why release 1 is small, and when each parked idea comes forward.
 6. [docs/04-LATER.md](docs/04-LATER.md): every good idea that is not in this release, with its trigger.
+7. [docs/07-FIRST-DEPLOY.md](docs/07-FIRST-DEPLOY.md): the owner's steps and decision for the first public address.
 
 **How the team works** is in [AGENTS.md](AGENTS.md), [docs/00-OPERATING-CONTRACT.md](docs/00-OPERATING-CONTRACT.md) and [docs/06-DELEGATION-AND-ROLES.md](docs/06-DELEGATION-AND-ROLES.md). They are the short working form of the owner's Completion-First Manifesto and the operating model adopted in the `ai-engineering-platform` repository on 15 October 2026. This repository follows the same roles and rules; it does not copy that platform's machinery.
 
