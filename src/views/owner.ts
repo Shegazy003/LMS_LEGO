@@ -89,6 +89,7 @@ ${errorBox(v.error)}
 }
 
 export interface AdminRow {
+  id: string;
   username: string;
   display_name: string;
   valid_until: string;
@@ -117,7 +118,7 @@ export function ownerSpacePage(
   const langNames = space.kit.languages.map((l) => (l === 'ar' ? t('langNameAr') : t('langNameEn'))).join(' · ');
   const admins = v.admins.length
     ? html`<ul id="admins" class="list">${v.admins.map(
-        (a) => html`<li><strong>${a.display_name}</strong> · <bdi>${a.username}</bdi>
+        (a) => html`<li data-user="${a.id}"><a class="person" href="/owner/spaces/${space.id}/people/${a.id}"><strong>${a.display_name}</strong></a> · <bdi>${a.username}</bdi>
   <div class="muted">${sentence(t, 'validUntil', { date: a.valid_until })} · ${sentence(t, 'mobileEnding', { digits: a.mobile.slice(-4) })}</div></li>`,
       )}</ul>`
     : html`<p id="admins" class="muted">${t('noneAppointed')}</p>`;

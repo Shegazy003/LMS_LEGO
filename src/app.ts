@@ -4,7 +4,12 @@ import { HTTPException } from 'hono/http-exception';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import { csrf } from 'hono/csrf';
 import type { AppEnv, CurrentSpace } from './app-env.ts';
-import { isIsoDate, membershipActive, utcDate } from './access.ts';
+import { isIsoDate, membershipStatus, utcDate } from './access.ts';
+import {
+  appoint, createSet, createTopic, findSet, findTopic, isAppointable, learnersOf, managedPerson, peopleOf, publishersOf,
+  saveSetMembers, saveTopic, setPassword, setsOf, spaceAdmin, topicReaders, topicsOf, type PersonRow,
+} from './admin.ts';
+import { attemptBlock, clearUser, minutesUntil, openDoor, recordFailure } from './auth/limits.ts';
 import { dummyHash, hashPassword, verifyPassword } from './auth/password.ts';
 import { SESSION_COOKIE, SESSION_IDLE_MS, sessionDecision } from './auth/session.ts';
 import { newRecoveryCode, randomToken, recoveryCodeHash, tokenHash } from './auth/tokens.ts';
@@ -13,7 +18,7 @@ import { Db } from './db.ts';
 import {
   LOGO_MAX_BYTES, MATERIAL_MAX_BYTES, fileHeaders, materialBodyTooLarge, materialFileHeaders, sniffLogo, sniffMaterial,
 } from './files.ts';
-import { makeLabel, productLang, type KitJson, type Lang, type LabelKey } from './labels.ts';
+import { makeLabel, productLang, type Concept, type KitJson, type Label, type Lang, type LabelKey } from './labels.ts';
 import {
   findFile, findLesson, lessonMaterials, outline, readableSubject, subjectsForLearner, subjectsForPublisher, type SubjectRow,
 } from './learning.ts';
@@ -24,14 +29,21 @@ import {
   moveChapter, moveLesson, moveMaterial, setPublished, type EditableLesson, type NewMaterial,
 } from './publishing.ts';
 import { SEED_KITS, seedKit } from './kits/seed.ts';
+import {
+  countWrongUsername, findResetLink, issueResetLink, lastDigits, resetLinkState, resetMessage, useResetLink, whatsappHref,
+  type FoundLink,
+} from './reset.ts';
 import { registerTestHooks } from './test-hooks.ts';
 import { FREE_PLAN, UsageMeter, type FlushBatch } from './usage.ts';
 import { accountPage } from './views/account.ts';
+import { peoplePage, setPage, setsPage, topicPage, topicsPage, type AppointForm } from './views/admin.ts';
 import { recoverPage, recoveryCodePage, setupPage, signInPage } from './views/auth.ts';
-import { messagePage, type Html } from './views/layout.ts';
-import { learnerHome, lessonPage, subjectPage } from './views/learn.ts';
+import { layout, messagePage, type Html } from './views/layout.ts';
+import { learnerHome, lessonPage, spacePage, subjectPage } from './views/learn.ts';
 import { newSpacePage, ownerHome, ownerSpacePage, type AdminRow, type AppointValues, type NewSpaceValues } from './views/owner.ts';
+import { confirmLinkPage, linkReadyPage, personPage, type PersonFrame, type PersonView } from './views/people.ts';
 import { lessonEditor, publisherHome, subjectEditor } from './views/publish.ts';
+import { resetDeadPage, resetDonePage, resetPage, type ResetSpace } from './views/reset.ts';
 import { accessEndedPage, adminHome, membershipsPage, type SpaceView } from './views/space.ts';
 
 type C = Context<AppEnv>;
@@ -75,7 +87,7 @@ async function storedBytes(bucket: R2Bucket): Promise<number> {
 // -------------------------------------------------------------- helpers ----
 const label = (c: C, kit?: KitJson) => makeLabel(c.get('lang'), kit);
 
-function page(c: C, body: Html, status: 200 | 400 | 401 | 403 | 404 | 413 | 500 = 200) {
+function page(c: C, body: Html, status: 200 | 400 | 401 | 403 | 404 | 410 | 413 | 429 | 500 = 200) {
   c.header('cache-control', 'no-store');
   return c.html(body, status);
 }
@@ -110,11 +122,30 @@ function loadKit(json: string): KitJson {
   return JSON.parse(json) as KitJson;
 }
 
+/** The client's address as Cloudflare reports it (only used, hashed, by the rate limit). */
+const clientAddress = (c: C) => c.req.header('cf-connecting-ip') ?? 'unknown';
+
+/** Every value of a form field that may repeat (check boxes). */
+function fieldList(body: Record<string, unknown>, name: string): string[] {
+  const v = body[name];
+  return (Array.isArray(v) ? v : [v]).filter((x): x is string => typeof x === 'string' && x !== '');
+}
+
 // ------------------------------------------------------------------ app ----
 export const app = new Hono<AppEnv>();
 
+// Middleware is registered only through use(), which also declares it here.
+// The role guard (test/guards/role-gates.test.ts) treats every other route,
+// whatever its shape, as a handler that must sit behind its role gate.
+const middleware = new Set<unknown>();
+export const MIDDLEWARE: ReadonlySet<unknown> = middleware;
+function use<P extends string>(path: P, handler: MiddlewareHandler<AppEnv, P>): void {
+  middleware.add(handler);
+  app.use(path, handler);
+}
+
 // Count every request in memory; flush at most once a minute, after the response.
-app.use('*', async (c, next) => {
+use('*', async (c, next) => {
   const m = getMeter();
   m.recordRequest(now());
   c.set('db', new Db(c.env.DB, (rows) => m.recordWrites(rows, now())));
@@ -126,10 +157,10 @@ app.use('*', async (c, next) => {
 });
 
 // Forms are accepted only from this site's own pages.
-app.use('*', csrf());
+use('*', csrf());
 
 // Server-side session from the HTTP-only cookie.
-app.use('*', async (c, next) => {
+use('*', async (c, next) => {
   const token = getCookie(c, SESSION_COOKIE);
   if (token) {
     const db = c.get('db');
@@ -201,14 +232,27 @@ app.get('/signin', (c) => {
   return page(c, signInPage(label(c), c.get('lang'), {}));
 });
 
+/** The plain message for a door that is refused for now (src/auth/limits.ts). */
+const tooMany = (t: Label, until: number) => t('tooManyAttempts', { minutes: String(minutesUntil(until, now())) });
+
+// Sign-in is rate-limited per username and per client (src/auth/limits.ts):
+// a refused attempt checks no password and writes nothing.
 app.post('/signin', async (c) => {
+  const db = c.get('db');
   const t = label(c);
   const body = await c.req.parseBody();
   const username = field(body, 'username').toLowerCase();
   const password = typeof body.password === 'string' ? body.password : '';
-  const user = await c.get('db').first<{ id: string; password_hash: string }>('SELECT id, password_hash FROM user WHERE username = ?', username);
+  const door = await openDoor(db, username, clientAddress(c));
+  const block = attemptBlock(door.rows, now());
+  if (block) return page(c, signInPage(t, c.get('lang'), { error: tooMany(t, block.until), username }), 429);
+  const user = await db.first<{ id: string; password_hash: string }>('SELECT id, password_hash FROM user WHERE username = ?', username);
   const ok = await verifyPassword(password, user?.password_hash ?? (await dummyHash()));
-  if (!user || !ok) return page(c, signInPage(t, c.get('lang'), { error: t('signInFailed'), username }), 401);
+  if (!user || !ok) {
+    await recordFailure(db, door, now());
+    return page(c, signInPage(t, c.get('lang'), { error: t('signInFailed'), username }), 401);
+  }
+  await clearUser(db, door);
   await startSession(c, user.id);
   return c.redirect('/');
 });
@@ -229,12 +273,19 @@ app.post('/recover', async (c) => {
   const username = field(body, 'username').toLowerCase();
   const code = field(body, 'code');
   const password = typeof body.password === 'string' ? body.password : '';
+  const door = await openDoor(db, username, clientAddress(c));
+  const block = attemptBlock(door.rows, now());
+  if (block) return page(c, recoverPage(t, c.get('lang'), { error: tooMany(t, block.until), username }), 429);
   const oldHash = await recoveryCodeHash(code);
   const owner = await db.first<{ id: string }>(
     'SELECT id FROM user WHERE username = ? AND is_owner = 1 AND recovery_hash = ?',
     username, oldHash,
   );
-  if (!owner) return page(c, recoverPage(t, c.get('lang'), { error: t('recoverFailed'), username }), 401);
+  if (!owner) {
+    await recordFailure(db, door, now());
+    return page(c, recoverPage(t, c.get('lang'), { error: t('recoverFailed'), username }), 401);
+  }
+  await clearUser(db, door);
   if (password.length < MIN_PASSWORD) return page(c, recoverPage(t, c.get('lang'), { error: t('passwordTooShort'), username }), 400);
 
   const next = newRecoveryCode();
@@ -255,8 +306,8 @@ const requireOwner: MiddlewareHandler<AppEnv> = async (c, next) => {
   if (!user.is_owner) return refuse(c, 403, 'noAccess');
   await next();
 };
-app.use('/owner', requireOwner);
-app.use('/owner/*', requireOwner);
+use('/owner', requireOwner);
+use('/owner/*', requireOwner);
 
 app.get('/owner', async (c) => {
   const db = c.get('db');
@@ -357,7 +408,7 @@ async function renderOwnerSpace(c: C, spaceId: string, extra: { error?: string; 
   const space = await ownerSpace(c, spaceId);
   if (!space) return refuse(c, 404, 'notFound');
   const admins = await c.get('db').all<AdminRow>(
-    `SELECT u.username, u.display_name, u.mobile, m.valid_until
+    `SELECT u.id, u.username, u.display_name, u.mobile, m.valid_until
        FROM membership m JOIN user u ON u.id = m.user_id
       WHERE m.space_id = ? AND m.role = 'admin' ORDER BY u.username`,
     spaceId,
@@ -446,16 +497,17 @@ app.get('/home', async (c) => {
 });
 
 // Every address inside a space passes this check first: signed in, a member
-// of this space, and within the end date. After the end date every address
-// answers 403 with the plain "access ended" message.
+// of this space, and within its start and end dates. Before the start date
+// every address answers 403 with "your access starts on"; after the end date,
+// with the plain "access ended" message.
 const ROLE_ORDER = ['admin', 'publisher', 'learner'];
 
-app.use('/s/:spaceId/*', async (c, next) => {
+use('/s/:spaceId/*', async (c, next) => {
   const user = c.get('user');
   if (!user) return c.redirect('/signin');
   const spaceId = c.req.param('spaceId');
-  const rows = await c.get('db').all<{ name: string; json: string; role: string; valid_until: string }>(
-    `SELECT s.name, k.json, m.role, m.valid_until
+  const rows = await c.get('db').all<{ name: string; json: string; role: string; valid_from: string; valid_until: string }>(
+    `SELECT s.name, k.json, m.role, m.valid_from, m.valid_until
        FROM membership m JOIN space s ON s.id = m.space_id JOIN kit k ON k.id = s.kit_id
       WHERE m.space_id = ? AND m.user_id = ?
       ORDER BY m.valid_until DESC`,
@@ -464,13 +516,18 @@ app.use('/s/:spaceId/*', async (c, next) => {
   if (!rows.length) return refuse(c, 403, 'noAccess');
   const kit = loadKit(rows[0].json);
   const [first, second] = kit.languages;
-  const active = rows.filter((r) => membershipActive(r.valid_until, now()));
+  const status = (r: (typeof rows)[number]) => membershipStatus(r.valid_from, r.valid_until, now());
+  const active = rows.filter((r) => status(r) === 'active');
   if (!active.length) {
+    // A place that starts later is the one to tell about; otherwise the last that ended.
+    const waiting = rows.filter((r) => status(r) === 'not-started').sort((x, y) => x.valid_from.localeCompare(y.valid_from))[0];
     const last = rows[0];
     const body = accessEndedPage(
       { t: makeLabel(first, kit), lang: first },
       second ? { t: makeLabel(second, kit), lang: second } : null,
-      { spaceName: last.name, date: last.valid_until, contactKey: last.role === 'admin' ? 'ownerWord' : 'admin' },
+      waiting
+        ? { spaceName: waiting.name, date: waiting.valid_from, contactKey: 'admin', notStarted: true }
+        : { spaceName: last.name, date: last.valid_until, contactKey: last.role === 'admin' ? 'ownerWord' : 'admin' },
     );
     return page(c, body, 403);
   }
@@ -493,8 +550,8 @@ const requireSpaceRole = (role: 'admin' | 'publisher'): MiddlewareHandler<AppEnv
   await next();
 };
 // A pattern ending in /* also matches its own base (…/admin itself).
-app.use('/s/:spaceId/admin/*', requireSpaceRole('admin'));
-app.use('/s/:spaceId/publish/*', requireSpaceRole('publisher'));
+use('/s/:spaceId/admin/*', requireSpaceRole('admin'));
+use('/s/:spaceId/publish/*', requireSpaceRole('publisher'));
 
 function spaceView(space: CurrentSpace): SpaceView {
   return { id: space.id, name: space.name, primaryColor: space.kit.theme.primaryColor, hasLogo: Boolean(space.kit.theme.logoKey) };
@@ -575,6 +632,336 @@ app.get('/s/:spaceId/file/:materialId', async (c) => {
     return new Response(null, { status: 304, headers });
   }
   return new Response(obj.body, { headers });
+});
+
+// ----------------------------------------------------------------- admin ----
+// The admin's screens (AT-2), all under /s/<space>/admin behind the admin
+// gate: people (appoint a publisher or a learner; one person's page with a
+// new password and a reset link), groups and subjects. Every lookup and write
+// is inside this space (src/admin.ts). A refused form shows its plain message
+// on the same page and stores nothing; a done form answers 303.
+const NAME_MAX = 100;
+
+async function countryCodeOf(c: C, spaceId: string): Promise<string> {
+  const row = await c.get('db').first<{ default_country_code: string }>('SELECT default_country_code FROM space WHERE id = ?', spaceId);
+  return row?.default_country_code ?? '';
+}
+
+async function renderPeople(c: C, extra: { values?: AppointForm; error?: string } = {}, status: 200 | 400 = 200) {
+  const { t, lang, view } = spaceLabel(c);
+  const people = await peopleOf(c.get('db'), view.id);
+  const body = peoplePage(t, lang, view, {
+    people, today: utcDate(now()), ownEnd: c.get('space').validUntil, values: extra.values ?? {}, error: extra.error,
+  });
+  return page(c, body, status);
+}
+
+app.get('/s/:spaceId/admin/people', (c) => renderPeople(c));
+
+// Rules 1 and 2: an admin appoints a publisher or a learner only, never past
+// their own end date. The mobile is read the local way with the space's
+// default country code and kept in international form.
+app.post('/s/:spaceId/admin/people', async (c) => {
+  const db = c.get('db');
+  const space = c.get('space');
+  const { t } = spaceLabel(c);
+  const body = await c.req.parseBody();
+  const values: AppointForm = {
+    display_name: field(body, 'display_name'),
+    username: field(body, 'username').toLowerCase(),
+    role: field(body, 'role'),
+    mobile: field(body, 'mobile'),
+    valid_until: field(body, 'valid_until'),
+  };
+  const password = typeof body.password === 'string' ? body.password : '';
+  const mobile = normaliseMobile(values.mobile ?? '', await countryCodeOf(c, space.id));
+  const today = utcDate(now());
+  const end = values.valid_until ?? '';
+  const role = values.role ?? '';
+  const error =
+    !values.display_name || values.display_name.length > NAME_MAX ? t('nameRequired')
+      : !USERNAME.test(values.username ?? '') ? t('usernameInvalid')
+        : password.length < MIN_PASSWORD ? t('passwordTooShort')
+          : !isAppointable(role) ? t('roleInvalid')
+            : !mobile ? t('mobileInvalid')
+              : !isIsoDate(end) || end < today ? t('endDateInvalid')
+                : end > space.validUntil ? t('endDateBeyondOwn', { date: space.validUntil })
+                  : (await db.first('SELECT 1 AS one FROM user WHERE username = ?', values.username!)) ? t('usernameTaken')
+                    : undefined;
+  if (error || !mobile || !isAppointable(role)) return renderPeople(c, { values, error }, 400);
+  try {
+    await appoint(db, {
+      spaceId: space.id, grantedBy: c.get('user')!.id, username: values.username!, passwordHash: await hashPassword(password),
+      displayName: values.display_name!, mobile, role, validFrom: today, validUntil: end, now: now(),
+    });
+  } catch {
+    return renderPeople(c, { values, error: t('usernameTaken') }, 400); // taken in the same instant
+  }
+  return c.redirect(`/s/${space.id}/admin/people#people`, 303);
+});
+
+// One person's page and its two actions (rule 5): set a new password, or
+// send a one-time reset link. The same three pages serve the owner for admins.
+function personView(p: PersonRow, roleLabel: string): PersonView {
+  return { id: p.id, username: p.username, display_name: p.display_name, roleLabel, valid_until: p.valid_until, digits: lastDigits(p.mobile) };
+}
+
+interface PersonPlace {
+  frame: PersonFrame;
+  view: PersonView;
+  person: PersonRow;
+  spaceId: string;
+  /** The message's language: the space's first, with its kit. */
+  message: { t: Label; spaceName: string; role: string };
+}
+
+async function adminPlace(c: C): Promise<PersonPlace | null> {
+  const { t, lang, view } = spaceLabel(c);
+  const person = await managedPerson(c.get('db'), view.id, c.req.param('userId') ?? '');
+  if (!person) return null;
+  return {
+    frame: {
+      t,
+      base: `/s/${view.id}/admin/people/${person.id}`,
+      back: { href: `/s/${view.id}/admin/people`, label: t('backToPeople') },
+      frame: (title, body) => spacePage(t, lang, view, title, body),
+    },
+    view: personView(person, t(person.role as Concept)),
+    person,
+    spaceId: view.id,
+    message: { t, spaceName: view.name, role: t('admin') },
+  };
+}
+
+async function ownerPlace(c: C): Promise<PersonPlace | null> {
+  const space = await ownerSpace(c, c.req.param('id') ?? '');
+  const person = space && (await spaceAdmin(c.get('db'), space.id, c.req.param('userId') ?? ''));
+  if (!space || !person) return null;
+  const t = makeLabel(c.get('lang'), space.kit);
+  const first = space.kit.languages[0];
+  const spaceT = makeLabel(first, space.kit);
+  return {
+    frame: {
+      t,
+      base: `/owner/spaces/${space.id}/people/${person.id}`,
+      back: { href: `/owner/spaces/${space.id}`, label: space.name },
+      frame: (title, body) => layout({ t, lang: c.get('lang'), title, body, signedIn: true }),
+    },
+    view: personView(person, t('admin')),
+    person,
+    spaceId: space.id,
+    message: { t: spaceT, spaceName: space.name, role: spaceT('ownerWord') },
+  };
+}
+
+function personRoutes(path: string, place: (c: C) => Promise<PersonPlace | null>): void {
+  app.get(path, async (c) => {
+    const p = await place(c);
+    return p ? page(c, personPage(p.frame, p.view)) : refuse(c, 403, 'noAccess');
+  });
+
+  app.get(`${path}/link`, async (c) => {
+    const p = await place(c);
+    return p ? page(c, confirmLinkPage(p.frame, p.view)) : refuse(c, 403, 'noAccess');
+  });
+
+  // The confirming tap: kills every earlier link of this person, makes a new
+  // one, and shows it once as a WhatsApp button and a Copy button. The message
+  // is the product's fixed text; nothing in the request enters it.
+  app.post(`${path}/link`, async (c) => {
+    const p = await place(c);
+    if (!p) return refuse(c, 403, 'noAccess');
+    const sender = c.get('user')!;
+    const token = await issueResetLink(c.get('db'), { userId: p.person.id, spaceId: p.spaceId, createdBy: sender.id, now: now() });
+    const address = new URL(c.req.url).origin;
+    const link = `${address}/r/${token}`;
+    const message = resetMessage(p.message.t, {
+      space: p.message.spaceName, sender: sender.display_name, role: p.message.role, name: p.person.display_name, address, link,
+    });
+    c.header('referrer-policy', 'no-referrer');
+    return page(c, linkReadyPage(p.frame, p.view, { link, whatsapp: whatsappHref(p.person.mobile, message) }));
+  });
+
+  app.post(`${path}/password`, async (c) => {
+    const p = await place(c);
+    if (!p) return refuse(c, 403, 'noAccess');
+    const body = await c.req.parseBody();
+    const password = typeof body.new_password === 'string' ? body.new_password : '';
+    if (password.length < MIN_PASSWORD) return page(c, personPage(p.frame, p.view, { error: p.frame.t('passwordTooShort') }), 400);
+    await setPassword(c.get('db'), p.person.id, await hashPassword(password));
+    return page(c, personPage(p.frame, p.view, { done: true }));
+  });
+}
+
+personRoutes('/s/:spaceId/admin/people/:userId', adminPlace);
+personRoutes('/owner/spaces/:id/people/:userId', ownerPlace);
+
+// Groups: a name and the learners in it.
+async function renderSets(c: C, extra: { error?: string; name?: string } = {}, status: 200 | 400 = 200) {
+  const { t, lang, view } = spaceLabel(c);
+  const db = c.get('db');
+  const body = setsPage(t, lang, view, { sets: await setsOf(db, view.id), learners: await learnersOf(db, view.id), ...extra });
+  return page(c, body, status);
+}
+
+/** The chosen learners, when every one is a learner of this space; otherwise null. */
+async function chosenLearners(c: C, body: Record<string, unknown>, name: string): Promise<string[] | null> {
+  const chosen = [...new Set(fieldList(body, name))];
+  const learners = new Set((await learnersOf(c.get('db'), c.get('space').id)).map((l) => l.id));
+  return chosen.every((id) => learners.has(id)) ? chosen : null;
+}
+
+app.get('/s/:spaceId/admin/sets', (c) => renderSets(c));
+
+app.post('/s/:spaceId/admin/sets', async (c) => {
+  const { t } = spaceLabel(c);
+  const body = await c.req.parseBody({ all: true });
+  const name = field(body, 'name');
+  if (!name || name.length > NAME_MAX) return renderSets(c, { error: t('nameRequired'), name }, 400);
+  const members = await chosenLearners(c, body, 'member');
+  if (!members) return renderSets(c, { error: t('choiceInvalid'), name }, 400);
+  await createSet(c.get('db'), c.get('space').id, name, members);
+  return c.redirect(`/s/${c.get('space').id}/admin/sets#sets`, 303);
+});
+
+async function renderSet(c: C, set: { id: string; name: string }, extra: { saved?: boolean; error?: string } = {}, status: 200 | 400 = 200) {
+  const { t, lang, view } = spaceLabel(c);
+  const db = c.get('db');
+  const members = (await setsOf(db, view.id)).find((s) => s.id === set.id)?.members.map((m) => m.id) ?? [];
+  return page(c, setPage(t, lang, view, { set, learners: await learnersOf(db, view.id), members, ...extra }), status);
+}
+
+app.get('/s/:spaceId/admin/sets/:groupId', async (c) => {
+  const set = await findSet(c.get('db'), c.get('space').id, c.req.param('groupId'));
+  return set ? renderSet(c, set, { saved: c.req.query('saved') === '1' }) : refuse(c, 403, 'noAccess');
+});
+
+app.post('/s/:spaceId/admin/sets/:groupId', async (c) => {
+  const spaceId = c.get('space').id;
+  const set = await findSet(c.get('db'), spaceId, c.req.param('groupId'));
+  if (!set) return refuse(c, 403, 'noAccess');
+  const members = await chosenLearners(c, await c.req.parseBody({ all: true }), 'member');
+  if (!members) return renderSet(c, set, { error: spaceLabel(c).t('choiceInvalid') }, 400);
+  await saveSetMembers(c.get('db'), spaceId, set.id, members);
+  return c.redirect(`/s/${spaceId}/admin/sets/${set.id}?saved=1`, 303);
+});
+
+// Subjects: a title, one responsible publisher, and who may read it.
+async function renderTopics(c: C, extra: { error?: string; title?: string } = {}, status: 200 | 400 = 200) {
+  const { t, lang, view } = spaceLabel(c);
+  const db = c.get('db');
+  const body = topicsPage(t, lang, view, { topics: await topicsOf(db, view.id), publishers: await publishersOf(db, view.id), ...extra });
+  return page(c, body, status);
+}
+
+/** The chosen publisher ('' for nobody yet), when it is a publisher of this space; otherwise undefined. */
+async function chosenPublisher(c: C, body: Record<string, unknown>): Promise<string | null | undefined> {
+  const id = field(body, 'publisher');
+  if (!id) return null;
+  const publishers = await publishersOf(c.get('db'), c.get('space').id);
+  return publishers.some((p) => p.id === id) ? id : undefined;
+}
+
+app.get('/s/:spaceId/admin/topics', (c) => renderTopics(c));
+
+app.post('/s/:spaceId/admin/topics', async (c) => {
+  const { t } = spaceLabel(c);
+  const body = await c.req.parseBody();
+  const title = field(body, 'title');
+  if (!title || title.length > TITLE_MAX) return renderTopics(c, { error: t('titleInvalid'), title }, 400);
+  const publisher = await chosenPublisher(c, body);
+  if (publisher === undefined) return renderTopics(c, { error: t('choiceInvalid'), title }, 400);
+  const id = await createTopic(c.get('db'), c.get('space').id, title, publisher);
+  return c.redirect(`/s/${c.get('space').id}/admin/topics/${id}`, 303);
+});
+
+async function renderTopic(c: C, subjectId: string, extra: { saved?: boolean; error?: string } = {}, status: 200 | 400 = 200) {
+  const db = c.get('db');
+  const { t, lang, view } = spaceLabel(c);
+  const topic = await findTopic(db, view.id, subjectId);
+  if (!topic) return refuse(c, 403, 'noAccess');
+  const body = topicPage(t, lang, view, {
+    topic,
+    publishers: await publishersOf(db, view.id),
+    sets: (await setsOf(db, view.id)).map((s) => ({ id: s.id, display_name: s.name })),
+    learners: await learnersOf(db, view.id),
+    readers: await topicReaders(db, view.id, topic.id),
+    ...extra,
+  });
+  return page(c, body, status);
+}
+
+app.get('/s/:spaceId/admin/topics/:subjectId', (c) => renderTopic(c, c.req.param('subjectId'), { saved: c.req.query('saved') === '1' }));
+
+app.post('/s/:spaceId/admin/topics/:subjectId', async (c) => {
+  const db = c.get('db');
+  const spaceId = c.get('space').id;
+  const topic = await findTopic(db, spaceId, c.req.param('subjectId'));
+  if (!topic) return refuse(c, 403, 'noAccess');
+  const body = await c.req.parseBody({ all: true });
+  const publisher = await chosenPublisher(c, body);
+  const learnerIds = await chosenLearners(c, body, 'learner');
+  const sets = new Set((await setsOf(db, spaceId)).map((s) => s.id));
+  const setIds = [...new Set(fieldList(body, 'set'))];
+  if (publisher === undefined || !learnerIds || !setIds.every((id) => sets.has(id))) {
+    return renderTopic(c, topic.id, { error: spaceLabel(c).t('choiceInvalid') }, 400);
+  }
+  await saveTopic(db, spaceId, topic.id, { publisherId: publisher, setIds, learnerIds });
+  return c.redirect(`/s/${spaceId}/admin/topics/${topic.id}?saved=1`, 303);
+});
+
+// ------------------------------------------------------------ reset link ----
+// The page a one-time reset link opens (src/reset.ts). The link is the
+// permission: it works once, for 30 minutes, and only with the username it
+// was made for. Failed usernames count for the link (a bounded number) and
+// for the rate limit (the link's person and the client). The page is in the
+// space's first language, with its name; the token never leaves in a Referer.
+interface ResetPlace {
+  link: FoundLink;
+  t: Label;
+  lang: Lang;
+  space: ResetSpace;
+}
+
+async function resetPlace(c: C): Promise<ResetPlace | null> {
+  c.header('referrer-policy', 'no-referrer');
+  const link = await findResetLink(c.get('db'), c.req.param('token') ?? '');
+  if (!link) return null;
+  const kit = loadKit(link.kit_json);
+  const lang = kit.languages[0];
+  return { link, t: makeLabel(lang, kit), lang, space: { name: link.space_name, primaryColor: kit.theme.primaryColor } };
+}
+
+const deadLink = (c: C, r: ResetPlace | null) =>
+  page(c, r ? resetDeadPage(r.t, r.lang, r.space) : resetDeadPage(label(c), c.get('lang'), null), 410);
+
+app.get('/r/:token', async (c) => {
+  const r = await resetPlace(c);
+  if (!r || resetLinkState(r.link, now()) !== 'usable') return deadLink(c, r);
+  return page(c, resetPage(r.t, r.lang, r.space, { action: new URL(c.req.url).pathname }));
+});
+
+app.post('/r/:token', async (c) => {
+  const db = c.get('db');
+  const r = await resetPlace(c);
+  if (!r || resetLinkState(r.link, now()) !== 'usable') return deadLink(c, r);
+  const { t, lang, space, link } = r;
+  const action = new URL(c.req.url).pathname;
+  const body = await c.req.parseBody();
+  const username = field(body, 'username').toLowerCase();
+  const password = typeof body.new_password === 'string' ? body.new_password : '';
+  const door = await openDoor(db, link.username, clientAddress(c));
+  const block = attemptBlock(door.rows, now());
+  if (block) return page(c, resetPage(t, lang, space, { action, username, error: tooMany(t, block.until) }), 429);
+  if (username !== link.username) {
+    await countWrongUsername(db, link.id);
+    await recordFailure(db, door, now());
+    return page(c, resetPage(t, lang, space, { action, username, error: t('resetWrongUser') }), 401);
+  }
+  if (password.length < MIN_PASSWORD) return page(c, resetPage(t, lang, space, { action, username, error: t('passwordTooShort') }), 400);
+  if (!(await useResetLink(db, link, await hashPassword(password), now()))) return deadLink(c, r);
+  await clearUser(db, door);
+  return page(c, resetDonePage(t, lang, space));
 });
 
 // ------------------------------------------------------------ publishing ----
@@ -752,7 +1139,7 @@ async function accountLang(c: C): Promise<Lang> {
   return row ? loadKit(row.json).languages[0] : c.get('lang');
 }
 
-app.use('/account/*', async (c, next) => {
+use('/account/*', async (c, next) => {
   if (!c.get('user')) return c.redirect('/signin');
   c.set('lang', await accountLang(c));
   await next();
