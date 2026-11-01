@@ -36,6 +36,7 @@ The platform's rule asks for a Verifier from a **different AI vendor** than the 
 | 4 · AT-2 | #10 | Opus 5.5, worktree, `build/at-2` | 41258695307, 41260026068 | 41260452130 on `11ae007` | ACCEPTED | PASS (Sonnet 5.5) | `d75f138`, 1 November 2026 |
 | 5 · AT-5 | #13 | Opus 5.5, worktree, `build/at-5` | 41263260246, 41263926426, 41264571138 | 41264967169 on `4f9c40f` | ACCEPTED | PASS (Sonnet 5.5) | `8133ded`, 1 November 2026 |
 | 6 · first-deploy rails | #15 | Opus 5.5, worktree, `build/deploy`; rework by a fresh Opus Builder | 41268178967, 41269112439; rework 41271098299 | 41269301936 on `04c8d6e`; rework 41271638319 on `9f9a995` | ACCEPTED, then ACCEPTED (rework) | HOLD (smoke check accepted a 200 on `/`), then PASS on re-check | `196ada9`, 1 November 2026 |
+| 7 · password strength as a setting | #17 | Opus 5.5, worktree, `build/password-strength` | 41273882788 | 41274441035 on `bfd5eff` | ACCEPTED | PASS (Sonnet 5.5) | `7fbe525`, 1 November 2026 |
 
 ## Working rules for the agents (in addition to AGENTS.md)
 
