@@ -16,10 +16,10 @@ const running: RunningWorker[] = [];
 const servers: Server[] = [];
 
 /** Runs the smoke check as the workflow does. Asynchronous, so the fake sites below (in this process) can answer. */
-function smoke(address: string): Promise<{ status: number | null; out: string }> {
+function smoke(address: string, waitSeconds = '3'): Promise<{ status: number | null; out: string }> {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, ['scripts/smoke-check.mjs', address], {
-      cwd: root, env: { ...process.env, SMOKE_WAIT_SECONDS: '3' },
+      cwd: root, env: { ...process.env, SMOKE_WAIT_SECONDS: waitSeconds },
     });
     let out = '';
     child.stdout.on('data', (d) => (out += d));
@@ -98,5 +98,38 @@ describe('Deploy rails: the post-deploy smoke check', { concurrency: false }, ()
     const r = await smoke(flat);
     assert.equal(r.status, 1, r.out);
     assert.match(r.out, /FAIL GET \/ answered 200; expected a redirect to \/setup or \/signin/);
+  });
+
+  // A brand-new workers.dev address answers 404 for a second or two after the
+  // deploy (first deploy, run 41357099847). The first GET / waits through
+  // that, within the same window as a 5xx; after the window a 404 still fails.
+  it('passes when a fresh address answers 404 on GET / for its first requests, then redirects to /setup', async () => {
+    let homeHits = 0;
+    const fresh = await fakeSite((method, path) => {
+      if (method === 'POST') return { status: 403 };
+      if (path === '/') return ++homeHits <= 2 ? { status: 404 } : { status: 302, location: '/setup' };
+      return path === '/setup' ? { status: 200 } : { status: 404 };
+    });
+    const r = await smoke(fresh, '30');
+    assert.equal(r.status, 0, r.out);
+    assert.equal(homeHits, 3, `GET / was asked ${homeHits} times; expected two 404s, then the redirect`);
+    assert.match(r.out, /GET \/ answers 302 -> \/setup/);
+    assert.match(r.out, /GET \/setup answers 200/);
+    assert.match(r.out, /cross-origin POST is refused with 403/);
+    assert.match(r.out, /test hooks are absent/);
+    assert.doesNotMatch(r.out, /FAIL/);
+  });
+
+  it('fails when GET / still answers 404 after the wait', async () => {
+    let homeHits = 0;
+    const missing = await fakeSite((method, path) => {
+      if (method === 'POST') return { status: 403 };
+      if (path === '/') homeHits++;
+      return { status: 404 };
+    });
+    const r = await smoke(missing, '3');
+    assert.equal(r.status, 1, r.out);
+    assert.ok(homeHits >= 2, `GET / was asked ${homeHits} times; the check must keep asking until the wait ends`);
+    assert.match(r.out, /FAIL GET \/ answered 404; expected a redirect to \/setup or \/signin/);
   });
 });

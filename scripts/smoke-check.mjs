@@ -9,7 +9,10 @@
 //      guard is live), and so is one from the same host over plain http;
 //   4. the test hooks are absent: /__test/clock is 404 (not a test build).
 // The first request is retried for up to SMOKE_WAIT_SECONDS (default 120),
-// because a brand-new workers.dev address can take a moment to answer.
+// because a brand-new workers.dev address can take a moment to answer: it may
+// refuse the connection, answer 5xx, or answer 404 for a few seconds while
+// the new route spreads (the first deploy saw that 404). After the wait, a
+// 404 is judged like any other answer, so check 1 fails on it.
 // Exit code 0 when all four hold, 1 otherwise, with a plain message.
 
 const FOREIGN_ORIGIN = 'https://cross-origin-check.invalid';
@@ -20,7 +23,9 @@ async function fetchWithRetry(url, waitSeconds) {
   for (;;) {
     try {
       const res = await fetch(url, { redirect: 'manual' });
-      if (res.status < 500) return res;
+      if (res.status < 500 && res.status !== 404) return res;
+      if (res.status === 404 && Date.now() >= deadline) return res;
+      await res.body?.cancel();
       last = `status ${res.status}`;
     } catch (err) {
       last = String(err?.cause?.code ?? err?.message ?? err);
