@@ -2,8 +2,8 @@
 // Smoke check after a deploy:   node scripts/smoke-check.mjs https://<address>
 //
 // It reads only, and proves four things about the live address:
-//   1. the home page answers: a redirect to /setup (no owner yet) or /signin,
-//      or a 200;
+//   1. the home page redirects to /setup (no owner yet) or /signin on the
+//      same origin; a 200 or any other answer fails;
 //   2. that page itself answers 200;
 //   3. a form post from another site is refused with 403 (the cross-origin
 //      guard is live), and so is one from the same host over plain http;
@@ -43,9 +43,9 @@ export async function smokeCheck(address, { waitSeconds = 120, log = console.log
   const location = home.headers.get('location') ?? '';
   const target = location ? new URL(location, base) : null;
   const redirectOk = [301, 302, 303, 307, 308].includes(home.status) && target?.origin === base && ['/setup', '/signin'].includes(target.pathname);
-  check(home.status === 200 || redirectOk,
+  check(redirectOk,
     `GET / answers ${home.status}${location ? ` -> ${target?.pathname}` : ''}`,
-    `GET / answered ${home.status}${location ? ` -> ${location}` : ''}; expected 200 or a redirect to /setup or /signin`);
+    `GET / answered ${home.status}${location ? ` -> ${location}` : ''}; expected a redirect to /setup or /signin`);
   if (target?.pathname === '/setup') log('     No owner yet: the owner must open the address and complete first setup now.');
 
   if (redirectOk) {
