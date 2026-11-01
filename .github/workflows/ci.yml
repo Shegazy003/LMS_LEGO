@@ -122,9 +122,10 @@ jobs:
         run: npm run test:last-resort
       # Build task 7: the password strength is a deploy-time setting
       # (PASSWORD_ITERATIONS), stored with each password and re-written at the
-      # configured strength on the next sign-in; production's configured
-      # default stays 100,000 (asserted by the production guard in this step).
-      - name: Password strength - stored per password, upgraded at sign-in, default unchanged
+      # configured strength on the next sign-in. Production runs at the decided
+      # 10,000 (owner decision B, 1 November 2026; asserted by the production
+      # guard in this step); the code's default stays 100,000.
+      - name: Password strength - stored per password, upgraded at sign-in, production at the decided value
         if: success() || failure()
         run: npm run test:password-strength
       - name: Upload evidence (screenshots, reports)
