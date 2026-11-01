@@ -8,7 +8,7 @@ import { mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 import { startWorker, type RunningWorker } from '../support/worker.ts';
-import { Client, setClockOffsetDays, utcDatePlusDays, tinyPng } from '../support/http.ts';
+import { Client, setClockOffsetDays, setClockTo, utcDatePlusDays, workerNow, tinyPng } from '../support/http.ts';
 
 const EVIDENCE = fileURLToPath(new URL('../../evidence/at-1/', import.meta.url));
 const SPACE = 'مدرسة مسك';
@@ -32,6 +32,12 @@ let adminCtx: BrowserContext;
 let admin: Page;
 let spaceId = '';
 let endDate = '';
+// "Today" is the product's today: the Worker's clock, not this runner's. A
+// run may cross midnight UTC between appointing the admin and moving the
+// clock, so the end date is taken from the Worker, and the clock is later set
+// to fixed times of that date, not moved by whole days from "now".
+let today = '';
+const noonOf = (date: string) => Date.parse(date + 'T12:00:00Z');
 
 async function shot(page: Page, name: string): Promise<void> {
   await page.screenshot({ path: `${EVIDENCE}${name}.png`, fullPage: true });
@@ -246,7 +252,8 @@ describe('AT-1 owner shapes a space and appoints its admin', { concurrency: fals
   });
 
   it('AT-1.5 the owner appoints the admin with an end date of today plus 30 days', async () => {
-    endDate = utcDatePlusDays(30);
+    today = new Date(await workerNow(worker.url)).toISOString().slice(0, 10);
+    endDate = utcDatePlusDays(30, Date.parse(today + 'T00:00:00Z'));
     // A number that cannot be normalised is refused with a plain message.
     await owner.fill('input[name=display_name]', ADMIN.display);
     await owner.fill('input[name=username]', ADMIN.username);
@@ -281,7 +288,7 @@ describe('AT-1 owner shapes a space and appoints its admin', { concurrency: fals
     });
     assert.equal(dup.status, 400, 'usernames are unique');
     const past = await c.post(`/owner/spaces/${spaceId}/admins`, {
-      display_name: 'Y', username: 'past.admin', password: 'another-pass', mobile: '01012345679', valid_until: utcDatePlusDays(-1),
+      display_name: 'Y', username: 'past.admin', password: 'another-pass', mobile: '01012345679', valid_until: utcDatePlusDays(-1, Date.parse(today + 'T00:00:00Z')),
     });
     assert.equal(past.status, 400, 'an end date in the past is refused');
   });
@@ -338,13 +345,13 @@ describe('AT-1 owner shapes a space and appoints its admin', { concurrency: fals
 
   it('AT-1.8 after the end date the admin still signs in but sees "access ended", and every direct link is refused (403)', async () => {
     // On the end date itself the admin still has access.
-    assert.equal((await setClockOffsetDays(worker.url, 30)).status, 200);
+    assert.equal((await setClockTo(worker.url, noonOf(endDate))).status, 200);
     await adminCtx.clearCookies();
     await signIn(admin, ADMIN.username, ADMIN.password);
     assert.equal((await admin.locator('#space-name').innerText()).trim(), SPACE);
 
     // The day after, access has ended.
-    assert.equal((await setClockOffsetDays(worker.url, 31)).status, 200);
+    assert.equal((await setClockTo(worker.url, noonOf(endDate) + 86_400_000)).status, 200);
     await adminCtx.clearCookies();
     await signIn(admin, ADMIN.username, ADMIN.password);
     assert.ok(admin.url().endsWith(`/s/${spaceId}`), 'the admin can still sign in');

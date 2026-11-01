@@ -23,29 +23,35 @@ export function spaceNav(t: Label, space: SpaceView): Html {
   return html`<nav class="nav"><a id="nav-home" href="/s/${space.id}">${t('home')}</a><a id="nav-account" href="/account">${t('myAccount')}</a></nav>`;
 }
 
-/** The admin's home: the space with its name, logo, colour and kit labels. */
+// Where each tile of the admin's home leads (neutral address words, AT-2).
+const ADMIN_TILES = { publisher: 'people', learner: 'people', group: 'sets', subject: 'topics' } as const;
+
+/** The admin's home: the space with its name, logo, colour and kit labels; each
+ * label is the way into its admin page. */
 export function adminHome(t: Label, lang: Lang, space: SpaceView, displayName: string): Html {
-  const concepts = (['publisher', 'learner', 'group', 'subject'] as const).map(
-    (c) => html`<li data-concept="${c}">${t(c)}</li>`,
+  const concepts = (Object.keys(ADMIN_TILES) as (keyof typeof ADMIN_TILES)[]).map(
+    (c) => html`<li data-concept="${c}"><a href="/s/${space.id}/admin/${ADMIN_TILES[c]}">${t(c)}</a></li>`,
   );
   const body = html`${spaceNav(t, space)}<p>${t('welcome', { name: displayName })}</p>
 <ul id="concepts" class="tiles">${concepts}</ul>`;
   return layout({ t, lang, title: space.name, body, signedIn: true, header: spaceHeader(space) });
 }
 
-/** In place of the space after the end date: the plain message, in the
- * space's first language, then in its second. */
+/** In place of the space after the end date (or before the start date): the
+ * plain message, in the space's first language, then in its second. */
 export function accessEndedPage(
   first: { t: Label; lang: Lang },
   second: { t: Label; lang: Lang } | null,
-  v: { spaceName: string; date: string; contactKey: 'ownerWord' | 'admin' },
+  v: { spaceName: string; date: string; contactKey: 'ownerWord' | 'admin'; notStarted?: boolean },
 ): Html {
-  const vars = (t: Label) => ({ space: v.spaceName, date: v.date, contact: t(v.contactKey) });
+  const key = v.notStarted ? 'accessNotStarted' : 'accessEnded';
+  const id = v.notStarted ? 'access-not-started' : 'access-ended';
+  const vars = (t: Label) => ({ space: v.spaceName, date: v.date, ...(v.notStarted ? {} : { contact: t(v.contactKey) }) });
   const body = html`<div class="card">
-  <p id="access-ended" class="message">${sentence(first.t, 'accessEnded', vars(first.t))}</p>
-  ${second ? html`<p id="access-ended-alt" lang="${second.lang}" dir="${dirFor(second.lang)}">${sentence(second.t, 'accessEnded', vars(second.t))}</p>` : ''}
+  <p id="${id}" class="message">${sentence(first.t, key, vars(first.t))}</p>
+  ${second ? html`<p id="${id}-alt" lang="${second.lang}" dir="${dirFor(second.lang)}">${sentence(second.t, key, vars(second.t))}</p>` : ''}
 </div>`;
-  return layout({ t: first.t, lang: first.lang, title: first.t('accessEnded', vars(first.t)), body, signedIn: true });
+  return layout({ t: first.t, lang: first.lang, title: first.t(key, vars(first.t)), body, signedIn: true });
 }
 
 /** For a person with more than one space. */

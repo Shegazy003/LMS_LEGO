@@ -54,6 +54,14 @@ form.move button,form.move-inner button{background:#fff;color:#1f6feb;border:1px
 button:disabled{opacity:.35;cursor:default}
 form.inline-add{display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap;margin-top:12px}
 form.inline-add label{flex:1 1 180px}
+.tiles li a{display:block;color:inherit;text-decoration:none}
+.share{display:flex;gap:8px;margin:12px 0}
+.share>*{flex:1 1 0;min-width:0;text-align:center}
+a.button{display:inline-block;padding:10px 12px;border-radius:8px;background:#1f6feb;color:#fff;font-weight:600;text-decoration:none}
+a.button.whatsapp{background:#1a7f37}
+fieldset.checks{border:1px solid #e3e6ea;border-radius:8px;display:flex;flex-direction:column;gap:6px;padding:8px 12px;margin:0}
+fieldset.checks legend{font-weight:600;padding:0 4px}
+label.check{flex-direction:row;align-items:center;gap:8px;font-weight:400}
 .items form.move{margin-top:8px}
 `;
 

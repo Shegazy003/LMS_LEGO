@@ -7,6 +7,7 @@ import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { setStartOffset } from './http.ts';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 const wrangler = join(root, 'node_modules', '.bin', 'wrangler');
@@ -75,6 +76,23 @@ export async function startWorker(): Promise<RunningWorker> {
       if (Date.now() > deadline) throw new Error(`wrangler dev did not start\n${output}`);
       await new Promise((r) => setTimeout(r, 300));
     }
+  }
+
+  // A reproduction can start the Worker's clock at a chosen UTC time of day
+  // on today's date, e.g. LMS_TEST_CLOCK_START=23:59:58 (two seconds before
+  // midnight), to show that a test does not depend on when it runs.
+  const start = process.env.LMS_TEST_CLOCK_START;
+  if (start) {
+    const at = Date.parse(`${new Date().toISOString().slice(0, 10)}T${start}Z`);
+    if (Number.isNaN(at)) throw new Error(`LMS_TEST_CLOCK_START must be HH:MM:SS, got ${start}`);
+    const offset = at - Date.now();
+    const res = await fetch(url + '/__test/clock', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', origin: url },
+      body: JSON.stringify({ offsetMs: offset }),
+    });
+    if (res.status !== 200) throw new Error(`could not start the clock at ${start} (${res.status})`);
+    setStartOffset(url, offset);
   }
 
   return {

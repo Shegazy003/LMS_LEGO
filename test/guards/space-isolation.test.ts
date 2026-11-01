@@ -22,8 +22,11 @@ const root = fileURLToPath(new URL('../..', import.meta.url));
 
 // Tables whose rows belong to one space. A query on any of them must say which.
 const SPACE_TABLES = ['membership', 'group', 'group_member', 'subject', 'subject_access', 'chapter', 'lesson', 'material'];
-// Product-level tables (docs/02-LEGO-MODEL.md and migrations/0001_init.sql).
-const PRODUCT_TABLES = ['user', 'kit', 'session', 'usage_day', 'space'];
+// Product-level tables (docs/02-LEGO-MODEL.md and migrations/0001_init.sql),
+// and from task 4: reset_link (keyed by the person, like session; it records
+// the space whose name and language its page shows) and attempt_limit (failed
+// sign-in counts per username and per client; see src/auth/limits.ts).
+const PRODUCT_TABLES = ['user', 'kit', 'session', 'usage_day', 'space', 'reset_link', 'attempt_limit'];
 
 // ------------------------------------------------------------ 1. static ----
 function sourceFiles(dir: string): string[] {

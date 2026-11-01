@@ -3,7 +3,7 @@
 // TEST_HOOKS is "1". The production bundle does not contain this module; see
 // test/guards/production-guard.test.ts.
 //
-// /__test/clock moves the product's clock.
+// /__test/clock reads (GET) or moves (POST) the product's clock.
 // /__test/seed creates people, groups, subjects and their content in an
 // existing space, for tests that need them before the admin and publisher
 // screens exist (AT-2, AT-3). It writes the same rows those screens will write.
@@ -16,6 +16,11 @@ import type { Db, Param } from './db.ts';
 import { normaliseMobile } from './phone.ts';
 
 export function registerTestHooks(app: Hono<AppEnv>): void {
+  app.get('/__test/clock', (c) => {
+    if (c.env.TEST_HOOKS !== '1') return c.notFound();
+    return c.json({ now: new Date(now()).toISOString() });
+  });
+
   app.post('/__test/clock', async (c) => {
     if (c.env.TEST_HOOKS !== '1') return c.notFound();
     const body = await c.req.json<{ offsetMs?: unknown }>();

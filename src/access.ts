@@ -1,5 +1,6 @@
 // Membership validity. Dates are UTC calendar days (YYYY-MM-DD). A membership
-// is active up to and including its end date, and ends at the start of the
+// starts at the beginning of its start date (valid_from), is active up to and
+// including its end date (valid_until), and ends at the start of the
 // following UTC day.
 
 const DAY_MS = 86_400_000;
@@ -20,4 +21,12 @@ export function addDays(date: string, days: number): string {
 
 export function membershipActive(validUntil: string, nowMs: number): boolean {
   return utcDate(nowMs) <= validUntil;
+}
+
+/** Where a membership stands today: before its start date, within its dates,
+ * or after its end date (both dates included, UTC calendar days). */
+export function membershipStatus(validFrom: string, validUntil: string, nowMs: number): 'not-started' | 'active' | 'ended' {
+  const today = utcDate(nowMs);
+  if (today < validFrom) return 'not-started';
+  return membershipActive(validUntil, nowMs) ? 'active' : 'ended';
 }
