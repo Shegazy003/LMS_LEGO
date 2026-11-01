@@ -32,14 +32,18 @@ jobs:
       # cache holds only the downloaded browser; the install step below still
       # runs every time (system libraries first, then the browser, which is
       # only checked on a hit). Download attempts are bounded and retried.
+      # The runner image (ImageOS, ImageVersion) is in the key too, so a new
+      # runner image never reuses a browser cached on an older one.
       - name: Read the Playwright version
         id: playwright
-        run: echo "version=$(node -p "require('playwright/package.json').version")" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "version=$(node -p "require('playwright/package.json').version")" >> "$GITHUB_OUTPUT"
+          echo "image=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
       - name: Cache Chromium for the browser test
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-chromium
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.image }}-${{ steps.playwright.outputs.version }}-chromium
       - name: Install Chromium for the browser test
         timeout-minutes: 10
         run: |
@@ -71,6 +75,9 @@ jobs:
       - name: AT-1 guard - the test clock cannot be enabled in production
         if: success() || failure()
         run: npm run test:guard:clock
+      - name: AT-1 guard - the AT-1 test passes when the run crosses midnight UTC
+        if: success() || failure()
+        run: npm run test:at1:midnight
       - name: AT-4 a learner sees exactly what was assigned
         if: success() || failure()
         run: npm run test:at4
@@ -83,6 +90,15 @@ jobs:
       - name: AT-3 guard - every admin and publisher route is role-gated
         if: success() || failure()
         run: npm run test:guard:roles
+      - name: AT-2 the admin staffs the space and assigns a subject
+        if: success() || failure()
+        run: npm run test:at2
+      - name: AT-2 guard - reset links are single-use, bound to the username and expire
+        if: success() || failure()
+        run: npm run test:guard:reset
+      - name: AT-2 guard - failed sign-ins are rate-limited and access starts on its start date
+        if: success() || failure()
+        run: npm run test:guard:doors
       - name: Upload evidence (screenshots, reports)
         if: always() && hashFiles('evidence/**') != ''
         uses: actions/upload-artifact@v4

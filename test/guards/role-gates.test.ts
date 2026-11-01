@@ -40,6 +40,7 @@ export const OPEN_WRITES: Record<string, string> = {
   'POST /signout': 'signing out',
   'POST /recover': 'the owner\'s recovery code',
   'POST /account/password': 'everyone changes their own password (signed in)',
+  'POST /r/:token': 'a one-time reset link: the link is the permission, bound to the username (task 4)',
   'POST /__test/clock': 'test builds only (production guard)',
   'POST /__test/seed': 'test builds only (production guard)',
 };
@@ -111,6 +112,13 @@ test('role guard: the checker catches a planted violation (self-check)', () => {
     ['GET /admin/people serves a role page outside the role-gated prefixes'], 'an admin page outside the space');
   assert.deepEqual(planted((a) => a.all('/s/:spaceId/learn/:id', page)),
     ['ALL /s/:spaceId/learn/:id changes data outside the role-gated prefixes'], 'a catch-all handler (it answers POST too)');
+  // A catch-all handler that declares two parameters (c, next) looks like
+  // middleware by its shape; it is still a handler that answers every method.
+  const twoParams = (c: { text: (s: string) => Response }, _next: () => Promise<void>) => c.text('changed');
+  assert.deepEqual(planted((a) => a.all('/s/:spaceId/learn/:id', twoParams)),
+    ['ALL /s/:spaceId/learn/:id changes data outside the role-gated prefixes'], 'a two-parameter catch-all handler');
+  assert.deepEqual(planted((a) => a.all('/s/:spaceId/*', twoParams)),
+    ['ALL /s/:spaceId/* changes data outside the role-gated prefixes'], 'a two-parameter catch-all handler on a middleware-like path');
   assert.deepEqual(planted((a) => a.delete('/account/password', page)),
     ['DELETE /account/password changes data outside the role-gated prefixes'], 'only the named open writes, by method and path');
 

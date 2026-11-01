@@ -66,13 +66,46 @@ export class Client {
   }
 }
 
-/** Moves the Worker's clock (test builds only). */
-export async function setClockOffsetDays(base: string, days: number): Promise<Response> {
+// Where a test run starts the Worker's clock. Normally at the real time (0).
+// A reproduction can start it elsewhere (LMS_TEST_CLOCK_START, see
+// test/support/worker.ts): every relative move below is then made from that
+// starting point, as if the run had begun at that time of day.
+const startOffsets = new Map<string, number>();
+
+export function setStartOffset(base: string, ms: number): void {
+  startOffsets.set(base, ms);
+}
+
+function postClock(base: string, offsetMs: number): Promise<Response> {
   return fetch(base + '/__test/clock', {
     method: 'POST',
     headers: { 'content-type': 'application/json', origin: base },
-    body: JSON.stringify({ offsetMs: days * 86_400_000 }),
+    body: JSON.stringify({ offsetMs }),
   });
+}
+
+/** Moves the Worker's clock by whole days from where the run started (test builds only). */
+export async function setClockOffsetDays(base: string, days: number): Promise<Response> {
+  return postClock(base, (startOffsets.get(base) ?? 0) + days * 86_400_000);
+}
+
+/** Moves the Worker's clock by milliseconds from where the run started (test builds only). */
+export async function setClockOffsetMs(base: string, ms: number): Promise<Response> {
+  return postClock(base, (startOffsets.get(base) ?? 0) + ms);
+}
+
+/** Sets the Worker's clock to an exact instant (test builds only). The Worker
+ * runs on this machine, so its clock is this machine's clock plus the offset. */
+export async function setClockTo(base: string, atMs: number): Promise<Response> {
+  return postClock(base, atMs - Date.now());
+}
+
+/** The Worker's own time now (test builds only). */
+export async function workerNow(base: string): Promise<number> {
+  const res = await fetch(base + '/__test/clock');
+  if (res.status !== 200) throw new Error(`the test clock did not answer (${res.status})`);
+  const { now } = (await res.json()) as { now: string };
+  return Date.parse(now);
 }
 
 export function utcDatePlusDays(days: number, from = Date.now()): string {
