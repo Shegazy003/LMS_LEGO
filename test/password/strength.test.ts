@@ -20,7 +20,7 @@
 // 4. a setting outside the floor and ceiling refuses to serve at all;
 // 5. the production build, with its own configuration, stores passwords at
 //    the configured production strength (test/guards/production-guard.test.ts
-//    asserts that this strength is 100,000).
+//    asserts that this strength is 10,000, the owner's option B).
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
