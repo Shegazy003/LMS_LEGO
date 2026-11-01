@@ -120,6 +120,13 @@ jobs:
       - name: Deploy rails - the owner's last-resort reset works on the local database
         if: success() || failure()
         run: npm run test:last-resort
+      # Build task 7: the password strength is a deploy-time setting
+      # (PASSWORD_ITERATIONS), stored with each password and re-written at the
+      # configured strength on the next sign-in; production's configured
+      # default stays 100,000 (asserted by the production guard in this step).
+      - name: Password strength - stored per password, upgraded at sign-in, default unchanged
+        if: success() || failure()
+        run: npm run test:password-strength
       - name: Upload evidence (screenshots, reports)
         if: always() && hashFiles('evidence/**') != ''
         uses: actions/upload-artifact@v4

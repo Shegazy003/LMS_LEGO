@@ -5,6 +5,25 @@
 import { b64urlDecode, b64urlEncode } from './encoding.ts';
 
 export const PBKDF2_ITERATIONS = 100_000;
+
+// Build task 7 scaffolding (red): the names the password-strength tests use.
+// The behaviour is not built yet.
+export const PASSWORD_FLOOR = 10_000;
+export const PASSWORD_CEILING = 100_000;
+export const DEFAULT_ITERATIONS = 100_000;
+export class PasswordSettingError extends Error {}
+const notBuilt = (): never => {
+  throw new Error('password strength setting: not built yet (build task 7)');
+};
+export function passwordIterations(_raw: unknown): number {
+  return notBuilt();
+}
+export function storedIterations(_stored: string): number | null {
+  return notBuilt();
+}
+export function needsRehash(_stored: string, _iterations: number): boolean {
+  return notBuilt();
+}
 const SALT_BYTES = 16;
 const HASH_BITS = 256;
 
@@ -14,7 +33,7 @@ async function derive(password: string, salt: Uint8Array, iterations: number): P
   return new Uint8Array(bits);
 }
 
-export async function hashPassword(password: string): Promise<string> {
+export async function hashPassword(password: string, _iterations?: number): Promise<string> {
   const salt = crypto.getRandomValues(new Uint8Array(SALT_BYTES));
   const hash = await derive(password, salt, PBKDF2_ITERATIONS);
   return `pbkdf2-sha256$${PBKDF2_ITERATIONS}$${b64urlEncode(salt)}$${b64urlEncode(hash)}`;
@@ -42,7 +61,7 @@ export function timingSafeEqual(a: Uint8Array, b: Uint8Array): boolean {
 /** A real hash of a random password, used to spend the same time when a
  * username does not exist (so sign-in timing does not reveal usernames). */
 let dummy: Promise<string> | null = null;
-export function dummyHash(): Promise<string> {
+export function dummyHash(_iterations?: number): Promise<string> {
   dummy ??= hashPassword(b64urlEncode(crypto.getRandomValues(new Uint8Array(16))));
   return dummy;
 }
