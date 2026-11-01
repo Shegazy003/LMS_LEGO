@@ -1,6 +1,39 @@
 # Current progress
 
-## Current state, 2 November 2026: owner chose storage A and passwords B; build task 8 (apply B) in progress; account steps with the owner
+## Current state, 1 November 2026 (late night, UTC): RELEASE 1 ACCEPTED and live
+
+**What is true now**
+
+- **Release 1 is live** at **https://lms-lego.lmslego.workers.dev** on the owner's Cloudflare account (Workers Free plan, D1 `lms-lego`, R2 `lms-lego-files`).
+- **The owner accepted release 1** on 1 November 2026 after the go-live sitting:
+  - owner first setup was completed immediately after the first deploy, and the recovery code is on paper;
+  - Mesk School was shaped and its admin appointed on the public address (AT-1 step 4);
+  - one real WhatsApp reset link was sent from a phone and used (AT-2 step 6);
+  - a PDF was uploaded by a publisher and opened by a learner in a real browser;
+  - Cloudflare Metrics: 164 invocations, CPU time 3 ms, 0 errors (no error 1102), which confirms password option B (10,000 iterations) fits the free plan.
+- **Deploy record:** first run 41357099847 deployed but its smoke check met a fresh-address 404. Build task 9 (#21) taught the check to wait through it. Rerun 41361374176 on `258bbdb` passed every step. Live version `3d84e561`.
+- **Delivered through the line since the owner's delegation:** AT-1 (#4), AT-4 (#6), AT-3 (#8), AT-2 (#10), AT-5 (#13), deploy rails (#15, one HOLD then PASS), password strength setting (#17), option B applied (#19), smoke-check fix (#21). Every one went Builder → Lead → Independent Verifier PASS → merged with green CI on `main`. Track record in [decision 002](docs/06-DELEGATION-AND-ROLES.md).
+- Contract 0.3 is closed as accepted.
+
+**Active priority:** none in build. Release 1 is in use at Mesk School.
+
+**Next, by the roadmap ([docs/05-ROADMAP.md](docs/05-ROADMAP.md)):** R2 (guardians and exam results) starts when Mesk School has used R1 for one term, or earlier if the school asks for results. Its first step is a new contract from the Product Manager, one critic review, and one batch of owner questions, including the open privacy decision on whether a guardian may see that a lesson was opened.
+
+**Welcome any time:** subject names from Hadeer and Shimaa; the owner's pass over the Arabic kit labels (the owner can now edit labels directly in the kit editor); feedback from the school's first weeks.
+
+**Small follow-ups (not blocking, each a short task when the owner wants it):** switch on Workers Logs for troubleshooting; a test that drives a concurrent password change against the guarded re-hash; direct sweep cases for a null Origin, other port, scheme and subdomain; a custom domain before a second organization (about $10 a year, owner's purchase); move to password option A ($5 a month) when a second organization joins.
+
+**Known limits of release 1:**
+- the admin cannot rename, end early or remove people, groups or subjects;
+- the editor cannot rename or delete;
+- five wrong passwords lock a username for 15 minutes;
+- uploads are buffered in memory up to 25 MB;
+- usage counts are approximate;
+- end dates are UTC days;
+- there is one language choice per person;
+- the Verifier ran on a different Anthropic model rather than a different vendor (exception in decision 002).
+
+## Earlier: owner chose storage A and passwords B; task 8 (historical)
 
 **What is true now**
 

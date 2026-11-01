@@ -1,5 +1,7 @@
 # Product contract: LMS Lego, release 1
 
+**Accepted:** release 1 was accepted by the owner on 1 November 2026 (UTC) on the public address `https://lms-lego.lmslego.workers.dev`, after AT-1 to AT-5 passed in CI and the owner-only steps (AT-1 step 4, AT-2 step 6) passed live. This contract is closed; release 2 gets its own contract.
+
 **Version:** 0.3, 31 October 2026. **Status:** `CONTRACT READY`, with the owner's answers to questions 1 to 7 recorded in section 7 and one addition from question 8 (the free WhatsApp reset link, one step in AT-2). The product critic's review of version 0.2 is in section 8. **The owner approves this version by merging the pull request that carries it**; from that merge the contract is **frozen**, and later changes are a new version with an explained impact.
 
 ## 1. User and problem
