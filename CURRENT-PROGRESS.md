@@ -1,6 +1,53 @@
 # Current progress
 
-## Current state, 1 November 2026 (evening): release 1 code-complete and deploy-ready; build task 7 (password strength as a setting) in progress
+## Current state, 1 November 2026 (night): release 1 code-complete, deploy-ready, and prepared for either password answer; waiting on the owner
+
+**What is true now**
+
+- **All five acceptance tests of release 1 are delivered:** AT-1 (#4), AT-4 (#6), AT-3 (#8), AT-2 (#10) and AT-5 (#13). Each went Builder → Lead ACCEPTED → Verifier PASS → merged, with CI green on `main`.
+- **First-deploy rails delivered** (#15, merge `196ada9`, PASS after one rework). **The deploy workflow has never run.**
+- **Password strength as a setting delivered** (#17, merge `7fbe525`):
+  - every stored password carries its own strength;
+  - `PASSWORD_ITERATIONS` is read strictly: floor 10,000, ceiling 100,000, and a bad value refuses to serve;
+  - a password is re-hashed at the next sign-in, in either direction;
+  - today's 100,000 is unchanged and asserted by the production guard;
+  - local measurement puts a sign-in at about 44 ms at 100,000 and about 4.4 ms at 10,000.
+- Contract 0.3 stays frozen. Nothing is deployed. Release 1 is accepted only after the go-live sitting (AT-1 step 4, AT-2 step 6).
+
+**Active priority:** none in build. The delivery line waits on the owner's RED bundle. No further build work is authorized by the plan until it is answered, apart from the small task that applies password option B, if chosen.
+
+**Waiting on the human owner (RED, one bundle; details in [docs/07-FIRST-DEPLOY.md](docs/07-FIRST-DEPLOY.md)):**
+1. **File storage:** A (recommended) is a card when Cloudflare asks, with 10 GB free. B is no card, Workers KV and 1 GB; it needs one build task.
+2. **Password strength:** A is Workers Paid at $5 a month, keeping 100,000. B (recommended for the pilot) is free at 10,000, set before the first deploy; it is a one-line change through the usual route.
+3. **Cloudflare account and deploy key**, stored as GitHub secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
+4. **A go-live sitting:**
+   - the delegate starts the deploy;
+   - the owner completes `/setup` at once and keeps the recovery code on paper;
+   - the owner checks AT-1 step 4 and AT-2 step 6;
+   - the PDF viewer is checked in a real browser;
+   - the Workers Logs CPU column is read for sign-in and password change.
+
+Still welcome any time: subject names from Hadeer and Shimaa; the owner's pass over the Arabic kit labels.
+
+**Live-sitting risks (documented):** a first-time workers.dev subdomain; the R2 payment method; the deploy key needs D1 Edit and R2 Edit; edge CPU differs from local measurement.
+
+**Carried notes (not blocking):**
+- no test drives a concurrent password change against the guarded re-hash;
+- the cost table gives medians only;
+- direct sweep cases are wanted for a null Origin, a different port or scheme, and a subdomain (partly added in task 6);
+- Safari before 16.4 is refused on the reset form.
+
+**Known limits of release 1:**
+- The admin cannot rename, end early or remove people, groups or subjects.
+- The editor cannot rename or delete.
+- Five wrong passwords lock a username for 15 minutes.
+- Uploads are buffered in memory up to 25 MB.
+- Usage counts are approximate.
+- End dates are UTC days.
+- One language choice per person.
+- The Verifier ran on a different Anthropic model rather than a different vendor (exception in decision 002).
+
+## Earlier on 1 November 2026 (evening): deploy-ready, task 7 opened (historical)
 
 **What is true now**
 

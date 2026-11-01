@@ -34,7 +34,9 @@ The Workers Free plan allows **10 ms of CPU per request**; a request over it fai
 | **A. Workers Paid** | Keep today's password strength; every free-plan limit rises at once | $5 per month (breaks the zero-cost line) | Unchanged |
 | **B. Stay free (recommended for the pilot)** | Lower the password-hashing work until a sign-in fits inside 10 ms; stored passwords record their own strength and are upgraded at the next sign-in when the plan allows | $0 | Online guessing stays blocked by the wrong-password limit; weaker only if the database itself were ever stolen |
 
-**Recommendation: B for the Mesk School pilot,** then A when a second organization joins. Either way, the team first makes the strength a setting stored with each password (build task 7), with today's strength as the default, so the owner's answer changes one setting and no code.
+**Recommendation: B for the Mesk School pilot,** then A when a second organization joins.
+
+Build task 7 (pull request #17) made the strength a setting stored with each password; today's 100,000 stays the default. Measured locally in the Workers runtime: one sign-in costs about 44 ms at 100,000 and about 4.4 ms at 10,000; a password change at 10,000 costs about 9 ms. **Option B means `PASSWORD_ITERATIONS` = 10,000 (the floor), set in the same pull request as the production guard's expected value, and set before the first deploy** so no 100,000-iteration hash is ever written in production. The live CPU column in Workers Logs at the go-live sitting is the real check; if 10,000 still exceeds the limit, option A is the answer.
 
 ## Owner's steps (A to C)
 
