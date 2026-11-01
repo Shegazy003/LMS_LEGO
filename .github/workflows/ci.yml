@@ -108,6 +108,18 @@ jobs:
       - name: AT-5 guard - usernames, display names and kit labels are bounded
         if: success() || failure()
         run: npm run test:guard:bounds
+      # The deploy rails (build task 6), proven with no Cloudflare account:
+      # the production bundle builds without the test hooks; deploy.yml starts
+      # only by hand from main, with a read-only token, and never prints its
+      # secrets; the migrations apply to a fresh local database and a second
+      # apply changes nothing; the smoke check passes only on a production
+      # build. Then the owner's last-resort reset, against the local database.
+      - name: Deploy rails - the production bundle builds and the deploy workflow is safe
+        if: success() || failure()
+        run: npm run test:deploy-rails
+      - name: Deploy rails - the owner's last-resort reset works on the local database
+        if: success() || failure()
+        run: npm run test:last-resort
       - name: Upload evidence (screenshots, reports)
         if: always() && hashFiles('evidence/**') != ''
         uses: actions/upload-artifact@v4

@@ -48,12 +48,13 @@ import { confirmLinkPage, linkReadyPage, personPage, type PersonFrame, type Pers
 import { lessonEditor, publisherHome, subjectEditor } from './views/publish.ts';
 import { resetDeadPage, resetDonePage, resetPage, type ResetSpace } from './views/reset.ts';
 import { accessEndedPage, adminHome, membershipsPage, type SpaceView } from './views/space.ts';
+import { isSameOrigin } from './origin.ts';
+import { logoKey, saveTheme } from './theme.ts';
 
 type C = Context<AppEnv>;
 
 const COLOUR = /^#[0-9a-fA-F]{6}$/;
 const MIN_PASSWORD = 8;
-const logoKey = (spaceId: string) => `spaces/${spaceId}/logo`;
 
 // ---------------------------------------------------------------- usage ----
 let meter: UsageMeter | null = null;
@@ -166,7 +167,7 @@ use('*', async (c, next) => {
 // request with no Origin at all is refused too (task 5, cross-origin guard).
 const SAFE_METHOD = /^(GET|HEAD|OPTIONS)$/;
 use('*', async (c, next) => {
-  const sameOrigin = c.req.header('sec-fetch-site') === 'same-origin' || c.req.header('origin') === new URL(c.req.url).origin;
+  const sameOrigin = isSameOrigin(c.req.url, c.req.header('origin'), c.req.header('sec-fetch-site'));
   if (!SAFE_METHOD.test(c.req.method) && !sameOrigin) {
     throw new HTTPException(403, { res: new Response('Forbidden', { status: 403 }) });
   }
@@ -551,15 +552,10 @@ app.post('/owner/spaces/:id/theme', async (c) => {
     logo = { bytes, type };
   }
   const db = c.get('db');
-  if (logo) {
-    await c.env.FILES.put(logoKey(space.id), logo.bytes, { httpMetadata: { contentType: logo.type } });
-    await db.run(
-      `UPDATE kit SET json = json_set(json, '$.theme.primaryColor', ?, '$.theme.logoKey', ?, '$.theme.logoType', ?) WHERE id = ?`,
-      colour.toLowerCase(), logoKey(space.id), logo.type, space.kitId,
-    );
-  } else {
-    await db.run(`UPDATE kit SET json = json_set(json, '$.theme.primaryColor', ?) WHERE id = ?`, colour.toLowerCase(), space.kitId);
-  }
+  await saveTheme(
+    { files: c.env.FILES, run: (sql, ...params) => db.run(sql, ...params) },
+    { spaceId: space.id, kitId: space.kitId, colour, logo, currentLogoKey: space.kit.theme.logoKey },
+  );
   return c.redirect(`/owner/spaces/${space.id}?done=theme#theme`, 303);
 });
 

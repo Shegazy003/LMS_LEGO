@@ -363,7 +363,7 @@ describe('AT-4 a learner sees exactly what was assigned', { concurrency: false }
     assert.ok(!pubHome.includes('id="concepts"'), 'a publisher does not get the admin home');
   });
 
-  it('AT-4.7 after the first learner\'s end date: "access ended … Contact the مدير", and the lesson and PDF addresses are refused with the same message', async () => {
+  it('AT-4.7 after the first learner\'s end date: "access ended … للتواصل: مدير" (the kit\'s admin label), and the lesson and PDF addresses are refused with the same message', async () => {
     assert.equal((await setClockOffsetDays(worker.url, 11)).status, 200);
     await salmaCtx.clearCookies();
     await signIn(salma, SALMA.username, salmaPassword);

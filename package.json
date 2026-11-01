@@ -21,6 +21,8 @@
     "test:guard:doors": "node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./test/support/github-reporter.mjs --test-reporter-destination=stdout test/guards/doors.test.ts",
     "test:guard:cross-origin": "node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./test/support/github-reporter.mjs --test-reporter-destination=stdout test/guards/cross-origin.test.ts",
     "test:guard:bounds": "node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./test/support/github-reporter.mjs --test-reporter-destination=stdout test/guards/bounds.test.ts",
+    "test:deploy-rails": "node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./test/support/github-reporter.mjs --test-reporter-destination=stdout test/guards/production-guard.test.ts test/deploy/workflow.test.ts test/deploy/migrations.test.ts test/deploy/smoke.test.ts",
+    "test:last-resort": "node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./test/support/github-reporter.mjs --test-reporter-destination=stdout test/deploy/last-resort.test.ts",
     "typecheck": "tsc --noEmit",
     "dev": "wrangler d1 migrations apply lms-lego --local && wrangler dev",
     "dev:test": "wrangler d1 migrations apply lms-lego --local --env test && wrangler dev --env test"
