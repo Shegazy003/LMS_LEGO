@@ -2,8 +2,9 @@
 //
 // Every POST route of the product (read from the router's own route table, so
 // a form added later is swept too) is posted by the person who may use it,
-// with that person's session, but from another site, or with no Origin at
-// all: as an ordinary form, as a multipart form carrying files, as plain text
+// with that person's session, but from another site, from an origin that is
+// only close to the product's own (Origin: null, another port, a subdomain),
+// or with no Origin at all: as an ordinary form, as a multipart form carrying files, as plain text
 // and as JSON. Every one must answer 403, start no session, and change
 // nothing: every row of every product table and the stored files are the same
 // afterwards. A positive control then shows the same sessions, from the
@@ -101,9 +102,26 @@ function multipart(values: Record<string, string>): FormData {
   return f;
 }
 
+/** Origins that are close to the product's own but are not it (the check is an exact match).
+ * "Another scheme on the same host" is not sent here: `wrangler dev`'s local
+ * proxy rewrites any Origin on the Worker's host to the Worker's own origin,
+ * whatever its scheme, so local emulation cannot show that case. It is covered
+ * by test/unit/origin.test.ts and, on the live https address, by the deploy
+ * smoke check (scripts/smoke-check.mjs). */
+function nearOrigins(base: string): [string, string][] {
+  const u = new URL(base);
+  const port = Number(u.port || (u.protocol === 'https:' ? 443 : 80));
+  return [
+    ['Origin: null (a sandboxed page or a file)', 'null'],
+    ['a different port', `${u.protocol}//${u.hostname}:${port + 1}`],
+    ['a subdomain', `${u.protocol}//evil.${u.host}`],
+  ];
+}
+
 /** The forged requests: [what, send]. */
 function forgeries(client: Client, address: string, values: Record<string, string>) {
   return [
+    ...nearOrigins(client.base).map(([what, origin]) => [`form, ${what}`, () => client.postWith(address, values, { origin })] as const),
     ['form, another site', () => client.postWith(address, values, { origin: EVIL })],
     ['form, another site (sec-fetch-site)', () => client.postWith(address, values, { origin: EVIL, 'sec-fetch-site': 'cross-site' })],
     ['form, no origin', () => client.postWith(address, values, {})],
@@ -181,7 +199,7 @@ describe('AT-5 guard: every form refuses a cross-origin post', { concurrency: fa
         sent++;
       }
     }
-    assert.ok(sent >= 7 * 30, `the sweep sent ${sent} forged posts`);
+    assert.ok(sent >= 10 * 30, `the sweep sent ${sent} forged posts`);
     assert.deepEqual(changes(dataBefore, await snapshot(worker)), {}, 'no row of any product table changed');
     assert.equal(await storedBytes(), filesBefore, 'no file was stored');
     // Everyone is still signed in: no forged sign-out went through.

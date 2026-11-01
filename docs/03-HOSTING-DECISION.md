@@ -56,3 +56,19 @@ Recurring cost: **$0** while within those lines. First paid step if a line is cr
 Create a free Cloudflare account under the owner's own email, and later a free GitHub secret for deployment. Nobody else ever sees these credentials. Until then, the Builder works entirely in GitHub Actions with local emulation, so nothing waits on the account except the first public address.
 
 Sources checked on 31 October 2026: Cloudflare's D1 pricing and the 1 September 2026 free-tier enforcement changelog, and R2 pricing as reported by current third-party summaries; the Builder re-reads the official pricing pages before the first deploy and notes any change here.
+
+## Figures re-read, 1 November 2026 (build task 6, read-only)
+
+No decision is changed by this note. Cloudflare's documentation site could not be opened from the build environment, so its pages were read from their published source, the public `cloudflare/cloudflare-docs` repository on GitHub (commit `d09c823`, 31 October 2026). Meta's developer site could not be opened at all.
+
+| Figure | Official page | Read today | Change since 31 October |
+|---|---|---|---|
+| Workers requests | [Workers pricing](https://developers.cloudflare.com/workers/platform/pricing/) | 100,000 per day (Free) | None |
+| Workers CPU time | [Workers limits](https://developers.cloudflare.com/workers/platform/limits/#cpu-time) | **10 ms of CPU per request** (Free) | Not recorded before; see the note below |
+| D1 rows read / written | [D1 pricing](https://developers.cloudflare.com/d1/platform/pricing/) | 5 million / day; 100,000 / day; free limits reset at 00:00 UTC | None |
+| D1 storage | same | 5 GB in total | None |
+| R2 storage and operations | [R2 pricing](https://developers.cloudflare.com/r2/pricing/) | 10 GB-month; 1 million Class A and 10 million Class B operations per month; egress free | None |
+| R2 and a payment method | [R2 get started](https://developers.cloudflare.com/r2/get-started/) | "You need a Cloudflare account with an R2 subscription … complete the checkout flow." The page does not name a card; the checkout flow is where Cloudflare asks for one (as in docs/07, option A) | None |
+| WhatsApp authentication, Egypt | [Meta pricing](https://developers.facebook.com/docs/whatsapp/pricing) | **Not read on Meta's rate card** (site unreachable). Search results quote Meta's changelog: "effective April 1, 2026 … Egypt … lower utility and authentication rates", and a third-party rate card ([ChatMaxima](https://chatmaxima.com/whatsapp-api-pricing/egypt/)) gives $0.0036 per authentication message, plus 14% VAT | **Possibly lower** than the "about half a cent" in contract Later D2; confirm on Meta's rate card before D2 is planned |
+
+**Note on CPU time.** Every sign-in, password change and reset hashes a password with PBKDF2 at 100,000 iterations. On the build machine one hash took about 45 to 65 ms of CPU (Node's Web Crypto; Cloudflare's hardware may be faster). That is above the Free plan's 10 ms per request as written; Cloudflare's own page says heavier authentication work "typically uses 10-20 ms" and that isolates have some flexibility. Whether sign-in stays under the line on the real platform can only be seen live: the go-live sitting should sign in a few times and watch for "exceeded CPU time limit" (error 1102). If it appears, the choices are the Workers Paid plan at $5 a month (RED, owner) or a lower iteration count (a security trade-off, owner). Nothing changes until then.

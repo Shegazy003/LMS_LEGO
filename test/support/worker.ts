@@ -1,5 +1,7 @@
 // Starts the real Worker locally (Wrangler's workerd + Miniflare emulation of
 // D1 and R2) with the test environment, on a free port, with a fresh database.
+// With { production: true } it starts the production build instead (the
+// configuration that is deployed: no test hooks), for the deploy-rails tests.
 // No Cloudflare account is used.
 import { spawn, type ChildProcess } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -51,16 +53,17 @@ export interface RunningWorker {
   sqlAll(query: string): Promise<Record<string, unknown>[][]>;
 }
 
-export async function startWorker(): Promise<RunningWorker> {
+export async function startWorker(options: { production?: boolean } = {}): Promise<RunningWorker> {
+  const envArgs = options.production ? [] : ['--env', 'test'];
   const persist = mkdtempSync(join(tmpdir(), 'lms-lego-test-'));
-  await run(['d1', 'migrations', 'apply', 'lms-lego', '--local', '--env', 'test', '--persist-to', persist]);
+  await run(['d1', 'migrations', 'apply', 'lms-lego', '--local', ...envArgs, '--persist-to', persist]);
   const port = await freePort();
   const url = `http://127.0.0.1:${port}`;
   let output = '';
   const child: ChildProcess = spawn(
     wrangler,
     [
-      'dev', '--env', 'test', '--ip', '127.0.0.1', '--port', String(port),
+      'dev', ...envArgs, '--ip', '127.0.0.1', '--port', String(port),
       '--persist-to', persist, '--show-interactive-dev-session=false', '--log-level', 'warn',
     ],
     { cwd: root, env: quietEnv, detached: true },
@@ -83,7 +86,7 @@ export async function startWorker(): Promise<RunningWorker> {
   // A reproduction can start the Worker's clock at a chosen UTC time of day
   // on today's date, e.g. LMS_TEST_CLOCK_START=23:59:58 (two seconds before
   // midnight), to show that a test does not depend on when it runs.
-  const start = process.env.LMS_TEST_CLOCK_START;
+  const start = options.production ? undefined : process.env.LMS_TEST_CLOCK_START;
   if (start) {
     const at = Date.parse(`${new Date().toISOString().slice(0, 10)}T${start}Z`);
     if (Number.isNaN(at)) throw new Error(`LMS_TEST_CLOCK_START must be HH:MM:SS, got ${start}`);
@@ -102,7 +105,7 @@ export async function startWorker(): Promise<RunningWorker> {
     log: () => output,
     async sql(query: string) {
       const out = await run([
-        'd1', 'execute', 'lms-lego', '--local', '--env', 'test', '--persist-to', persist, '--json', '--command', query,
+        'd1', 'execute', 'lms-lego', '--local', ...envArgs, '--persist-to', persist, '--json', '--command', query,
       ]);
       const start = out.search(/^\[/m); // the JSON array starts a line
       if (start < 0) throw new Error(`no JSON from wrangler d1 execute:\n${out}`);
@@ -111,7 +114,7 @@ export async function startWorker(): Promise<RunningWorker> {
     },
     async sqlAll(query: string) {
       const out = await run([
-        'd1', 'execute', 'lms-lego', '--local', '--env', 'test', '--persist-to', persist, '--json', '--command', query,
+        'd1', 'execute', 'lms-lego', '--local', ...envArgs, '--persist-to', persist, '--json', '--command', query,
       ]);
       const start = out.search(/^\[/m);
       if (start < 0) throw new Error(`no JSON from wrangler d1 execute:\n${out}`);

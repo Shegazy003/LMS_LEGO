@@ -10,7 +10,7 @@ A learning space that a non-technical owner can shape like Lego bricks and hand 
 4. [docs/03-HOSTING-DECISION.md](docs/03-HOSTING-DECISION.md): the zero-cost hosting choice and when to revisit it.
 5. [docs/05-ROADMAP.md](docs/05-ROADMAP.md): the line of releases, why release 1 is small, and when each parked idea comes forward.
 6. [docs/04-LATER.md](docs/04-LATER.md): every good idea that is not in this release, with its trigger.
-7. [docs/07-FIRST-DEPLOY.md](docs/07-FIRST-DEPLOY.md): the owner's steps and decision for the first public address.
+7. [docs/07-FIRST-DEPLOY.md](docs/07-FIRST-DEPLOY.md): the owner's steps and decision for the first public address; the team's side is the README section "First deploy".
 
 **How the team works** is in [AGENTS.md](AGENTS.md), [docs/00-OPERATING-CONTRACT.md](docs/00-OPERATING-CONTRACT.md) and [docs/06-DELEGATION-AND-ROLES.md](docs/06-DELEGATION-AND-ROLES.md). They are the short working form of the owner's Completion-First Manifesto and the operating model adopted in the `ai-engineering-platform` repository on 15 October 2026. This repository follows the same roles and rules; it does not copy that platform's machinery.
 
@@ -192,6 +192,8 @@ npm run test:guard:spaces         # a space never reads another space's rows
 npm run test:guard:roles          # every admin and publisher route is behind its role gate
 npm run test:guard:cross-origin   # every POST route refuses another site's or an origin-less post
 npm run test:guard:bounds         # usernames, display names and kit labels are bounded
+npm run test:deploy-rails         # the production bundle, deploy.yml's safety rules, migrations applied twice, the smoke check
+npm run test:last-resort          # the owner's last-resort reset against the local database
 npm run typecheck
 ```
 
@@ -232,17 +234,43 @@ The space guard (`test/guards/space-isolation.test.ts`) scans every SQL statemen
 - **One language choice per person.** It is stored on the person, not per space; the choices offered are the languages of the person's latest membership. In a space that does not offer the chosen language, that space's first language applies. In this release every space has both Arabic and English.
 - **The "access ended" page** shows the message in the space's first language and then its second, whatever language the person chose.
 - **A custom kit keeps its kit name.** After renaming labels, the owner's pages still call the kit by the seed's name (for example Company); there is no "save as a new kit" or copy between spaces.
-- **A replaced logo** shows at the next page load; browsers revalidate it (no-cache).
+- **A replaced logo** shows at the next page load; browsers revalidate it (no-cache). The theme form writes the new logo under a new name, switches colour and logo in one database statement, then removes the old logo; if that removal fails, the old file is only left over (counted in storage).
 - **Validation messages for labels** say which rule was broken, not which box; the owner's typing is kept in the form.
-- **Owner last resort** (both password and recovery code lost): not built in this task. It needs a short documented step for the Cloudflare account holder; it belongs with the first deploy.
+- **Owner last resort** (both password and recovery code lost): a script and one Wrangler command for the Cloudflare account holder (see "First deploy"); there is no web route for it, by design.
 - **Pages outside a space** (sign-in, setup, owner) follow the browser's language (Arabic if the browser prefers it, otherwise English), unless the signed-in person stored a language choice. Inside a space, pages use the person's choice when the space offers it, else the space's first language.
 - **Dev tooling:** `npm audit` reports advisories in the `undici` copy bundled with Wrangler 4.149 (used only for local emulation and tests, never deployed). The fixed Wrangler releases were under two weeks old when this was pinned; update Wrangler in a later task.
 
-## Deploy and rollback
+## First deploy
 
-Deploying is the owner's step (it needs the owner's Cloudflare account; see the hosting decision). `wrangler.jsonc` holds no account id, database id or secret. On the first `wrangler deploy`, Wrangler's automatic provisioning creates the D1 database and the R2 bucket in the owner's account (if the installed Wrangler does not, create them with `wrangler d1 create lms-lego` and `wrangler r2 bucket create lms-lego-files`). Then `wrangler d1 migrations apply lms-lego --remote`. Re-read the free-plan figures in the hosting decision before the first deploy.
+The owner's steps and decisions (the Cloudflare account, the storage choice, the two repository secrets) are in [docs/07-FIRST-DEPLOY.md](docs/07-FIRST-DEPLOY.md). This section is the team's side. Nothing deploys by itself: the deploy workflow ([.github/workflows/deploy.yml](.github/workflows/deploy.yml)) runs only when someone starts it by hand, only from `main`, and CI checks those rules on every pull request.
 
-- **Roll back the code:** Wrangler keeps previous versions of the Worker; `wrangler rollback` (or one click under the Worker's Deployments in the Cloudflare dashboard) returns to the previous version.
-- **Data:** migrations are additive (new tables and columns only), so older code keeps working with a newer database. D1 keeps 30 days of point-in-time history for recovery. Task 4 adds `migrations/0003_people.sql` (`reset_link`, `attempt_limit`); code from before it ignores both tables. Task 5 adds `migrations/0004_person_language.sql` (one nullable column, `user.lang`); older code ignores it. A kit switch or rename is data only: to undo one, the owner switches back or renames again (or the database's point-in-time history restores the kit row).
+**How the delegate starts a deploy** (with the owner present for the first one):
+
+1. The owner has added the repository secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` (docs/07, step C). Nobody else sees them.
+2. On GitHub: **Actions** → **deploy** → **Run workflow** → branch `main` → **Run workflow**. Any other branch is refused.
+3. The run, in order: stops at once with a plain message if a secret is missing (it never prints them); checks out `main`; `npm ci`; type check; the production guard (the bundle that ships has no test hooks); creates the D1 database `lms-lego` and the R2 bucket `lms-lego-files` if they do not exist yet; applies the database migrations to the live database; deploys the Worker; prints the address and the version id (also on the run's summary page); runs the smoke check. Two runs never overlap, and a running deploy is never cancelled.
+4. No account id or database id is stored in the repository: Wrangler finds the database and the bucket by name in the owner's account at each run.
+
+**Why migrations run before the deploy.** Migrations are additive (new tables and nullable columns only; CI checks every migration file for `DROP`, `RENAME`, `DELETE FROM` and `UPDATE … SET`), so the version still serving keeps working on the new schema while the new version starts. A second apply is a no-op (CI proves it on a fresh local database).
+
+**What the smoke check proves** (`scripts/smoke-check.mjs`, read-only): the address answers (a redirect to `/setup` or `/signin`), that page answers 200, a form post from another site (and, on https, from the same host over plain http) is refused with 403, and `/__test/clock` is 404, so a test build was not deployed. If it fails, roll back (below).
+
+**The owner must complete `/setup` immediately.** Until the owner account exists, `/setup` is open to whoever opens the address first, who would become the owner. The first deploy is therefore started only with the owner at hand: as soon as the smoke check says "No owner yet", the owner opens the address, completes setup and writes the recovery code on paper. After that, `/setup` is closed for good.
+
+**If Cloudflare asks for a workers.dev subdomain.** A brand-new account may have none yet; the deploy then stops with Cloudflare's message and a link. The owner opens **Workers & Pages** in the dashboard once (choosing the subdomain is the owner's call, since it appears in the address) and the delegate starts the deploy again. Migrations already applied are skipped on the re-run.
+
+**Roll back.**
+
+- **The code:** the deploy prints each version id. `npx wrangler rollback` (signed in as the account holder, from a checkout of this repository) returns to the previous version, or `npx wrangler rollback <version id>` to a chosen one; or, in the Cloudflare dashboard, the Worker `lms-lego` → **Deployments** → roll back. No data changes.
+- **Data:** migrations are additive, so older code keeps working with a newer database. D1 keeps 30 days of point-in-time history (Time Travel) for recovery. Task 4 added `migrations/0003_people.sql` (`reset_link`, `attempt_limit`); code from before it ignores both tables. Task 5 added `migrations/0004_person_language.sql` (one nullable column, `user.lang`); older code ignores it. A kit switch or rename is data only: to undo one, the owner switches back or renames again (or the database's point-in-time history restores the kit row).
+- **Abandoning Cloudflare entirely:** delete the Worker, the D1 database and the R2 bucket in the dashboard, then the API token and the two repository secrets.
+
+**The owner's last-resort reset** (both the password and the recovery code are lost). Only the Cloudflare account holder can do this, and it never reopens `/setup`:
+
+1. On the owner's own computer, in a copy of this repository (Node.js 18 or later): `node scripts/owner-last-resort.mjs`. It prints a fresh recovery code once (write it on paper) and one command. The code and its hash are made on this computer; only the hash is in the command, so the code never travels.
+2. Run the printed command, which looks like `npx wrangler d1 execute lms-lego --remote --command "UPDATE user SET recovery_hash = '…' WHERE is_owner = 1; SELECT username FROM user WHERE is_owner = 1;"`. Wrangler asks the owner to sign in to Cloudflare first (or run `npx wrangler login`). It replaces the old recovery code with the new one and shows the owner's username. (Or paste the SQL between the quotes into the dashboard: D1 → `lms-lego` → Console.)
+3. Open the address at `/recover`: username, the new code, a new password. Every old sign-in ends and a further new code is shown, to keep on paper. If `/recover` says to wait, five wrong attempts locked the username for 15 minutes.
+
+CI walks this end to end against the local database (`test/deploy/last-resort.test.ts`): the new code works once on `/recover`, the old code is refused, old sign-ins end, the new password signs in, and `/setup` stays closed.
 
 **Origin.** The brainstorm that led here compared Moodle, Open edX, Canvas, Frappe Learning, LearnHouse, Chamilo, BookStack and Google Classroom, and ended at two conclusions: the owner's real need is small (subject, chapter, lesson, material, with controlled access), and zero recurring cost is a hard requirement. Both conclusions shaped the product contract and the hosting decision.
