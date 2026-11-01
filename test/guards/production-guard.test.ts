@@ -4,9 +4,12 @@
 // configuration does not set the constant or the runtime flag.
 //
 // Build task 7: production also states its password strength
-// (PASSWORD_ITERATIONS) and it is the decided value, 100,000, today's strength.
-// The owner's decision 2 (docs/07-FIRST-DEPLOY.md) changes that value and the
-// DECIDED_ITERATIONS line below together, in one reviewed pull request.
+// (PASSWORD_ITERATIONS) and it is the decided value. Build task 8: the owner
+// took decision 2, option B, on 1 November 2026 (docs/07-FIRST-DEPLOY.md):
+// 10,000, the floor, set before the first deploy so that no 100,000-iteration
+// hash is ever written in production. A later change of decision changes that
+// value and the DECIDED_ITERATIONS line below together, in one reviewed pull
+// request.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -20,8 +23,8 @@ const root = fileURLToPath(new URL('../..', import.meta.url));
 const wrangler = join(root, 'node_modules', '.bin', 'wrangler');
 // A sentence that exists only inside the test seeding code (src/test-hooks.ts).
 const SEED_MARKER = 'test seeding refused';
-// The production password strength the owner has decided on (none yet: today's strength stays).
-const DECIDED_ITERATIONS = 100_000;
+// The production password strength the owner has decided on: option B, 1 November 2026.
+const DECIDED_ITERATIONS = 10_000;
 
 function readConfig(): any {
   const text = readFileSync(join(root, 'wrangler.jsonc'), 'utf8');
@@ -72,9 +75,10 @@ test('production guard: the production bundle contains no clock control and no t
   assert.ok(!production.includes('TEST_HOOKS'), 'production bundle must not read the test flag');
 });
 
-test('production guard: production states its password strength, and it is the decided 100,000, within the floor and ceiling', () => {
+test('production guard: production states its password strength, and it is the decided 10,000 (option B), within the floor and ceiling', () => {
   const config = readConfig();
-  assert.equal(DECIDED_ITERATIONS, 100_000, 'the decided strength is today\'s strength');
+  assert.equal(DECIDED_ITERATIONS, 10_000, 'the decided strength is option B, the floor');
+  assert.equal(DECIDED_ITERATIONS, PASSWORD_FLOOR, 'option B is the floor');
   assert.equal(config.vars?.PASSWORD_ITERATIONS, String(DECIDED_ITERATIONS), 'wrangler.jsonc sets PASSWORD_ITERATIONS for production');
   assert.equal(passwordIterations(config.vars.PASSWORD_ITERATIONS), DECIDED_ITERATIONS, 'the Worker reads it as that strength');
   assert.ok(PASSWORD_FLOOR <= DECIDED_ITERATIONS && DECIDED_ITERATIONS <= PASSWORD_CEILING);
