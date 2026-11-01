@@ -1,6 +1,6 @@
 # Current progress
 
-## Current state, 1 November 2026 (night): release 1 code-complete, deploy-ready, and prepared for either password answer; waiting on the owner
+## Current state, 2 November 2026: owner chose storage A and passwords B; build task 8 (apply B) in progress; account steps with the owner
 
 **What is true now**
 
@@ -16,16 +16,11 @@
 
 **Active priority:** none in build. The delivery line waits on the owner's RED bundle. No further build work is authorized by the plan until it is answered, apart from the small task that applies password option B, if chosen.
 
-**Waiting on the human owner (RED, one bundle; details in [docs/07-FIRST-DEPLOY.md](docs/07-FIRST-DEPLOY.md)):**
-1. **File storage:** A (recommended) is a card when Cloudflare asks, with 10 GB free. B is no card, Workers KV and 1 GB; it needs one build task.
-2. **Password strength:** A is Workers Paid at $5 a month, keeping 100,000. B (recommended for the pilot) is free at 10,000, set before the first deploy; it is a one-line change through the usual route.
-3. **Cloudflare account and deploy key**, stored as GitHub secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
-4. **A go-live sitting:**
-   - the delegate starts the deploy;
-   - the owner completes `/setup` at once and keeps the recovery code on paper;
-   - the owner checks AT-1 step 4 and AT-2 step 6;
-   - the PDF viewer is checked in a real browser;
-   - the Workers Logs CPU column is read for sign-in and password change.
+**Owner's answers (1 November 2026):** file storage **A** (keep R2, card on file); password strength **B** (free plan, 10,000 iterations, applied before the first deploy). Recorded in [docs/07-FIRST-DEPLOY.md](docs/07-FIRST-DEPLOY.md).
+
+**Waiting on the human owner:**
+1. The Cloudflare account, R2 payment method and one deploy key, stored as GitHub secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`. The owner asked for the steps: they are in the visual guide "LMS Lego Cloudflare Setup" and in docs/07 steps A to C. The token needs D1 Edit added to the "Edit Cloudflare Workers" template (which already carries R2 Edit), and Workers & Pages must be opened once first so the free subdomain exists.
+2. The go-live sitting, after task 8 is merged and the owner says "secrets added".
 
 Still welcome any time: subject names from Hadeer and Shimaa; the owner's pass over the Arabic kit labels.
 
