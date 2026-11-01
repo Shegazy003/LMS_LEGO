@@ -1,0 +1,921 @@
+scan github for lms system
+Assuming you mean LMS = Learning Management System, I scanned the current GitHub landscape. There are thousands of repositories tagged lms, but many are tutorials, student projects, abandoned systems, or even unrelated projects because “LMS” is ambiguous; GitHub currently shows roughly 2,389 repositories under the LMS topic. 
+
+The serious shortlist is much smaller:
+
+Project	GitHub maturity	Stack	Best use	My view
+Moodle	~7.5k stars, very active	PHP	Schools, universities, training	⭐⭐⭐⭐⭐ safest overall
+Open edX	~8.2k stars, very active	Django/Python + React	MOOCs, large-scale learning	⭐⭐⭐⭐⭐ strongest enterprise architecture
+Canvas LMS	~6.9k stars	Ruby + JS/TS	Universities/schools	⭐⭐⭐⭐ mature but heavier to customize
+Frappe Learning	~3.3k stars, active	Frappe/Python + JS/TS	Modern customizable LMS	⭐⭐⭐⭐⭐ excellent base to extend
+LearnHouse	~2.3k stars, very active	FastAPI + Next.js + PostgreSQL	Modern / AI-native LMS	⭐⭐⭐⭐⭐ most interesting modern codebase
+Chamilo	~1k stars, active	PHP/Symfony	Training/education	⭐⭐⭐⭐ practical and feature-rich
+ILIAS	~500 stars, long-established	PHP	Universities/corporate training	⭐⭐⭐⭐ extremely mature but heavyweight
+Sakai	long-established, active	Java	Large universities	⭐⭐⭐ mature but complex
+The three I would investigate first
+1. LearnHouse — strongest modern foundation
+
+LearnHouse GitHub repository
+
+This was the most interesting discovery from the scan. It is not simply another Next.js tutorial LMS. It has about 2,300 stars, 2,600+ commits, ~560 forks, and was updated October 1, 2026. 
+
+Its architecture is particularly attractive:
+
+Next.js / React
+      ↓
+FastAPI REST API
+      ↓
+PostgreSQL
+      +
+Redis
+      +
+Collaboration server
+      │
+      └─ Yjs / WebSockets
+It already contains:
+
+courses
+Notion-like block editor
+assignments
+learner submissions
+discussions
+analytics
+certificates
+user groups
+podcasts
+collaborative boards
+real code execution/autograding
+AI-generated interactive content
+contextual AI features
+REST API
+multi-organization capability in its enterprise offering
+Self-hosting has also become unusually straightforward:
+
+npx learnhouse@latest setup
+npx learnhouse start
+npx learnhouse update
+npx learnhouse backup
+
+The backend is FastAPI + SQLModel/Alembic, frontend Next.js/React/Tailwind/Tiptap, and collaboration uses Hocuspocus/Yjs/WebSockets. 
+
+For developing a new product rather than merely operating an LMS, this is currently my #1 repository to study.
+
+One concern: it is AGPL-3.0, and some enterprise features are separately licensed. That matters if the intention is eventually to create a proprietary commercial platform. 
+
+2. Frappe Learning — probably the best balance
+
+Frappe Learning GitHub repository
+
+Around 3.3k stars / 1.5k forks, with current development continuing into October 2026. 
+
+Its philosophy is deliberately different from Moodle: simple course creation and a cleaner UX rather than exposing enormous amounts of LMS configuration.
+
+It uses the Frappe framework, which is significant because the LMS can sit inside an ecosystem that already provides concepts such as:
+
+Users
+Permissions
+Workflows
+Documents
+Notifications
+Reports
+APIs
+Background jobs
+Email
+File management
+ERP/CRM functionality
+That becomes very attractive if we expect the LMS eventually to interact with:
+
+LMS
+ ├── CRM
+ ├── parent/student records
+ ├── communications
+ ├── WhatsApp
+ ├── school administration
+ ├── payments
+ ├── reporting
+ └── automation
+Its structure is simpler to understand and modify than Open edX or Canvas. 
+
+For a business system where learning is one module rather than the entire product, I would actually place Frappe ahead of Moodle.
+
+3. Moodle — safest established choice
+
+Moodle GitHub repository
+
+Moodle remains enormous: around 7,459 stars / 7,660 forks, with its repository updated October 3, 2026. 
+
+It has decades of LMS functionality and a huge plugin ecosystem.
+
+The advantage is not its architecture. The advantage is that almost every LMS requirement you will eventually discover has probably already been solved somewhere in Moodle:
+
+courses
+assignments
+quizzes
+question banks
+grading
+rubrics
+SCORM
+competencies
+attendance
+groups
+roles
+parents
+notifications
+calendar
+mobile support
+analytics
+LTI
+plugins
+SSO
+APIs
+Its current codebase remains PHP and is GPL-3.0. 
+
+For operating an LMS, Moodle would probably be my first recommendation.
+
+For building a new software platform, it would not.
+
+Open edX is a different category
+Open edX GitHub repository
+
+Open edX has around 8,200 stars / 4,360 forks and active development as of October 2, 2026. 
+
+Architecturally it's much more sophisticated:
+
+                        ┌── React MFE
+                        ├── React MFE
+User ──► Platform ──────┼── React MFE
+                        │
+                        ▼
+                   Django core
+                  /     |      \
+                LMS   Studio   Services
+                         |
+                  independent apps
+The core contains both:
+
+LMS — course delivery
+Studio/CMS — course authoring
+The ecosystem combines a modular Django monolith, independently deployable applications, and React micro-frontends. 
+
+But even its own documentation essentially says deployment is not simple. 
+
+So I would choose Open edX only if we genuinely need something resembling:
+
+Coursera / edX / very large university-level online learning infrastructure.
+
+It is overkill for most custom school applications.
+
+Canvas is excellent but not my preferred fork
+Canvas LMS GitHub repository
+
+Canvas is another real production LMS, around 6.9k stars / 3k forks. 
+
+One particularly strong part is its external REST API, with OAuth2 and broad access to Canvas resources. 
+
+However, the codebase is large and Ruby-centric, and self-hosting isn't its strongest aspect. Interestingly, Instructure's experimental canvas-self-hosted Docker repository was archived June 2, 2026 and explicitly warned that it was alpha rather than a production deployment solution. 
+
+So I would consume Canvas APIs before I would fork Canvas itself.
+
+Chamilo deserves more attention than its GitHub stars suggest
+Chamilo LMS GitHub repository
+
+Its repo has about 1,000 stars / 560 forks, but the project reports use by more than 40 million people since 2010. It was updated October 1, 2026. 
+
+It already includes APIs specifically intended for integrations with:
+
+HR, SIS, ERP, e-commerce and other systems.
+
+And it covers assignments, attendance, calendars, course catalogues, multimedia, documents and many other mature LMS capabilities. 
+
+So for a simple traditional LMS that needs integrations, Chamilo is worth testing.
+
+ILIAS and Sakai
+ILIAS is still very actively maintained. Version 11.4 was released September 3, 2026, and the repository contains more than 76,000 commits. 
+
+Sakai is also alive—the current repository was updated September 30 and its master branch is already using 27-SNAPSHOT. 
+
+Both are serious institutional systems.
+
+I wouldn't use either as the foundation for a new modern product unless there were specific institutional requirements forcing the decision.
+
+My current ranking
+If the intention is to build/modify rather than simply install an LMS, I would rank them:
+
+LearnHouse → Frappe Learning → Moodle → Open edX → Canvas → Chamilo → ILIAS → Sakai
+
+But I'd change the order depending on the objective:
+
+Objective	First choice
+Build a modern LMS product	LearnHouse
+LMS + CRM + workflows + other business modules	Frappe Learning
+School / university ready-to-use	Moodle
+Massive MOOC platform	Open edX
+Traditional university environment	Canvas / Moodle
+Easy traditional self-hosted LMS	Chamilo
+Highly mature institutional training	ILIAS
+Java-based university infrastructure	Sakai
+One important conclusion
+I would not start coding an LMS from scratch.
+
+For a system that may eventually combine learning, school communications, student/parent data, automation and CRM, the most valuable GitHub architectures to dissect are:
+
+                    OUR PLATFORM
+                         │
+          ┌──────────────┼──────────────┐
+          ▼              ▼              ▼
+     LearnHouse       Frappe LMS      Moodle
+     architecture     workflows       LMS domain
+          │              │              │
+     Modern UX/API   CRM/business   20+ years of
+     AI/collab       architecture   requirements
+In other words, LearnHouse gives us the modern technical architecture, Frappe gives us the extensible business-platform architecture, and Moodle gives us the mature LMS domain model.
+
+That combination is more interesting to me than simply choosing the GitHub project with the most stars.
+
+i need the simplest one , just to share resources and files in an organized way with students , we need to make access to teachers to be able to create subjects , chapters , lessons , add materials ( videos or pdf , images..etc)
+may be we create users for each student to control access
+Yes — one user account per student is a good idea, especially if you want controlled access later.
+
+But I would not manage access student-by-student. Create the students individually, then control access through classes/groups.
+
+For example:
+
+Users
+├── Teachers
+│   ├── Teacher A
+│   └── Teacher B
+│
+└── Students
+    ├── Ahmed
+    ├── Omar
+    └── Sara
+
+Classes / Groups
+├── Grade 5 - A
+├── Grade 5 - B
+└── Grade 6 - A
+Then:
+
+Grade 5 - A
+   │
+   ├── Mathematics
+   │    ├── Chapter 1
+   │    │    ├── Lesson 1
+   │    │    │    ├── PDF
+   │    │    │    ├── Video
+   │    │    │    └── Images
+   │    │    └── Lesson 2
+   │    └── Chapter 2
+   │
+   ├── Science
+   └── Arabic
+A teacher could have:
+
+Teacher: Mohamed
+
+Can manage:
+✓ Mathematics - Grade 5A
+✓ Mathematics - Grade 5B
+
+Cannot manage:
+✗ Science
+✗ Arabic
+While a student in Grade 5A sees:
+
+My Subjects
+
+Mathematics
+Science
+Arabic
+English
+and nothing belonging to Grade 6 or another class.
+
+This changes my recommendation
+For this exact requirement, I would seriously consider BookStack instead of a conventional LMS.
+
+Its existing structure is almost exactly what you described:
+
+BookStack terminology        Your terminology
+
+Shelf                    →   Grade / Class
+Book                     →   Subject
+Chapter                  →   Chapter
+Page                     →   Lesson
+
+Page attachments         →   PDFs / files
+Images                   →   Images
+Embedded media           →   Videos
+Users + Roles            →   Students / Teachers
+Permissions              →   Access control
+So Mathematics could literally look like:
+
+📚 Mathematics
+
+    📁 Algebra
+        📄 Introduction
+            🎥 Explanation video
+            📎 Lesson.pdf
+            🖼 Diagram.jpg
+
+        📄 Solving equations
+            🎥 Video
+            📎 Worksheet.pdf
+
+    📁 Geometry
+        📄 Triangles
+        📄 Circles
+Teachers don't need to understand a complicated LMS. They effectively use a very simple editor:
+
++ New Chapter
++ New Lesson
+
+Lesson title: ____________________
+
+Content:
+_________________________________
+_________________________________
+
+Attachments:
+[ Upload PDF ]
+[ Upload Image ]
+[ Add Video ]
+
+                [ Publish ]
+That sounds much closer to what you're trying to achieve.
+
+Student accounts
+I would design permissions like this rather than giving every student custom permissions:
+
+USER
+Ahmed Hassan
+      │
+      ▼
+ROLE / GROUP
+Grade 5A Student
+      │
+      ▼
+ACCESS
+├── Arabic Grade 5
+├── English Grade 5
+├── Mathematics Grade 5
+└── Science Grade 5
+If Ahmed moves to Grade 6 next year, we simply change:
+
+Grade 5A Student
+        ↓
+Grade 6A Student
+His username remains unchanged.
+
+Teachers similarly receive a role such as:
+
+Math Teacher - Grade 5
+with:
+
+Read       ✓
+Create     ✓
+Edit       ✓
+Upload     ✓
+Delete     perhaps restricted
+
+Other subjects
+Create     ✗
+Edit       ✗
+And administrators have complete access.
+
+I would keep version 1 extremely small
+You only need these entities:
+
+1. User
+   - name
+   - username
+   - password
+   - type: student / teacher / admin
+
+2. Class
+   - Grade 5A
+   - Grade 5B
+   - Grade 6A
+
+3. Subject
+   - Mathematics
+   - Arabic
+   - Science
+
+4. Chapter
+   - Chapter name
+   - order
+
+5. Lesson
+   - title
+   - description
+   - order
+
+6. Material
+   - PDF
+   - image
+   - video
+   - file
+   - link
+Plus relationships:
+
+Student → Class
+
+Teacher → Subject(s)
+
+Class
+   → Subject
+       → Chapter
+           → Lesson
+               → Material
+That is basically the complete product.
+
+No need initially for:
+
+exams
+quizzes
+certificates
+grading
+attendance
+homework
+SCORM
+gamification
+forums
+messaging
+AI tutors
+calendars
+Those are exactly the features that make Moodle/Open edX unnecessarily complicated for your case.
+
+My recommendation now
+I'd rank the choices differently given your clarified requirement:
+
+Option	Fit
+BookStack customized slightly	9.5/10
+Build a tiny dedicated system	9/10
+Frappe Learning	7.5/10
+Moodle	6/10
+LearnHouse	6/10
+Open edX	2/10
+BookStack deserves a much deeper look.
+
+The other interesting possibility is even more important: because your requirements are so limited, building the application may actually be simpler than customizing an LMS.
+
+A clean system could be only:
+
+Student Portal
+Teacher Portal
+Admin Portal
+
+          ↓
+
+Subject
+  ↓
+Chapter
+  ↓
+Lesson
+  ↓
+Materials
+with authentication and role/group permissions.
+
+That is a very modest web application rather than a true LMS.
+
+If you're considering developing this yourselves, my next step would be to deep-scan GitHub specifically for small projects matching this exact pattern—course/subject → chapter → lesson → file/video + teacher/student authentication—rather than searching for full LMS platforms. That should give us much better candidates to fork.
+
+i need the option with the simplest setup and customization
+For your exact requirements, I would now choose Frappe Learning, not BookStack.
+
+The reason is simple: with Frappe Learning, almost nothing needs to be customized structurally. Its native hierarchy already matches what you described:
+
+Your requirement          Frappe Learning
+
+Subject               →   Course
+Chapter               →   Chapter
+Lesson                →   Lesson
+PDF / video / images  →   Lesson content
+Teacher               →   Instructor
+Student               →   Student
+Class / Grade         →   Batch
+A lesson natively supports text, videos, PDFs, slides and other learning material, so we wouldn't be bending a documentation system into an LMS. 
+
+The system could be this simple
+Grade 5A
+│
+├── Mathematics
+│   ├── Chapter 1: Numbers
+│   │   ├── Lesson 1
+│   │   │   ├── explanation text
+│   │   │   ├── video
+│   │   │   └── PDF
+│   │   └── Lesson 2
+│   │
+│   └── Chapter 2: Fractions
+│
+├── Science
+├── Arabic
+└── English
+Each student has their own login:
+
+Ahmed
+  ↓
+Grade 5A batch
+  ↓
+automatically receives
+Math
+Science
+Arabic
+English
+Frappe calls a class/group a Batch. When you add students to a batch and assign courses to it, the students are automatically enrolled in all those courses. That avoids managing permissions student-by-student. 
+
+Teachers can have the Instructor role, which lets them create and edit courses. Students receive the Student role. There are also Evaluator and Moderator roles; only Moderators publish courses by default, so you could have teachers prepare content and an admin approve/publish it. 
+
+Setup is also unusually simple
+If you want the least technical work possible, use Frappe Cloud. Their official documentation says Frappe Learning can be installed there with one click, with hosting, upgrades and maintenance handled for you. 
+
+If you later want your own inexpensive VPS, there's also an official production installer. Frappe says its deployment script can create the production instance with the required configuration in about five minutes. 
+
+So there are two sensible paths:
+
+Frappe Cloud	Self-hosted VPS
+Initial setup	⭐⭐⭐⭐⭐	⭐⭐⭐⭐
+Server knowledge	Almost none	Some
+Maintenance	Managed	You manage
+Customization	Easy	Easy
+Control	Good	Maximum
+Initial recommendation	Yes	Later
+Customizing it for the school is mostly configuration
+Its setup wizard already lets you change the institution information. From the UI you can change name, logo and favicon, and you can disable sidebar items you don't need. 
+
+Therefore I would strip it down to something like:
+
+Student
+────────────────────
+
+Home
+
+My Subjects
+  Mathematics
+  Arabic
+  English
+  Science
+
+Profile
+Teacher:
+
+Teacher
+────────────────────
+
+My Subjects
+
++ New Subject
++ Add Chapter
++ Add Lesson
++ Upload Material
+
+Students
+Admin:
+
+Admin
+────────────────────
+
+Students
+Teachers
+Classes
+Subjects
+Users
+Settings
+Most of the extra LMS features can simply remain unused.
+
+Why I now prefer it over BookStack
+BookStack itself is very simple, and its permissions are capable; permissions applied to a book or chapter can cascade down to its contents. 
+
+But we'd have to reinterpret:
+
+Shelf → Grade
+Book → Subject
+Chapter → Chapter
+Page → Lesson
+and potentially modify labels/UI to make that intuitive for teachers and children.
+
+BookStack's basic branding is easy, but deeper customization goes through custom CSS/JS or its theme/hack mechanisms, which its own documentation warns are more advanced and may not be stable across releases. 
+
+Frappe Learning doesn't have that problem because:
+
+Course
+  ↓
+Chapter
+  ↓
+Lesson
+is already its native data model.
+
+My final choice
+Use Frappe Learning.
+
+And for version 1, don't customize the source code at all.
+
+Start with:
+
+Frappe Learning
+       │
+       ├── Admin
+       ├── Teachers
+       ├── Students
+       │
+       ├── Classes/Batches
+       │
+       └── Subjects/Courses
+              │
+              └── Chapters
+                     │
+                     └── Lessons
+                          ├── PDF
+                          ├── Video
+                          ├── Image
+                          ├── Text
+                          └── Link
+Then change only branding, navigation, permissions and terminology where necessary.
+
+That gives us an MVP with essentially zero custom development. After teachers and students actually use it, we can decide whether anything needs coding.
+
+If the objective is “have this working as simply as possible and then customize it ourselves with AI/code later,” Frappe Learning is the strongest choice of the GitHub options we've examined. 
+
+frappe license allows using it and host on an account of cloud fare
+Yes — the license allows you to self-host Frappe Learning, including for your own school/business, and you are not required to use Frappe Cloud.
+
+Frappe Learning itself is licensed under AGPL-3.0. That allows you to use it, modify it, run it on your own infrastructure, and even use it commercially. The important AGPL condition is that if you modify the software and make that modified version available to users over a network, those users must be able to obtain the corresponding source code of that modified version under the AGPL. 
+
+So this is perfectly valid:
+
+Our school
+   │
+   ├── Our domain
+   ├── Our logo
+   ├── Our teachers
+   ├── Our students
+   └── Frappe Learning
+           ↓
+      self-hosted
+You can also change branding and customize the application. The AGPL does not mean you have to publish your student data, passwords, uploaded PDFs, videos, database, or private educational content. The copyleft requirement concerns the software/source-code modifications, not the data stored in the LMS.
+
+There is one distinction regarding Cloudflare.
+
+Cloudflare can absolutely be part of the setup
+The easiest architecture would be:
+
+Students / Teachers
+        │
+        ▼
+   Cloudflare
+ ┌──────────────────┐
+ │ Domain / DNS     │
+ │ SSL              │
+ │ CDN              │
+ │ DDoS protection  │
+ │ WAF              │
+ └────────┬─────────┘
+          │
+          ▼
+    Small VPS
+ ┌────────────────────┐
+ │ Frappe Learning    │
+ │ Docker             │
+ │ MariaDB            │
+ │ Redis              │
+ │ uploaded files     │
+ └────────────────────┘
+Cloudflare handles the public-facing domain/proxy, while Frappe runs on a normal inexpensive Linux VPS.
+
+This is actually what I would recommend.
+
+Frappe's official self-hosting installer expects a normal server and provides a Docker-based production deployment. Frappe itself requires Python, Node.js, a database such as MariaDB, Redis/Valkey and background processes. 
+
+Can we host the whole LMS inside Cloudflare?
+Technically, in 2026 this is more possible than it used to be, because Cloudflare now has generally available Containers capable of running arbitrary Linux/container workloads. 
+
+But I would not choose this for your project.
+
+Frappe is not a simple stateless web application. It needs several persistent components:
+
+Frappe Learning
+
+Web application
+      +
+MariaDB
+      +
+Redis
+      +
+Background workers
+      +
+Scheduler
+      +
+WebSockets
+      +
+Persistent uploaded files
+Cloudflare Containers' local disk is ephemeral by default when containers sleep; persistence requires additional architecture such as R2/FUSE or snapshots. 
+
+So although we could engineer Frappe onto Cloudflare's newer container infrastructure, we'd actually be making your “simple LMS” unnecessarily complicated.
+
+The setup I recommend
+For perhaps a few hundred students and teachers:
+
+Cloudflare account
+      │
+      ├── Domain/DNS
+      ├── SSL
+      ├── Proxy
+      └── Security
+             │
+             ▼
+      inexpensive VPS
+             │
+      Docker / Frappe
+             │
+      Frappe Learning
+You can later optionally put large files into:
+
+Cloudflare R2
+    ├── PDFs
+    ├── images
+    └── videos/files
+which can reduce storage and bandwidth pressure on the VPS. Cloudflare supports serving R2 objects through custom domains and its CDN. 
+
+For your requirements I would probably start even simpler:
+
+1 VPS + Frappe Learning + Cloudflare free account.
+
+No Kubernetes, no complicated cloud architecture, no Frappe Cloud subscription.
+
+A reasonable small server would likely be around:
+
+2 vCPU
+4 GB RAM
+40–80 GB SSD
+
+Ubuntu
+Docker
+Frappe Learning
+Then:
+
+learn.yourschool.com
+        ↓
+Cloudflare
+        ↓
+your VPS
+That gives you full control and very low cost.
+
+And importantly, nothing in Frappe Learning's AGPL license prevents this architecture. 
+
+If keeping setup and ongoing maintenance as simple and inexpensive as possible is the priority, I would compare next Frappe Cloud vs a ~$5–10/month VPS + Cloudflare, because that may change whether Frappe is still the simplest choice overall.
+
+we need zero cost solution
+Yes. If zero recurring cost is a hard requirement, I would change the recommendation again.
+
+For what you described, the best solution depends on whether you need to own/customize the software or simply need the functionality.
+
+Best truly simple $0 option: Google Classroom
+Your requirement maps surprisingly well:
+
+Teacher
+   ↓
+Subject / Class
+   ↓
+Topic = Chapter
+   ↓
+Material = Lesson
+   ├── PDF
+   ├── image
+   ├── video
+   ├── link
+   └── Drive file
+
+Students
+   ↓
+individual accounts
+   ↓
+enrolled only in appropriate classes
+Teachers can create topics, organize materials under them, upload files, Drive resources, videos and links, and even publish material only to selected students. 
+
+For a qualifying educational institution, Google Workspace for Education Fundamentals costs nothing, includes Classroom and Drive, user administration, and currently provides a shared 100 TB storage pool. 
+
+So:
+
+Setup cost: $0
+Hosting: $0
+Database: $0
+Storage: $0 within allocation
+Maintenance: $0
+Server administration: none
+
+If your only objective is distributing organized educational materials, this is much simpler than Frappe.
+
+If we need our own platform: Frappe Learning + existing computer
+If you specifically want:
+
+your own interface
+your own database
+custom functionality later
+complete control
+open-source code
+then we can still reach essentially $0/month by running Frappe on an existing computer at the school/home and exposing it through Cloudflare Tunnel:
+
+Internet
+   │
+   ▼
+Cloudflare
+$0
+   │
+   ▼
+Cloudflare Tunnel
+$0
+   │
+   ▼
+Existing PC
+Ubuntu / Docker
+   │
+   ▼
+Frappe Learning
+$0
+Cloudflare Tunnel is available on all Cloudflare plans and does not require you to expose the server's public IP or open incoming ports. 
+
+Frappe Learning officially supports self-hosting through Docker, so installation itself is straightforward. 
+
+The only catch is that the machine must remain running and connected to the Internet.
+
+Therefore it isn't literally zero economic cost because of electricity and Internet, but if those already exist, there is no additional hosting bill.
+
+There is also a genuinely free cloud-server option
+Oracle still offers Always Free Compute in October 2026.
+
+The useful allocation is up to:
+
+2 OCPUs + 12 GB RAM on Ampere A1, plus free block storage, with no time limit while within the Always Free limits. 
+
+That sounds excellent:
+
+Oracle Cloud
+Always Free VM
+2 CPU
+12 GB RAM
+       │
+       ▼
+Docker
+       │
+       ▼
+LMS
+However, there's an important problem with Frappe Learning specifically.
+
+The current official ghcr.io/frappe/lms package I checked is published as linux/amd64, while Oracle's generous free VM is ARM64. 
+
+Frappe itself can run on ARM64, but doing so can involve building the images yourself; Frappe's Docker documentation provides ARM64 build instructions. 
+
+That violates our other requirement:
+
+simplest possible setup
+
+So I wouldn't start there.
+
+Therefore my recommendation has changed
+I would use this decision rule:
+
+Solution	Cost	Setup	Customizable	Recommendation
+Google Classroom	$0	⭐⭐⭐⭐⭐	⭐⭐	#1 if functionality is enough
+Frappe + existing PC + Cloudflare	~$0	⭐⭐⭐	⭐⭐⭐⭐⭐	#1 self-owned option
+Oracle Free + Frappe	$0	⭐⭐	⭐⭐⭐⭐⭐	Possible, but more technical
+Frappe Cloud	Paid	⭐⭐⭐⭐⭐	⭐⭐⭐⭐⭐	Not acceptable
+VPS + Frappe	Paid	⭐⭐⭐⭐	⭐⭐⭐⭐⭐	Not acceptable
+And I'm leaning quite strongly toward Google Classroom for the first version.
+
+You don't really need:
+
+LMS
+├── exams
+├── certificates
+├── grading
+├── SCORM
+├── analytics
+├── competencies
+├── course completion
+└── assessment engines
+You need:
+
+LOGIN
+  ↓
+STUDENT
+  ↓
+MY SUBJECTS
+  ↓
+MATHEMATICS
+  ↓
+CHAPTER 3
+  ↓
+LESSON 2
+  ├── PDF
+  ├── Video
+  ├── Images
+  └── Notes
+Google Classroom already does nearly all of that for zero infrastructure work.
+
+But there's an important alternative worth investigating before we decide: because your requirements are extremely small, we may be able to find a very lightweight open-source system that runs entirely within free Cloudflare Workers + D1, avoiding Frappe, Oracle and a server altogether. Cloudflare's free tier currently provides 100,000 Worker requests/day and D1 provides 5 million row reads/day, 100,000 writes/day and 5 GB total database storage. 
+
+For a small school resource portal, those limits could be plenty. That might ultimately be the best combination of $0 hosting + your own system + easy customization.
+
+I would investigate that direction before committing to Frappe.
+

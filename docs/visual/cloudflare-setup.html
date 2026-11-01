@@ -1,0 +1,185 @@
+<title>LMS Lego Cloudflare Setup</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;700;800&family=Source+Sans+3:wght@400;600&display=swap">
+<style>
+  /* Layout: one column of numbered steps (a real sequence), each with the exact screen path as chips; a progress rail that remembers ticks per viewer. */
+  :root {
+    --bg: #f6f4ee; --surface: #ffffff; --fg: #1d2230; --muted: #5b6273; --line: #d9d5c9;
+    --cf: #e8761a; --gh: #24292f; --ok: #2e9a5a; --okbg: #e6f4ec; --warn: #b3261e; --warnbg: #fde8e6; --chip: #eef0f4;
+    --display: 'Outfit', 'Segoe UI', system-ui, sans-serif;
+    --body: 'Source Sans 3', 'Segoe UI', system-ui, sans-serif;
+    --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #15181f; --surface: #1e222b; --fg: #eceae2; --muted: #a2a7b4; --line: #343a47;
+      --cf: #f39a4c; --gh: #c9d1d9; --ok: #4fb878; --okbg: #1b3326; --warn: #ff8a80; --warnbg: #3a1f1d; --chip: #2a2f3a; color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #15181f; --surface: #1e222b; --fg: #eceae2; --muted: #a2a7b4; --line: #343a47;
+    --cf: #f39a4c; --gh: #c9d1d9; --ok: #4fb878; --okbg: #1b3326; --warn: #ff8a80; --warnbg: #3a1f1d; --chip: #2a2f3a; color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 17px; line-height: 1.55; }
+  .wrap { max-width: 820px; margin: 0 auto; padding-block: 24px 64px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+  h1, h2, h3 { font-family: var(--display); text-wrap: balance; margin: 0; line-height: 1.15; }
+  h1 { font-size: clamp(30px, 5.5vw, 46px); font-weight: 800; }
+  h2 { font-size: clamp(22px, 3.4vw, 28px); font-weight: 700; }
+  h3 { font-size: 19px; font-weight: 700; }
+  p { margin: 0; max-width: 66ch; }
+  .eyebrow { font-family: var(--display); font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+  header { display: grid; gap: 12px; padding-block: 8px 28px; border-bottom: 1px solid var(--line); }
+  .lede { font-size: 19px; color: var(--muted); }
+  .facts { display: flex; flex-wrap: wrap; gap: 8px; }
+  .facts span { font-family: var(--display); font-weight: 700; font-size: 14px; padding: 5px 12px; border-radius: 999px; background: var(--surface); border: 1px solid var(--line); }
+  .progress { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); padding-block: 12px; display: grid; gap: 6px; border-bottom: 1px solid var(--line); }
+  body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+  .bar { height: 10px; border-radius: 5px; background: var(--line); overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--ok); border-radius: 5px; }
+  @media (prefers-reduced-motion: no-preference) { .bar i { transition: width .3s ease; } }
+  .progress small { color: var(--muted); font-size: 14px; }
+  section { padding-block: 28px; border-bottom: 1px solid var(--line); display: grid; gap: 14px; }
+  .part { display: flex; align-items: center; gap: 10px; }
+  .badge { font-family: var(--display); font-weight: 800; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; padding: 4px 10px; border-radius: 6px; color: #fff; }
+  .badge.cf { background: var(--cf); } .badge.gh { background: var(--gh); color: var(--bg); } .badge.us { background: var(--ok); }
+  ol.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; counter-reset: s; }
+  ol.steps li { counter-increment: s; display: grid; grid-template-columns: 34px 1fr 30px; gap: 12px; align-items: start; padding: 14px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; min-width: 0; }
+  ol.steps li::before { content: counter(s); font-family: var(--display); font-weight: 800; font-size: 18px; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--chip); }
+  ol.steps li.done { background: var(--okbg); border-color: var(--ok); }
+  ol.steps li.done::before { content: "✓"; background: var(--ok); color: #fff; }
+  .txt { display: grid; gap: 6px; min-width: 0; }
+  .path { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font-size: 14px; }
+  .path b { font-family: var(--display); font-weight: 700; padding: 2px 9px; border-radius: 6px; background: var(--chip); }
+  .path em { color: var(--muted); font-style: normal; }
+  .tick { width: 26px; height: 26px; margin-top: 2px; accent-color: var(--ok); cursor: pointer; }
+  .tick:focus-visible { outline: 3px solid var(--cf); outline-offset: 2px; }
+  .copy { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .copy code { font-family: var(--mono); font-size: 15px; padding: 4px 10px; border-radius: 6px; background: var(--chip); word-break: break-all; }
+  .copy button { font-family: var(--display); font-weight: 700; font-size: 13px; padding: 5px 12px; border-radius: 999px; border: 1px solid var(--line); background: var(--surface); color: var(--fg); cursor: pointer; }
+  .copy button:focus-visible { outline: 3px solid var(--cf); outline-offset: 2px; }
+  .note { padding: 12px 14px; border-radius: 10px; font-size: 15px; background: var(--surface); border: 1px solid var(--line); }
+  .note.warn { background: var(--warnbg); border-color: var(--warn); }
+  .note.ok { background: var(--okbg); border-color: var(--ok); }
+  .note b { font-family: var(--display); }
+  .perm { border-collapse: collapse; width: 100%; font-size: 15px; }
+  .perm th, .perm td { text-align: start; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .perm th { font-family: var(--display); font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  .tablewrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; }
+  a { color: inherit; text-decoration-color: var(--cf); text-underline-offset: 3px; }
+  .reset { font-family: var(--display); font-weight: 700; font-size: 13px; padding: 6px 14px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--muted); cursor: pointer; justify-self: start; }
+  @media (max-width: 520px) { ol.steps li { grid-template-columns: 30px 1fr 28px; gap: 10px; padding: 12px; } }
+</style>
+
+<div class="wrap">
+<header>
+  <span class="eyebrow">LMS Lego · first deploy · item 3</span>
+  <h1>Your Cloudflare account and deploy key</h1>
+  <p class="lede">About 15 minutes on a computer. You create the account, give it a payment card for file storage, make one key for the deploy, and lock that key inside GitHub. Nobody else, me included, ever sees the key.</p>
+  <div class="facts"><span>Storage: A, card on file</span><span>Passwords: B, free plan</span><span>Cost inside the free lines: $0</span></div>
+</header>
+
+<div class="progress" aria-live="polite">
+  <div class="bar"><i id="barFill"></i></div>
+  <small id="barText">0 of 17 steps ticked. Ticks stay in this browser only.</small>
+</div>
+
+<section>
+  <div class="part"><span class="badge cf">Cloudflare</span><h2>Part 1 · Create the account</h2></div>
+  <ol class="steps">
+    <li><div class="txt"><p>Open <a href="https://dash.cloudflare.com/sign-up" target="_blank" rel="noopener noreferrer">dash.cloudflare.com/sign-up</a> in a new tab.</p></div><input class="tick" type="checkbox" id="s1" aria-label="Done: open the sign-up page"></li>
+    <li><div class="txt"><p>Sign up with <b>your own email</b> and a strong password you keep to yourself. Confirm the email Cloudflare sends you.</p></div><input class="tick" type="checkbox" id="s2" aria-label="Done: sign up and confirm email"></li>
+    <li><div class="txt"><p>If Cloudflare asks what you want to do or which plan, choose the <b>Free</b> plan. You do not need to add a website or domain; skip that if it is offered.</p></div><input class="tick" type="checkbox" id="s3" aria-label="Done: free plan"></li>
+  </ol>
+  <div class="note"><b>Tip:</b> turn on two-step sign-in later under your profile. It protects the account that holds the school's data.</div>
+</section>
+
+<section>
+  <div class="part"><span class="badge cf">Cloudflare</span><h2>Part 2 · Get your free web address and Account ID</h2></div>
+  <ol class="steps">
+    <li><div class="txt"><p>In the left menu, open Workers &amp; Pages.</p><div class="path"><b>Compute (Workers)</b><em>›</em><b>Workers &amp; Pages</b></div><p>The first visit gives your account its free address ending in <code>workers.dev</code>. That is all this step needs; you do not create anything here.</p></div><input class="tick" type="checkbox" id="s4" aria-label="Done: open Workers and Pages"></li>
+    <li><div class="txt"><p>On the same page, find <b>Account details</b> and press the copy button next to <b>Account ID</b>. Paste it into a note for a few minutes. It is not secret.</p></div><input class="tick" type="checkbox" id="s5" aria-label="Done: copy Account ID"></li>
+  </ol>
+  <div class="note"><b>Can't see it?</b> On the account home page, the menu next to your account name also has <b>Copy account ID</b>. Menu names move from time to time; the Account ID is always a long string of letters and numbers.</div>
+</section>
+
+<section>
+  <div class="part"><span class="badge cf">Cloudflare</span><h2>Part 3 · Turn on file storage (your choice A)</h2></div>
+  <ol class="steps">
+    <li><div class="txt"><p>In the left menu, open R2 object storage.</p><div class="path"><b>Storage &amp; databases</b><em>›</em><b>R2 object storage</b></div></div><input class="tick" type="checkbox" id="s6" aria-label="Done: open R2"></li>
+    <li><div class="txt"><p>Cloudflare asks you to subscribe to R2 and add a payment method. Add your card and confirm. The plan is free up to 10 GB stored and downloads are free.</p></div><input class="tick" type="checkbox" id="s7" aria-label="Done: add payment method for R2"></li>
+    <li><div class="txt"><p><b>Do not create a bucket.</b> The deploy creates it with the right name. Leave this page.</p></div><input class="tick" type="checkbox" id="s8" aria-label="Done: no bucket created"></li>
+  </ol>
+  <div class="note"><b>What the card is for:</b> nothing is charged while the school stays inside the free lines. Your owner home page in LMS Lego shows storage and daily use against those lines, so you see any approach long before it matters.</div>
+</section>
+
+<section>
+  <div class="part"><span class="badge cf">Cloudflare</span><h2>Part 4 · Make the deploy key</h2></div>
+  <ol class="steps">
+    <li><div class="txt"><p>Open your profile, then API Tokens.</p><div class="path"><b>Profile icon (top right)</b><em>›</em><b>My Profile</b><em>›</em><b>API Tokens</b></div><p>Or open <a href="https://dash.cloudflare.com/profile/api-tokens" target="_blank" rel="noopener noreferrer">dash.cloudflare.com/profile/api-tokens</a>.</p></div><input class="tick" type="checkbox" id="s9" aria-label="Done: open API Tokens"></li>
+    <li><div class="txt"><p>Press <b>Create Token</b>. Next to the template <b>Edit Cloudflare Workers</b>, press <b>Use template</b>.</p></div><input class="tick" type="checkbox" id="s10" aria-label="Done: use the Edit Cloudflare Workers template"></li>
+    <li><div class="txt"><p>Under <b>Permissions</b>, press <b>+ Add more</b> and set the new row to <b>Account</b>, <b>D1</b>, <b>Edit</b>. Check the list also shows <b>Workers R2 Storage · Edit</b>; the template normally includes it. If it is missing, add it the same way.</p></div><input class="tick" type="checkbox" id="s11" aria-label="Done: add D1 Edit and check R2 Edit"></li>
+    <li><div class="txt"><p>Under <b>Account Resources</b>, choose <b>Include</b> and <b>your account</b>. If <b>Zone Resources</b> is shown, leave <b>All zones from an account</b> with your account. You have no website, so it grants nothing extra.</p></div><input class="tick" type="checkbox" id="s12" aria-label="Done: account resources"></li>
+    <li><div class="txt"><p>Press <b>Continue to summary</b>, then <b>Create Token</b>. Press <b>Copy</b> on the token. <b>Cloudflare shows it only once.</b> Keep this tab open until Part 5 is done.</p></div><input class="tick" type="checkbox" id="s13" aria-label="Done: create and copy token"></li>
+  </ol>
+  <div class="tablewrap"><table class="perm">
+    <thead><tr><th>The key may</th><th>Why the deploy needs it</th></tr></thead>
+    <tbody>
+      <tr><td>Workers Scripts · Edit</td><td>Upload LMS Lego and switch it live (in the template)</td></tr>
+      <tr><td>Workers R2 Storage · Edit</td><td>Create the file bucket for PDFs and images (in the template)</td></tr>
+      <tr><td>D1 · Edit (you add this)</td><td>Create the database and apply its updates</td></tr>
+      <tr><td>Other template rows</td><td>Harmless for this account; you may leave them</td></tr>
+    </tbody>
+  </table></div>
+  <div class="note warn"><b>Never paste the key into a chat, an email or a document,</b> including this conversation. If it ever leaks, return to API Tokens and press <b>Roll</b> or <b>Delete</b> on it, then make a new one.</div>
+</section>
+
+<section>
+  <div class="part"><span class="badge gh">GitHub</span><h2>Part 5 · Lock the key inside GitHub</h2></div>
+  <ol class="steps">
+    <li><div class="txt"><p>Open the repository's secret settings.</p><div class="path"><b>github.com/Shegazy003/LMS_LEGO</b><em>›</em><b>Settings</b><em>›</em><b>Secrets and variables</b><em>›</em><b>Actions</b></div><p>Or open <a href="https://github.com/Shegazy003/LMS_LEGO/settings/secrets/actions" target="_blank" rel="noopener noreferrer">the Actions secrets page</a> directly.</p></div><input class="tick" type="checkbox" id="s14" aria-label="Done: open Actions secrets"></li>
+    <li><div class="txt"><p>Press <b>New repository secret</b>. Name it exactly:</p><span class="copy"><code id="n1">CLOUDFLARE_API_TOKEN</code><button type="button" data-copy="n1">Copy name</button></span><p>Paste the token from Part 4 into <b>Secret</b> and press <b>Add secret</b>.</p></div><input class="tick" type="checkbox" id="s15" aria-label="Done: add CLOUDFLARE_API_TOKEN"></li>
+    <li><div class="txt"><p>Press <b>New repository secret</b> again. Name it exactly:</p><span class="copy"><code id="n2">CLOUDFLARE_ACCOUNT_ID</code><button type="button" data-copy="n2">Copy name</button></span><p>Paste the Account ID from Part 2 and press <b>Add secret</b>. You should now see both names listed; GitHub never shows the values again.</p></div><input class="tick" type="checkbox" id="s16" aria-label="Done: add CLOUDFLARE_ACCOUNT_ID"></li>
+  </ol>
+  <div class="note"><b>Now close the Cloudflare tab</b> with the token and delete the note with the Account ID. The key lives only in GitHub, where the deploy reads it without printing it.</div>
+</section>
+
+<section>
+  <div class="part"><span class="badge us">You and me</span><h2>Part 6 · Tell me, then we go live together</h2></div>
+  <ol class="steps">
+    <li><div class="txt"><p>Send me two words: <b>"secrets added"</b>. Pick a 20-minute slot when you can sit at a computer with your phone nearby.</p></div><input class="tick" type="checkbox" id="s17" aria-label="Done: tell me secrets added"></li>
+  </ol>
+  <div class="note ok"><b>At the sitting:</b> I start the deploy and read you the address. You open it at once and complete first setup, and write the recovery code on paper. You then look over Mesk School on the real address and send one WhatsApp reset link from your phone. I read Cloudflare's CPU figures for sign-in. When those pass, release 1 is accepted.</div>
+  <div class="note"><b>If something on screen looks different</b> from these steps, take a screenshot that does not show the token and send it to me. Cloudflare renames menus now and then; the steps stay the same.</div>
+  <button type="button" class="reset" id="resetTicks">Clear my ticks</button>
+</section>
+</div>
+
+<script>
+(function () {
+  var KEY = 'lms-lego-cf-setup-v1';
+  var ticks = Array.prototype.slice.call(document.querySelectorAll('.tick'));
+  function load() { try { return JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (e) { return {}; } }
+  function save(s) { try { localStorage.setItem(KEY, JSON.stringify(s)); } catch (e) {} }
+  var state = load();
+  function render() {
+    var n = 0;
+    ticks.forEach(function (t) { t.checked = !!state[t.id]; t.closest('li').classList.toggle('done', t.checked); if (t.checked) n++; });
+    document.getElementById('barFill').style.width = (n / ticks.length * 100) + '%';
+    document.getElementById('barText').textContent = n + ' of ' + ticks.length + ' steps ticked. Ticks stay in this browser only.';
+  }
+  ticks.forEach(function (t) { t.addEventListener('change', function () { state[t.id] = t.checked; save(state); render(); }); });
+  document.getElementById('resetTicks').addEventListener('click', function () { state = {}; save(state); render(); });
+  document.querySelectorAll('[data-copy]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var el = document.getElementById(b.getAttribute('data-copy'));
+      var text = el.textContent;
+      function done() { b.textContent = 'Copied'; setTimeout(function () { b.textContent = 'Copy name'; }, 1500); }
+      function fallback() { var r = document.createRange(); r.selectNodeContents(el); var s = window.getSelection(); s.removeAllRanges(); s.addRange(r); b.textContent = 'Selected, press copy'; }
+      try { navigator.clipboard.writeText(text).then(done, fallback); } catch (e) { fallback(); }
+    });
+  });
+  render();
+})();
+</script>
