@@ -126,16 +126,18 @@ Why this design fits the free plan (100,000 database writes a day): a success wr
 
 Passwords are hashed with PBKDF2-SHA256. How much work one hash takes (the iteration count) is a **deploy-time setting**, not code, so the owner's decision 2 in [docs/07-FIRST-DEPLOY.md](docs/07-FIRST-DEPLOY.md) changes one value and nothing else.
 
+**In force: option B, 10,000 iterations** (the owner's answer of 1 November 2026, applied by build task 8 before the first deploy, so no 100,000-iteration hash is ever written in production). The live check is the **CPU time column in Workers Logs at the go-live sitting** (see "How to check the CPU live" below); until then the edge CPU cost is a local measurement, not a confirmed figure.
+
 **The setting.** `PASSWORD_ITERATIONS` in the `vars` of `wrangler.jsonc`, read by the Worker on every request (`src/auth/password.ts`).
 
 | Value | What the Worker does |
 |---|---|
-| `"100000"` (production today) | today's strength, unchanged by this setting |
-| absent | the same default, 100,000 |
+| `"10000"` (production, option B) | the floor: every new or re-written password in production is hashed at 10,000 |
+| absent | the code's default, 100,000 (the test environment runs this way; see "Tests" below) |
 | a whole number from **10,000** (floor) to **100,000** (ceiling) | hashes every new or re-written password at that strength |
 | anything else (below 10,000, above 100,000, `100,000`, `1e5`, empty, words) | **refuses to serve**: every request answers a server error, and the Worker log says `PASSWORD_ITERATIONS must be a whole number from 10000 to 100000 …`. The deploy's smoke check fails on it, so the mistake is seen at once and rolled back |
 
-The floor stops a typo from silently weakening every password. The ceiling is the highest count Cloudflare's Workers runtime accepts for PBKDF2, and it stops a typo from making every sign-in slower than today. A refusal was chosen over quietly falling back to the floor: nobody should end up on a weaker strength they did not choose. CI also checks the value before anything ships: the production guard (run by CI and by the deploy workflow) fails unless production states exactly the decided value, today 100,000.
+The floor stops a typo from silently weakening every password. The ceiling is the highest count Cloudflare's Workers runtime accepts for PBKDF2, and it stops a typo from making every sign-in slower than today. A refusal was chosen over quietly falling back to the floor: nobody should end up on a weaker strength they did not choose. CI also checks the value before anything ships: the production guard (run by CI and by the deploy workflow) fails unless production states exactly the decided value, 10,000 since option B.
 
 **Each password carries its strength.** A stored hash looks like `pbkdf2-sha256$<iterations>$<salt>$<hash>`, the same format as before this setting existed, so every hash already written (at 100,000) keeps working. A check reads the count from the stored value, so passwords made at different strengths live side by side. A count that has been tampered with (negative, outside the floor and ceiling, not a plain whole number) never verifies and costs no hashing. The comparison stays constant-time. For an unknown username the Worker checks against a dummy hash made at the configured strength, so the time it takes does not reveal whether the username exists.
 
@@ -145,9 +147,10 @@ The floor stops a typo from silently weakening every password. The ceiling is th
 
 | Owner's answer (docs/07, decision 2) | `PASSWORD_ITERATIONS` |
 |---|---|
-| **A.** Workers Paid ($5 a month) | keep `"100000"` (no change) |
-| **B.** Stay on the free plan | set `"10000"` (the proposal below), and change the decided value in `test/guards/production-guard.test.ts` in the same pull request |
-| B now, then A when a second organization joins | `"10000"` now, back to `"100000"` later; passwords strengthen at each person's next sign-in |
+| **B.** Stay on the free plan (**chosen, 1 November 2026; in force**) | `"10000"`, with the decided value in `test/guards/production-guard.test.ts` set to 10,000 in the same pull request (build task 8) |
+| **A.** Workers Paid ($5 a month), later | back to `"100000"` and the guard's decided value with it, in one pull request; passwords strengthen at each person's next sign-in |
+
+**Tests.** The test environment (`--env test`) deliberately keeps the code's default of 100,000 rather than production's 10,000. The hashing code is the same at any count, so the acceptance tests prove the same behaviour either way; their existing checks of the stored strength stay as they were; and every test run keeps exercising the "absent means the default" path end to end. The cost is a slower CI run, not a weaker one. Production's own value is proven twice in CI: the production guard requires `wrangler.jsonc` to state exactly 10,000, and the password-strength step starts the production build with its own configuration and checks that it stores a new password at that strength.
 
 **Measured cost (local).** `npm run measure:password-cost` runs the product's own hashing code inside the local Workers runtime (`wrangler dev`, workerd) and prints milliseconds. On the build machine (Intel Xeon at 2.80 GHz, 4 cores; 1 November 2026), median of 9 trials × 5 runs:
 
@@ -160,7 +163,7 @@ The floor stops a typo from silently weakening every password. The ceiling is th
 
 (A separate run measured 15,000 at 6.6 ms to hash and 6.8 ms to verify.) The cost grows in a straight line with the count: about 0.45 ms per 1,000 iterations here. A sign-in costs one verify. A password change, and a sign-in that re-writes an older hash, cost a verify and a hash. Setup, appointing, a password set by the appointer, the reset link and the recovery code cost one hash.
 
-**Proposed value for option B: 10,000.** It is the highest count measured here that leaves a safe margin under the free plan's 10 ms. A sign-in takes about 4.4 ms, under half the limit, which leaves room for the rest of the request and for a slower moment. 15,000 would make a sign-in about 6.8 ms and a password change about 13 ms, over the limit. 20,000 leaves no margin even for a plain sign-in. Even at 10,000, the requests that do two hashes (a password change, a one-time re-write) come to about 9 ms here, close to the line.
+**Why option B is 10,000.** It is the highest count measured here that leaves a safe margin under the free plan's 10 ms. A sign-in takes about 4.4 ms, under half the limit, which leaves room for the rest of the request and for a slower moment. 15,000 would make a sign-in about 6.8 ms and a password change about 13 ms, over the limit. 20,000 leaves no margin even for a plain sign-in. Even at 10,000, the requests that do two hashes (a password change, a one-time re-write) come to about 9 ms here, close to the line.
 
 **What is uncertain.** These numbers are from this machine. Cloudflare's edge runs other processors (possibly faster), and Cloudflare allows some short bursts over the limit. CI therefore never turns timing into a pass or a fail. The real check happens live, at the go-live sitting:
 
