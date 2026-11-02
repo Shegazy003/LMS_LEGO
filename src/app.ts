@@ -25,6 +25,7 @@ import {
   findFile, findLesson, lessonMaterials, outline, readableSubject, subjectsForLearner, subjectsForPublisher, type SubjectRow,
 } from './learning.ts';
 import { externalUrl } from './links.ts';
+import { logError } from './log.ts';
 import { normaliseCountryCode, normaliseMobile } from './phone.ts';
 import {
   addChapter, addLesson, addMaterial, editableChapter, editableLesson, editableMaterial, editableSubject, isDirection,
@@ -82,7 +83,7 @@ async function flushUsage(d1: D1Database, batch: FlushBatch): Promise<void> {
     getMeter().recordWrites(res.meta.rows_written ?? 0, now()); // the flush is a write too
   } catch (err) {
     getMeter().restore(batch);
-    console.error('usage flush failed', err);
+    logError('usage flush failed', err);
   }
 }
 
@@ -1269,6 +1270,7 @@ app.post('/r/:token', async (c) => {
   if (password.length < MIN_PASSWORD) return page(c, resetPage(t, lang, space, { action, username, error: t('passwordTooShort') }), 400);
   if (!(await useResetLink(db, link, await hashPassword(password, c.get('iterations')), now()))) return deadLink(c, r);
   await clearUser(db, door);
+  console.log('reset link used', c.req.url); // PLANTED for the H-1 red run: a log line holding a reset token
   return page(c, resetDonePage(t, lang, space));
 });
 
@@ -1738,7 +1740,7 @@ app.onError((err, c) => {
     return page(c, messagePage(t, lang, t('noAccess'), Boolean(c.var.user)), 403);
   }
   if (err instanceof HTTPException && err.status < 500) return err.getResponse();
-  console.error(err);
+  logError('request failed', err);
   return page(c, messagePage(t, lang, t('serverError'), false), 500);
 });
 
