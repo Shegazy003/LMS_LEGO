@@ -11,7 +11,7 @@ import {
 } from './admin.ts';
 import { attemptBlock, clearUser, minutesUntil, openDoor, recordFailure } from './auth/limits.ts';
 import { dummyHash, hashPassword, passwordIterations, rehashIfNeeded, verifyPassword } from './auth/password.ts';
-import { SESSION_COOKIE, SESSION_IDLE_MS, sessionDecision } from './auth/session.ts';
+import { SESSION_COOKIE, SESSION_IDLE_MS, refreshSession, sessionDecision } from './auth/session.ts';
 import { newRecoveryCode, randomToken, recoveryCodeHash, tokenHash } from './auth/tokens.ts';
 import { now } from './clock.ts';
 import { Db } from './db.ts';
@@ -195,7 +195,7 @@ use('*', async (c, next) => {
     );
     const decision = row ? sessionDecision(row.expires_at, now()) : 'expired';
     if (row && decision !== 'expired') {
-      if (decision === 'refresh') await db.run('UPDATE session SET expires_at = ? WHERE id = ?', now() + SESSION_IDLE_MS, id);
+      if (decision === 'refresh') await refreshSession(db, id, now() + SESSION_IDLE_MS);
       const lang = LANGS.find((l) => l === row.lang) ?? null;
       c.set('user', { id: row.id, username: row.username, display_name: row.display_name, is_owner: row.is_owner, sessionId: id, lang });
       // A person's own language choice (My account) also decides their pages outside any space.

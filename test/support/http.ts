@@ -34,6 +34,13 @@ export class Client {
     return res;
   }
 
+  /** A GET with this client's cookies and extra request headers (e.g. If-None-Match). */
+  async getWith(path: string, headers: Record<string, string>): Promise<Response> {
+    const res = await fetch(this.base + path, { redirect: 'manual', headers: this.headers(headers) });
+    this.remember(res);
+    return res;
+  }
+
   async post(path: string, fields: Record<string, string> | FormData): Promise<Response> {
     const body = fields instanceof FormData ? fields : new URLSearchParams(fields);
     const res = await fetch(this.base + path, {
