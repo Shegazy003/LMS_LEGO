@@ -1,11 +1,11 @@
 # Handover: continuing LMS Lego from Claude Desktop (or any new session)
 
-**Date:** 1 November 2026 (UTC), kept current since. **Last updated:** 2 November 2026 (release 1.1 approved, build task 10 started). **Written by:** the founding Claude Code cloud session, acting as owner's delegate, Project Lead and Product Manager (decision 002). Everything needed to continue is in this repository; nothing depends on the cloud session that wrote it.
+**Date:** 1 November 2026 (UTC), kept current since. **Last updated:** 2 November 2026 (AT-6 delivered; build task 11, AT-7, started). **Written by:** the founding Claude Code cloud session, acting as owner's delegate, Project Lead and Product Manager (decision 002). Everything needed to continue is in this repository; nothing depends on the cloud session that wrote it.
 
 ## 1. Where things stand
 
 - **Release 1 is accepted and live** at **https://lms-lego.lmslego.workers.dev** (owner acceptance 1 November 2026). Details and evidence: [CURRENT-PROGRESS.md](../CURRENT-PROGRESS.md).
-- **In progress: release 1.1 "Keep the space tidy"** ([contract](09-CONTRACT-R1.1.md), approved 2 November 2026 by the delegate): AT-6 (build task 10) first, then AT-7, AT-8, then hardening task H-1. The current task and its pull request are always named at the top of [CURRENT-PROGRESS.md](../CURRENT-PROGRESS.md).
+- **In progress: release 1.1 "Keep the space tidy"** ([contract](09-CONTRACT-R1.1.md), approved 2 November 2026 by the delegate): AT-6 delivered (#25); AT-7 (build task 11) in build; then AT-8, then hardening task H-1. The current task and its pull request are always named at the top of [CURRENT-PROGRESS.md](../CURRENT-PROGRESS.md).
 - Next after that by the [roadmap](05-ROADMAP.md): release 2 (guardians and exam results) when Mesk School has used the product for one term, or earlier if the school asks.
 
 ## 2. Read in this order
@@ -77,6 +77,8 @@ Merged branches (`build/*`, `ops/*`, `contract-0.3`, `later/*`) are kept on GitH
 If a session ends while a task is in flight: open pull requests show where it stands (red run, green run, Lead stamp and Verifier comments are on the pull request). A Builder's branch `build/<name>` holds its commits; a fresh Builder can continue from it with a self-contained brief (template), adding commits on top, never force-pushing. A candidate without a Verifier comment needs the Lead check and a Verifier; one with PASS needs only the bound merge, the green `main` check and the record.
 
 ## 9. Lessons recorded
+
+- The full CI suite takes about 11 minutes (2 November 2026); wait loops for a green `main` need at least 15 minutes, or the merge looks unfinished when it is not.
 
 - A brand-new `workers.dev` address answers 404 for a few seconds; the smoke check now waits through it (task 9).
 - The Workers Free plan's 10 ms CPU limit governs password hashing; measure before choosing a strength (task 7).

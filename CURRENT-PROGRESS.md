@@ -10,7 +10,17 @@
   - Three acceptance tests: AT-6 (correct a person, including mobile and end access now), AT-7 (tidy groups and subjects), AT-8 (rename, replace, remove and restore content).
 - **Hardening task H-1** follows 1.1: switch on Workers Logs safely, with a no-secrets guard and the re-hash race test.
 
-**Active priority:** build task 10, **AT-6**. Same route: Opus Builder in a worktree → red then green in CI → Lead stamp → Sonnet Verifier → delegate merges on PASS. Then AT-7, AT-8, H-1.
+**Delivered in release 1.1 so far:**
+- **AT-6, the admin corrects a person** (#25, merge `293294e`, 2 November 2026). It adds search, correcting a name and mobile number (open reset links die), end dates, End access now (one atomic change; sessions and links stop), an Ended section, and Restore. Lead ACCEPTED; Verifier PASS; CI green on `main`.
+
+**Active priority:** build task 11, **AT-7, the admin tidies groups and subjects.** It carries three small AT-6 follow-ups from the Verifier:
+- refuse reset-link and password actions for an ended person;
+- guard the session refresh against an End access race;
+- mark ended spaces on `/home`.
+
+Then AT-8, then H-1.
+
+**Note for whoever waits on CI:** the full suite now takes about 11 minutes, so wait at least 15 minutes for `main` before reading a result.
 
 **Going live with 1.1:** when AT-6 to AT-8 are merged, the owner presses Run workflow once (the school is using the product, so each live deploy is the owner's press).
 

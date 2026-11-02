@@ -66,6 +66,16 @@ Recorded here, not in release 1, under "completion before expansion". Each is wr
 - **Release 1 keeps it cheap:** an optional `user.mobile` column (E.164 format, verified flag) is added when D starts; one-time links already exist in spirit as session tokens, so D1 is a short page and a `wa.me` link.
 - **Trigger for D2:** an organization asks for self-service reset, or the owner wants mobile-based recovery of the owner account (question 6), and the owner takes the RED decision on the Meta Business account.
 
+## From release 1.1 (2 November 2026)
+
+| Idea | Why it waits | Trigger |
+|---|---|---|
+| **Arabic-aware search** (fold أ/إ/آ to ا, ى to ي, ة to ه, ignore diacritics) | Needs a stored normalised name column and a migration; release 1.1 search matches letter for letter | An admin reports not finding a name typed another way |
+| **Correcting a username or a role** | Usernames are global and sign-in keys; a role change touches assignments | An appointment mistake that ending and re-appointing cannot fix |
+| **Merging duplicate groups or subjects** | Moves assignments and content between rows | A school creates duplicates |
+| **Emptying "Recently removed"** to free storage | Release 1.1 deletes nothing permanently by design | Storage passes half of the free 10 GB |
+| **Audit history** of who changed what | Beyond `granted_by`; needs its own privacy decision | The owner or a school asks who changed something |
+
 ## From the brainstorm comparison
 
 | Idea | Why it waits |
