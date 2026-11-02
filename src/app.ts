@@ -28,8 +28,13 @@ import { externalUrl } from './links.ts';
 import { normaliseCountryCode, normaliseMobile } from './phone.ts';
 import {
   addChapter, addLesson, addMaterial, editableChapter, editableLesson, editableMaterial, editableSubject, isDirection,
-  moveChapter, moveLesson, moveMaterial, setPublished, type EditableLesson, type NewMaterial,
+  moveChapter, moveLesson, moveMaterial, renameChapter, renameLesson, renameMaterial, replacementKey, setPublished, switchFile,
+  type EditableChapter, type EditableLesson, type EditableMaterial, type NewMaterial,
 } from './publishing.ts';
+import {
+  ownedItem, recentlyRemoved, removeChapter, removeLesson, removeMaterial, removedLessonSubject, removedMaterialSubject,
+  restoreChapter, restoreLesson, restoreMaterial, stillShowing, type ContentKind,
+} from './removal.ts';
 import { SEED_KITS, seedKit } from './kits/seed.ts';
 import {
   countWrongUsername, findResetLink, issueResetLink, lastDigits, resetLinkState, resetMessage, useResetLink, whatsappHref,
@@ -48,7 +53,9 @@ import {
 import {
   confirmLinkPage, endConfirmPage, linkReadyPage, personPage, type CorrectionValues, type PersonFrame, type PersonNotice, type PersonView,
 } from './views/people.ts';
-import { lessonEditor, publisherHome, subjectEditor } from './views/publish.ts';
+import {
+  SEGMENT, chapterPage, lessonEditor, materialPage, publisherHome, removeConfirmPage, removedPage, subjectEditor, type EditorNotice,
+} from './views/publish.ts';
 import { resetDeadPage, resetDonePage, resetPage, type ResetSpace } from './views/reset.ts';
 import { accessEndedPage, adminHome, membershipsPage, type MembershipItem, type SpaceView } from './views/space.ts';
 import { isSameOrigin } from './origin.ts';
@@ -731,7 +738,15 @@ app.get('/s/:spaceId/logo', (c) => serveLogo(c, c.get('space').id, c.get('space'
 
 // Reading: a subject, a lesson, a stored file. Anything the person may not
 // read here (another space's id, a subject not assigned, unpublished, or no
-// such id) answers the same 403, so an address reveals nothing.
+// such id) answers the same 403, so an address reveals nothing. A lesson or a
+// file that was removed (AT-8), itself or with its lesson or chapter, answers
+// "not found" (404) to someone who may read its subject, and 403 to anyone
+// else; no removed row is ever read for the page itself (src/learning.ts).
+async function removedOrRefused(c: C, subjectId: string | null) {
+  const subject = subjectId && (await readableSubject(c.get('db'), c.get('space'), c.get('user')!.id, subjectId));
+  return subject ? refuse(c, 404, 'notFound') : refuse(c, 403, 'noAccess');
+}
+
 app.get('/s/:spaceId/learn/:subjectId', async (c) => {
   const db = c.get('db');
   const space = c.get('space');
@@ -745,8 +760,9 @@ app.get('/s/:spaceId/read/:lessonId', async (c) => {
   const db = c.get('db');
   const space = c.get('space');
   const lesson = await findLesson(db, space.id, c.req.param('lessonId'));
-  const subject = lesson && (await readableSubject(db, space, c.get('user')!.id, lesson.subject_id));
-  if (!lesson || !subject) return refuse(c, 403, 'noAccess');
+  if (!lesson) return removedOrRefused(c, await removedLessonSubject(db, space.id, c.req.param('lessonId')));
+  const subject = await readableSubject(db, space, c.get('user')!.id, lesson.subject_id);
+  if (!subject) return refuse(c, 403, 'noAccess');
   const { t, lang, view } = spaceLabel(c);
   const materials = await lessonMaterials(db, space.id, lesson.id);
   return page(c, lessonPage(t, lang, view, { subject, lesson, materials }));
@@ -756,8 +772,9 @@ app.get('/s/:spaceId/file/:materialId', async (c) => {
   const db = c.get('db');
   const space = c.get('space');
   const file = await findFile(db, space.id, c.req.param('materialId'));
-  const subject = file && (await readableSubject(db, space, c.get('user')!.id, file.subject_id));
-  if (!file || !subject) return refuse(c, 403, 'noAccess');
+  if (!file) return removedOrRefused(c, await removedMaterialSubject(db, space.id, c.req.param('materialId')));
+  const subject = await readableSubject(db, space, c.get('user')!.id, file.subject_id);
+  if (!subject) return refuse(c, 403, 'noAccess');
   const obj = await c.env.FILES.get(file.storage_key);
   if (!obj) return refuse(c, 404, 'notFound');
   const headers = materialFileHeaders(file.kind, obj.httpMetadata?.contentType ?? '', obj.httpEtag);
@@ -1274,25 +1291,35 @@ function titleFrom(body: Record<string, unknown>): string | null {
   return title && title.length <= TITLE_MAX ? title : null;
 }
 
-async function renderSubjectEditor(c: C, subject: SubjectRow, error?: LabelKey) {
+/** What an editor page says after a done form (?done=…, AT-8). */
+const DONE: Record<string, EditorNotice> = { renamed: 'renamed', removed: 'removedDone', restored: 'restoredDone', replaced: 'replacedDone' };
+const editorNotice = (c: C): EditorNotice | undefined => DONE[c.req.query('done') ?? ''];
+
+async function renderSubjectEditor(c: C, subject: SubjectRow, error?: LabelKey, notice?: EditorNotice) {
   const { t, lang, view } = spaceLabel(c);
   const parts = await outline(c.get('db'), view.id, subject.id);
-  return page(c, subjectEditor(t, lang, view, subject, parts, error && t(error)), error ? 400 : 200);
+  return page(c, subjectEditor(t, lang, view, subject, parts, error && t(error), notice), error ? 400 : 200);
 }
 
-async function renderLessonEditor(c: C, lesson: EditableLesson, error?: LabelKey, status: 200 | 400 | 413 = 200) {
+async function renderLessonEditor(
+  c: C,
+  lesson: EditableLesson,
+  error?: LabelKey,
+  status: 200 | 400 | 413 = 200,
+  extra: { notice?: EditorNotice; typedName?: string } = {},
+) {
   const db = c.get('db');
   const { t, lang, view } = spaceLabel(c);
   const subject = await editableSubject(db, view.id, c.get('user')!.id, lesson.subject_id);
   if (!subject) return refuse(c, 403, 'noAccess');
   const materials = await lessonMaterials(db, view.id, lesson.id);
-  return page(c, lessonEditor(t, lang, view, { subject, lesson, materials, error: error && t(error) }), status);
+  return page(c, lessonEditor(t, lang, view, { subject, lesson, materials, error: error && t(error), ...extra }), status);
 }
 
 app.get('/s/:spaceId/publish/edit/:subjectId', async (c) => {
   const subject = await editableSubject(c.get('db'), c.get('space').id, c.get('user')!.id, c.req.param('subjectId'));
   if (!subject) return refuse(c, 403, 'noAccess');
-  return renderSubjectEditor(c, subject);
+  return renderSubjectEditor(c, subject, undefined, editorNotice(c));
 });
 
 app.post('/s/:spaceId/publish/edit/:subjectId/add', async (c) => {
@@ -1341,8 +1368,8 @@ app.post('/s/:spaceId/publish/part/:chapterId/move', async (c) => {
 
 app.get('/s/:spaceId/publish/compose/:lessonId', async (c) => {
   const lesson = await editableLesson(c.get('db'), c.get('space').id, c.get('user')!.id, c.req.param('lessonId'));
-  if (!lesson) return refuse(c, 403, 'noAccess');
-  return renderLessonEditor(c, lesson);
+  if (!lesson) return missingItem(c, 'lesson', c.req.param('lessonId'));
+  return renderLessonEditor(c, lesson, undefined, 200, { notice: editorNotice(c) });
 });
 
 app.post('/s/:spaceId/publish/compose/:lessonId/move', async (c) => {
@@ -1416,6 +1443,216 @@ app.post('/s/:spaceId/publish/item/:materialId/move', async (c) => {
   const direction = field(await c.req.parseBody(), 'direction');
   if (isDirection(direction)) await moveMaterial(db, spaceId, material, direction);
   return c.redirect(lessonEditorPath(spaceId, material.lesson_id) + '#items', 303);
+});
+
+// ------------------------------------------- correcting content (AT-8) ----
+// Renaming a chapter, a lesson or a material; replacing a material's file;
+// removing (a GET step that names the item, then a POST) and restoring from
+// Recently removed. Still under /s/<space>/publish, behind the publisher gate
+// and the cross-origin check; each lookup and each write repeats the
+// ownership check (src/publishing.ts, src/removal.ts). A removal or a restore
+// is one database statement; nothing is deleted from the database or storage.
+const partPath = (spaceId: string, chapterId: string) => `/s/${spaceId}/publish/part/${chapterId}`;
+const itemPath = (spaceId: string, materialId: string) => `/s/${spaceId}/publish/item/${materialId}`;
+const PARAM: Record<ContentKind, 'chapterId' | 'lessonId' | 'materialId'> = { chapter: 'chapterId', lesson: 'lessonId', material: 'materialId' };
+const INSIDE: Record<'chapter' | 'lesson', 'lesson' | 'material'> = { chapter: 'lesson', lesson: 'material' };
+
+/** An address of the publisher's that finds nothing that shows: "not found"
+ * when it is one of her own removed items, otherwise the usual 403. */
+async function missingItem(c: C, kind: ContentKind, id: string) {
+  const item = await ownedItem(c.get('db'), c.get('space').id, c.get('user')!.id, kind, id);
+  return item ? refuse(c, 404, 'notFound') : refuse(c, 403, 'noAccess');
+}
+
+async function renderChapterPage(
+  c: C,
+  chapter: EditableChapter,
+  extra: { error?: LabelKey; notice?: EditorNotice; typedName?: string } = {},
+  status: 200 | 400 = 200,
+) {
+  const db = c.get('db');
+  const { t, lang, view } = spaceLabel(c);
+  const subject = await editableSubject(db, view.id, c.get('user')!.id, chapter.subject_id);
+  if (!subject) return refuse(c, 403, 'noAccess');
+  const lessons = (await outline(db, view.id, subject.id)).find((ch) => ch.id === chapter.id)?.lessons ?? [];
+  const { error, ...rest } = extra;
+  return page(c, chapterPage(t, lang, view, { subject, chapter, lessons, error: error && t(error), ...rest }), status);
+}
+
+async function renderMaterialPage(
+  c: C,
+  material: EditableMaterial,
+  extra: { error?: LabelKey; notice?: EditorNotice; typedName?: string } = {},
+  status: 200 | 400 | 413 = 200,
+) {
+  const { t, lang, view } = spaceLabel(c);
+  const subject = await editableSubject(c.get('db'), view.id, c.get('user')!.id, material.subject_id);
+  if (!subject) return refuse(c, 403, 'noAccess');
+  const { error, ...rest } = extra;
+  return page(c, materialPage(t, lang, view, { subject, material, error: error && t(error), ...rest }), status);
+}
+
+app.get('/s/:spaceId/publish/part/:chapterId', async (c) => {
+  const chapter = await editableChapter(c.get('db'), c.get('space').id, c.get('user')!.id, c.req.param('chapterId'));
+  if (!chapter) return missingItem(c, 'chapter', c.req.param('chapterId'));
+  return renderChapterPage(c, chapter, { notice: editorNotice(c) });
+});
+
+app.get('/s/:spaceId/publish/item/:materialId', async (c) => {
+  const material = await editableMaterial(c.get('db'), c.get('space').id, c.get('user')!.id, c.req.param('materialId'));
+  if (!material) return missingItem(c, 'material', c.req.param('materialId'));
+  return renderMaterialPage(c, material, { notice: editorNotice(c) });
+});
+
+// Renaming (AT-8): the title only, with the AT-7 bounds (1 to 100 characters,
+// one line). Every page reads the title from its row, so learners see the new
+// one at their next page. A refused title stores nothing.
+app.post('/s/:spaceId/publish/part/:chapterId/name', async (c) => {
+  const spaceId = c.get('space').id;
+  const userId = c.get('user')!.id;
+  const chapter = await editableChapter(c.get('db'), spaceId, userId, c.req.param('chapterId'));
+  if (!chapter) return missingItem(c, 'chapter', c.req.param('chapterId'));
+  const body = await c.req.parseBody();
+  const title = typedItemName(body, 'title');
+  if (!title) return renderChapterPage(c, chapter, { error: 'renameInvalid', typedName: field(body, 'title') }, 400);
+  if (!(await renameChapter(c.get('db'), spaceId, userId, chapter.id, title))) return refuse(c, 403, 'noAccess');
+  return c.redirect(`${partPath(spaceId, chapter.id)}?done=renamed`, 303);
+});
+
+app.post('/s/:spaceId/publish/compose/:lessonId/name', async (c) => {
+  const spaceId = c.get('space').id;
+  const userId = c.get('user')!.id;
+  const lesson = await editableLesson(c.get('db'), spaceId, userId, c.req.param('lessonId'));
+  if (!lesson) return missingItem(c, 'lesson', c.req.param('lessonId'));
+  const body = await c.req.parseBody();
+  const title = typedItemName(body, 'title');
+  if (!title) return renderLessonEditor(c, lesson, 'renameInvalid', 400, { typedName: field(body, 'title') });
+  if (!(await renameLesson(c.get('db'), spaceId, userId, lesson.id, title))) return refuse(c, 403, 'noAccess');
+  return c.redirect(`${lessonEditorPath(spaceId, lesson.id)}?done=renamed`, 303);
+});
+
+app.post('/s/:spaceId/publish/item/:materialId/name', async (c) => {
+  const spaceId = c.get('space').id;
+  const userId = c.get('user')!.id;
+  const material = await editableMaterial(c.get('db'), spaceId, userId, c.req.param('materialId'));
+  if (!material) return missingItem(c, 'material', c.req.param('materialId'));
+  const body = await c.req.parseBody();
+  const title = typedItemName(body, 'title');
+  if (!title) return renderMaterialPage(c, material, { error: 'renameInvalid', typedName: field(body, 'title') }, 400);
+  if (!(await renameMaterial(c.get('db'), spaceId, userId, material.id, title))) return refuse(c, 403, 'noAccess');
+  return c.redirect(`${itemPath(spaceId, material.id)}?done=renamed`, 303);
+});
+
+// Replacing a material's file (AT-8): the upload rules apply (kind and type
+// from the content, at most 25 MB), and the new file must be of the same kind
+// (a PDF for a PDF, an image for an image). The new bytes go under a new key;
+// one statement switches the material to it; a refused or failed switch
+// removes only the new, never-served object again. The old object is kept.
+app.post('/s/:spaceId/publish/item/:materialId/file', async (c) => {
+  const db = c.get('db');
+  const spaceId = c.get('space').id;
+  const userId = c.get('user')!.id;
+  const material = await editableMaterial(db, spaceId, userId, c.req.param('materialId'));
+  if (!material) return missingItem(c, 'material', c.req.param('materialId'));
+  if (material.kind !== 'pdf' && material.kind !== 'image') return renderMaterialPage(c, material, { error: 'replaceKind' }, 400);
+  if (materialBodyTooLarge(c.req.header('content-length'))) return renderMaterialPage(c, material, { error: 'uploadTooLarge' }, 413);
+  const file = (await c.req.parseBody()).file;
+  if (!(file instanceof File) || file.size === 0) return renderMaterialPage(c, material, { error: 'uploadMissing' }, 400);
+  if (file.size > MATERIAL_MAX_BYTES) return renderMaterialPage(c, material, { error: 'uploadTooLarge' }, 413);
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const found = sniffMaterial(bytes);
+  if (!found) return renderMaterialPage(c, material, { error: 'uploadType' }, 400);
+  if (found.kind !== material.kind) return renderMaterialPage(c, material, { error: 'replaceKind' }, 400);
+  const key = replacementKey(spaceId, material.id);
+  await c.env.FILES.put(key, bytes, { httpMetadata: { contentType: found.type } });
+  let switched = false;
+  try {
+    switched = await switchFile(db, spaceId, userId, material, key);
+  } finally {
+    if (!switched) await c.env.FILES.delete(key);
+  }
+  if (!switched) return refuse(c, 403, 'noAccess');
+  return c.redirect(`${itemPath(spaceId, material.id)}?done=replaced`, 303);
+});
+
+/** An item that shows, as the remove step needs it: its title, where Cancel goes, and where a done removal goes. */
+async function shownItem(c: C, kind: ContentKind, id: string): Promise<{ title: string; back: string; after: string } | null> {
+  const db = c.get('db');
+  const spaceId = c.get('space').id;
+  const userId = c.get('user')!.id;
+  if (kind === 'chapter') {
+    const ch = await editableChapter(db, spaceId, userId, id);
+    return ch && { title: ch.title, back: partPath(spaceId, ch.id), after: `${subjectEditorPath(spaceId, ch.subject_id)}?done=removed#outline` };
+  }
+  if (kind === 'lesson') {
+    const l = await editableLesson(db, spaceId, userId, id);
+    return l && { title: l.title, back: lessonEditorPath(spaceId, l.id), after: `${subjectEditorPath(spaceId, l.subject_id)}?done=removed#outline` };
+  }
+  const m = await editableMaterial(db, spaceId, userId, id);
+  return m && { title: m.title, back: itemPath(spaceId, m.id), after: `${lessonEditorPath(spaceId, m.lesson_id)}?done=removed#items` };
+}
+
+const REMOVE = { chapter: removeChapter, lesson: removeLesson, material: removeMaterial };
+const RESTORE = { chapter: restoreChapter, lesson: restoreLesson, material: restoreMaterial };
+
+for (const kind of ['chapter', 'lesson', 'material'] as const) {
+  const path = `/s/:spaceId/publish/${SEGMENT[kind]}/:${PARAM[kind]}`;
+  const idOf = (c: C) => c.req.param(PARAM[kind]) ?? '';
+
+  /** The remove step, or its refusal when a lesson or chapter still shows content. */
+  async function renderStep(c: C, id: string, item: { title: string; back: string }, status: 200 | 400 = 200) {
+    const { t, lang, view } = spaceLabel(c);
+    const titles = kind === 'material' ? [] : await stillShowing(c.get('db'), view.id, kind, id);
+    const refused = kind !== 'material' && titles.length ? { inside: INSIDE[kind], titles } : undefined;
+    return page(c, removeConfirmPage(t, lang, view, { kind, id, title: item.title, back: item.back, refused }), refused ? status : 200);
+  }
+
+  // Step one: a page that names the item (a plain GET, which changes nothing).
+  app.get(`${path}/remove`, async (c) => {
+    const item = await shownItem(c, kind, idOf(c));
+    if (!item) return missingItem(c, kind, idOf(c));
+    return renderStep(c, idOf(c), item);
+  });
+
+  // The confirming tap: one statement, which also refuses a lesson or chapter that still shows content.
+  app.post(`${path}/remove`, async (c) => {
+    const id = idOf(c);
+    const item = await shownItem(c, kind, id);
+    if (!item) return missingItem(c, kind, id);
+    if (await REMOVE[kind](c.get('db'), c.get('space').id, c.get('user')!.id, id, now())) return c.redirect(item.after, 303);
+    return renderStep(c, id, item, 400);
+  });
+
+  // Restore (from Recently removed): back in its old place, with the same file.
+  app.post(`${path}/restore`, async (c) => {
+    const db = c.get('db');
+    const spaceId = c.get('space').id;
+    const id = idOf(c);
+    const item = await ownedItem(db, spaceId, c.get('user')!.id, kind, id);
+    if (!item) return refuse(c, 403, 'noAccess');
+    const place = kind === 'material'
+      ? `${lessonEditorPath(spaceId, item.parent_id ?? '')}?done=restored#items`
+      : `${subjectEditorPath(spaceId, item.subject_id)}?done=restored#outline`;
+    if (await RESTORE[kind](db, spaceId, c.get('user')!.id, id, now())) return c.redirect(place, 303);
+    if (!item.removed && !item.parent_removed) return c.redirect(place, 303); // already back (a second tap)
+    if (!item.parent_removed) return refuse(c, 403, 'noAccess');
+    // What holds it is removed too: restore that first.
+    const { t, lang, view } = spaceLabel(c);
+    const subject = await editableSubject(db, spaceId, c.get('user')!.id, item.subject_id);
+    if (!subject) return refuse(c, 403, 'noAccess');
+    const items = await recentlyRemoved(db, spaceId, subject.id);
+    const blocking = items.find((i) => i.id === id)?.blocked_by ?? item.parent_title ?? '';
+    return page(c, removedPage(t, lang, view, { subject, items, error: t('restoreParentFirst', { name: blocking }) }), 400);
+  });
+}
+
+// Recently removed: everything removed in one of the publisher's subjects.
+app.get('/s/:spaceId/publish/edit/:subjectId/removed', async (c) => {
+  const db = c.get('db');
+  const subject = await editableSubject(db, c.get('space').id, c.get('user')!.id, c.req.param('subjectId'));
+  if (!subject) return refuse(c, 403, 'noAccess');
+  const { t, lang, view } = spaceLabel(c);
+  return page(c, removedPage(t, lang, view, { subject, items: await recentlyRemoved(db, view.id, subject.id) }));
 });
 
 // ------------------------------------------------------------ my account ----

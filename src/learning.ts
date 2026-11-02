@@ -8,6 +8,11 @@
 //   an admin reads the whole space; a publisher reads the subjects they are
 //   responsible for; a learner reads a published subject assigned to them
 //   directly or through a group they belong to. Nobody else reads anything.
+// - Removed content is never read (release 1.1, AT-8): every statement here
+//   that names a chapter, a lesson or a material excludes removed rows of each
+//   (removed_at IS NULL), so a removed item, and everything under a removed
+//   chapter or lesson, is absent from every reading page and file link
+//   (test/guards/removed-content.test.ts checks every statement).
 import type { CurrentSpace } from './app-env.ts';
 import type { Db } from './db.ts';
 
@@ -111,8 +116,8 @@ export async function readableSubject(db: Db, space: CurrentSpace, userId: strin
 export async function outline(db: Db, spaceId: string, subjectId: string): Promise<OutlineChapter[]> {
   const rows = await db.all<{ chapter_id: string; chapter_title: string; lesson_id: string | null; lesson_title: string | null }>(
     `SELECT c.id AS chapter_id, c.title AS chapter_title, l.id AS lesson_id, l.title AS lesson_title
-       FROM chapter c LEFT JOIN lesson l ON l.chapter_id = c.id AND l.space_id = c.space_id
-      WHERE c.space_id = ? AND c.subject_id = ?
+       FROM chapter c LEFT JOIN lesson l ON l.chapter_id = c.id AND l.space_id = c.space_id AND l.removed_at IS NULL
+      WHERE c.space_id = ? AND c.subject_id = ? AND c.removed_at IS NULL
       ORDER BY c.position, c.id, l.position, l.id`,
     spaceId, subjectId,
   );
@@ -128,8 +133,8 @@ export async function outline(db: Db, spaceId: string, subjectId: string): Promi
 export function findLesson(db: Db, spaceId: string, lessonId: string): Promise<LessonRow | null> {
   return db.first<LessonRow>(
     `SELECT l.id, l.title, l.body_text, c.title AS chapter_title, c.subject_id
-       FROM lesson l JOIN chapter c ON c.id = l.chapter_id AND c.space_id = l.space_id
-      WHERE l.id = ? AND l.space_id = ?`,
+       FROM lesson l JOIN chapter c ON c.id = l.chapter_id AND c.space_id = l.space_id AND c.removed_at IS NULL
+      WHERE l.id = ? AND l.space_id = ? AND l.removed_at IS NULL`,
     lessonId, spaceId,
   );
 }
@@ -137,7 +142,7 @@ export function findLesson(db: Db, spaceId: string, lessonId: string): Promise<L
 /** A lesson's materials in order. */
 export function lessonMaterials(db: Db, spaceId: string, lessonId: string): Promise<MaterialRow[]> {
   return db.all<MaterialRow>(
-    'SELECT m.id, m.kind, m.title, m.url, m.note_text FROM material m WHERE m.space_id = ? AND m.lesson_id = ? ORDER BY m.position, m.id',
+    'SELECT m.id, m.kind, m.title, m.url, m.note_text FROM material m WHERE m.space_id = ? AND m.lesson_id = ? AND m.removed_at IS NULL ORDER BY m.position, m.id',
     spaceId, lessonId,
   );
 }
@@ -147,9 +152,9 @@ export function findFile(db: Db, spaceId: string, materialId: string): Promise<F
   return db.first<FileRow>(
     `SELECT m.id, m.kind, m.title, m.storage_key, c.subject_id
        FROM material m
-       JOIN lesson l ON l.id = m.lesson_id AND l.space_id = m.space_id
-       JOIN chapter c ON c.id = l.chapter_id AND c.space_id = l.space_id
-      WHERE m.id = ? AND m.space_id = ? AND m.kind IN ('pdf', 'image') AND m.storage_key IS NOT NULL`,
+       JOIN lesson l ON l.id = m.lesson_id AND l.space_id = m.space_id AND l.removed_at IS NULL
+       JOIN chapter c ON c.id = l.chapter_id AND c.space_id = l.space_id AND c.removed_at IS NULL
+      WHERE m.id = ? AND m.space_id = ? AND m.removed_at IS NULL AND m.kind IN ('pdf', 'image') AND m.storage_key IS NOT NULL`,
     materialId, spaceId,
   );
 }

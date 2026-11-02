@@ -244,6 +244,28 @@ const en = {
   saveName: 'Save the new name',
   renameInvalid: 'Type a name of 1 to 100 characters, on one line. Nothing was changed.',
   renamed: 'Saved. The new name shows on every page.',
+  // Release 1.1, AT-8: the publisher corrects content safely.
+  change: 'Change',
+  remove: 'Remove',
+  removeNote: 'Removing hides it from every page at once. Nothing is deleted: it waits in Recently removed, where it can be restored.',
+  removeConfirmTitle: 'Remove the {item} “{name}”?',
+  removeConfirmNote:
+    'Every {learner} stops seeing it at once, and its address answers “not found”. Nothing is deleted: you can restore it from Recently removed.',
+  removeYes: 'Yes, remove it',
+  removedDone: 'Removed. Nothing was deleted: it waits in Recently removed.',
+  removeRefused: 'The {item} “{name}” still shows content: remove each {inside} in it first, then try again. Nothing was removed.',
+  stillShowing: 'Still showing:',
+  recentlyRemoved: 'Recently removed',
+  recentlyRemovedNote:
+    'Removed items wait here. They are still stored, and counted in storage. Restore puts one back in its old place, with the same file.',
+  removedOn: 'removed on {date}',
+  restore: 'Restore',
+  restoredDone: 'Restored in its old place.',
+  restoreParentFirst: 'It sits inside “{name}”, which is removed too: restore “{name}” first. Nothing was changed.',
+  replaceTitle: 'Replace the file',
+  replaceNote: 'The title and place stay the same. Every {learner} gets the new file at once; the old one is no longer served.',
+  replaceKind: 'Choose a file of the same kind: a PDF in place of a PDF, an image in place of an image. Nothing was changed.',
+  replacedDone: 'Saved. The new file shows at once.',
 };
 
 export type UiKey = keyof typeof en;
@@ -480,12 +502,33 @@ const ar: Record<UiKey, string> = {
   restoreNote: 'يعود الوصول مع كل ما كان مخصّصاً من قبل. اختر تاريخ انتهاء جديداً.',
   accessRestored: 'تمت استعادة الوصول.',
   endedNoReset: 'انتهى وصول {name}. استعِد الوصول أولاً؛ وبعدها يمكنك إرسال رابط إعادة تعيين أو تعيين كلمة مرور جديدة.',
-  renameItem: 'تغيير اسم الـ{item}',
+  renameItem: 'تغيير الاسم: {item}',
   newName: 'الاسم الجديد',
   renameNote: 'يظهر الاسم الجديد فوراً في كل صفحة، للجميع. ولا يتغيّر شيء آخر.',
   saveName: 'حفظ الاسم الجديد',
   renameInvalid: 'اكتب اسماً من 1 إلى 100 حرف، في سطر واحد. لم يتغيّر شيء.',
   renamed: 'تم الحفظ. يظهر الاسم الجديد في كل صفحة.',
+  change: 'تعديل',
+  remove: 'إزالة',
+  removeNote: 'تُخفي الإزالة العنصر من كل الصفحات فوراً. لا يُحذف شيء: يبقى العنصر في «أُزيل مؤخراً» ويمكن استعادته من هناك.',
+  removeConfirmTitle: 'إزالة {item} «{name}»؟',
+  removeConfirmNote:
+    'يتوقف كل {learner} عن رؤية هذا العنصر فوراً، ويجيب عنوانه بأنه غير موجود. لا يُحذف شيء: يمكنك استعادته من «أُزيل مؤخراً».',
+  removeYes: 'نعم، أزِل العنصر',
+  removedDone: 'تمت الإزالة. لم يُحذف شيء: العنصر في «أُزيل مؤخراً».',
+  removeRefused: 'ما زال «{name}» يعرض محتوى: أزِل كل {inside} فيه أولاً، ثم أعد المحاولة. لم تتم إزالة أي شيء.',
+  stillShowing: 'ما زال ظاهراً:',
+  recentlyRemoved: 'أُزيل مؤخراً',
+  recentlyRemovedNote:
+    'تنتظر العناصر المُزالة هنا. ما زالت محفوظة ومحسوبة في التخزين. «استعادة» تعيد العنصر إلى مكانه السابق، بالملف نفسه.',
+  removedOn: 'أُزيل في {date}',
+  restore: 'استعادة',
+  restoredDone: 'تمت استعادة العنصر إلى مكانه السابق.',
+  restoreParentFirst: 'يقع هذا العنصر داخل «{name}»، وهو مُزال أيضاً: استعِد «{name}» أولاً. لم يتغيّر شيء.',
+  replaceTitle: 'استبدال الملف',
+  replaceNote: 'يبقى العنوان والمكان كما هما. يحصل كل {learner} على الملف الجديد فوراً، ولا يُعرض الملف القديم بعد ذلك.',
+  replaceKind: 'اختر ملفاً من النوع نفسه: ملف PDF مكان ملف PDF، وصورة مكان صورة. لم يتغيّر شيء.',
+  replacedDone: 'تم الحفظ. يظهر الملف الجديد فوراً.',
 };
 
 export const UI: Record<'ar' | 'en', Record<UiKey, string>> = { en, ar };
