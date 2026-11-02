@@ -1,6 +1,6 @@
 # Current progress
 
-## Current state, 2 November 2026: release 1 live; release 1.1 "Keep the space tidy" approved and in build
+## Current state, 2 November 2026: release 1 live; release 1.1 in build (AT-6 and AT-7 delivered, AT-8 in verification); owner moving to Claude Desktop
 
 **What is true now**
 
@@ -15,13 +15,20 @@
 
 - **AT-7, the admin tidies groups and subjects** (#27, merge `cba9fba`, 2 November 2026). Renaming groups and subjects is bounded on the server. Removing a learner or unassigning a group takes effect on every direct link, including cached files, and re-adding restores everything. Also delivered, from the AT-6 Verifier: ended people are refused reset links and passwords, the session refresh can no longer revive an ended session, and `/home` marks ended spaces. Lead ACCEPTED; Verifier PASS; CI green on `main`.
 
-**Active priority:** build task 12, **AT-8, the publisher corrects content safely**, the last acceptance test of release 1.1:
-- rename content, and replace a file in place;
-- remove and restore items through "Recently removed", where every removal is reversible;
-- removed content never reaches a learner, proven by a guard;
-- includes the Arabic rename heading tidy-up.
+**Active priority:** build task 12, **AT-8, the publisher corrects content safely** (the last acceptance test of release 1.1). The work covers renaming content, replacing a file in place, and removing and restoring through "Recently removed" (every removal reversible). A guard proves removed content never reaches a learner. The Arabic rename heading is tidied.
 
-Then hardening task H-1, then the owner's one press of Run workflow for release 1.1.
+**AT-8 state at handover (2 November 2026, 10:40 UTC):**
+- **Pull request:** [#29](https://github.com/Shegazy003/LMS_LEGO/pull/29), branch `build/at-8`.
+- **Red commits:** `26df8eb` (run 41403423218, failed as expected) and `99af13f`, which re-established red after a test correction.
+- **Green commit:** `066acae`, with its CI run 41429232976 in progress.
+- The Builder stopped once at the account's weekly usage limit and was resumed after the reset. Nothing was lost.
+- **Next steps:**
+  1. The Builder's `CANDIDATE READY` report, or, if the session ended, read the pull request's commits and runs.
+  2. The Lead check ([checklist](docs/templates/LEAD-CHECKLIST.md)).
+  3. A Verifier on a different model ([template](docs/templates/VERIFIER-BRIEF.md)).
+  4. A merge bound to the verified sha, then green CI on `main`, then the record.
+
+**After AT-8:** hardening task H-1 (Workers Logs safely; see the contract section 4). It has **not started**. Then the owner presses Run workflow once to put release 1.1 live.
 
 **Note for whoever waits on CI:** the full suite now takes about 11 minutes, so wait at least 15 minutes for `main` before reading a result.
 
