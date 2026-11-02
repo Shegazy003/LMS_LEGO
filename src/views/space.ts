@@ -55,11 +55,22 @@ export function accessEndedPage(
   return layout({ t: first.t, lang: first.lang, title: first.t(key, vars(first.t)), body, signedIn });
 }
 
-/** For a person with more than one space. */
-export function membershipsPage(t: Label, lang: Lang, spaces: { id: string; name: string }[]): Html {
+/** One of a person's spaces; endedOn is the day their access there ended, or null while it lasts. */
+export interface MembershipItem {
+  id: string;
+  name: string;
+  endedOn: string | null;
+}
+
+/** For a person with more than one space. A space whose access has ended is
+ * marked so, with the day (release 1.1, AT-6 follow-up); its link still opens
+ * the "access ended" message. */
+export function membershipsPage(t: Label, lang: Lang, spaces: MembershipItem[]): Html {
+  const item = (s: MembershipItem) => html`<li data-space="${s.id}"${s.endedOn ? html` data-ended="1"` : ''}><a href="/s/${s.id}"><bdi>${s.name}</bdi></a>${
+    s.endedOn ? html`<div class="muted">${sentence(t, 'endedOn', { date: s.endedOn })}</div>` : ''}</li>`;
   const body = html`<h1>${t('yourSpaces')}</h1>
 ${spaces.length
-  ? html`<ul class="list card">${spaces.map((s) => html`<li><a href="/s/${s.id}">${s.name}</a></li>`)}</ul>`
+  ? html`<ul id="my-spaces" class="list card">${spaces.map(item)}</ul>`
   : html`<p class="message">${t('noMemberships')}</p>`}`;
   return layout({ t, lang, title: t('yourSpaces'), body, signedIn: true });
 }

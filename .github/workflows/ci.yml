@@ -115,6 +115,15 @@ jobs:
       - name: AT-6 guard - ending access is immediate and stops sessions and reset links
         if: success() || failure()
         run: npm run test:guard:end-access
+      - name: AT-6 follow-ups - ended people and the refresh race
+        if: success() || failure()
+        run: npm run test:guard:end-access-followups
+      - name: AT-7 the admin tidies groups and subjects
+        if: success() || failure()
+        run: npm run test:at7
+      - name: AT-7 guard - unassigning takes effect on every direct link
+        if: success() || failure()
+        run: npm run test:guard:unassign
       # The deploy rails (build task 6), proven with no Cloudflare account:
       # the production bundle builds without the test hooks; deploy.yml starts
       # only by hand from main, with a read-only token, and never prints its

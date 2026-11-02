@@ -236,6 +236,14 @@ const en = {
   restoreTitle: 'Restore access',
   restoreNote: 'Access comes back with everything assigned as before. Choose a new end date.',
   accessRestored: 'Access restored.',
+  endedNoReset: 'Access for {name} has ended. Restore access first; then you can send a reset link or set a new password.',
+  // Release 1.1, AT-7: the admin tidies groups and subjects.
+  renameItem: 'Rename the {item}',
+  newName: 'New name',
+  renameNote: 'The new name shows at once on every page, for everyone. Nothing else changes.',
+  saveName: 'Save the new name',
+  renameInvalid: 'Type a name of 1 to 100 characters, on one line. Nothing was changed.',
+  renamed: 'Saved. The new name shows on every page.',
 };
 
 export type UiKey = keyof typeof en;
@@ -471,6 +479,13 @@ const ar: Record<UiKey, string> = {
   restoreTitle: 'استعادة الوصول',
   restoreNote: 'يعود الوصول مع كل ما كان مخصّصاً من قبل. اختر تاريخ انتهاء جديداً.',
   accessRestored: 'تمت استعادة الوصول.',
+  endedNoReset: 'انتهى وصول {name}. استعِد الوصول أولاً؛ وبعدها يمكنك إرسال رابط إعادة تعيين أو تعيين كلمة مرور جديدة.',
+  renameItem: 'تغيير اسم الـ{item}',
+  newName: 'الاسم الجديد',
+  renameNote: 'يظهر الاسم الجديد فوراً في كل صفحة، للجميع. ولا يتغيّر شيء آخر.',
+  saveName: 'حفظ الاسم الجديد',
+  renameInvalid: 'اكتب اسماً من 1 إلى 100 حرف، في سطر واحد. لم يتغيّر شيء.',
+  renamed: 'تم الحفظ. يظهر الاسم الجديد في كل صفحة.',
 };
 
 export const UI: Record<'ar' | 'en', Record<UiKey, string>> = { en, ar };
