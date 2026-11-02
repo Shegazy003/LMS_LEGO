@@ -4,8 +4,8 @@
 
 **What is true now**
 
-- **Release 1 is live and accepted** at https://lms-lego.lmslego.workers.dev. The live version is `3d84e561` from `258bbdb`.
-- **Release 1.1 "Keep the space tidy" is delivered in code** ([contract 0.2](docs/09-CONTRACT-R1.1.md)). Every task went through Builder (Opus), then Lead ACCEPTED, then Verifier PASS (Sonnet), then a merge bound to the verified sha, with green CI on `main`:
+- **Live at** https://lms-lego.lmslego.workers.dev: version `9d8f2430` from `71de46b` (release 1.1). Release 1 was accepted on 1 November 2026; its version `3d84e561` is the rollback target.
+- **Release 1.1 "Keep the space tidy" is delivered, live and accepted** ([contract 0.2](docs/09-CONTRACT-R1.1.md)). Every task went through Builder (Opus), then Lead ACCEPTED, then Verifier PASS (Sonnet), then a merge bound to the verified sha, with green CI on `main`:
   - **AT-6, the admin corrects a person** (#25, `293294e`). Search; correct name and mobile number (old reset links die); end dates; End access now (atomic); Ended section; Restore.
   - **AT-7, the admin tidies groups and subjects** (#27, `cba9fba`). Renames; removing a learner or unassigning a group takes effect on every link, including cached files. Also the AT-6 follow-ups: ended people get no reset link or password; session refresh cannot revive an ended session; `/home` marks ended spaces.
   - **AT-8, the publisher corrects content safely** (#29, `e571904`). Rename; replace a file in place; remove and restore through "Recently removed", where nothing is deleted. A guard proves removed content never reaches a learner. The Arabic rename heading is clean.
