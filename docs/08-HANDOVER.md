@@ -1,11 +1,11 @@
 # Handover: continuing LMS Lego from Claude Desktop (or any new session)
 
-**Date:** 1 November 2026 (UTC), kept current since. **Last updated:** 2 November 2026 (AT-6 and AT-7 delivered; build task 12, AT-8, started). **Written by:** the founding Claude Code cloud session, acting as owner's delegate, Project Lead and Product Manager (decision 002). Everything needed to continue is in this repository; nothing depends on the cloud session that wrote it.
+**Date:** 1 November 2026 (UTC), kept current since. **Last updated:** 2 November 2026, 10:40 UTC. The owner is moving to Claude Desktop now. AT-6 and AT-7 are delivered; AT-8 is pushed and green-in-progress at pull request #29; H-1 has not started. **Written by:** the founding Claude Code cloud session, acting as owner's delegate, Project Lead and Product Manager (decision 002). Everything needed to continue is in this repository; nothing depends on the cloud session that wrote it.
 
 ## 1. Where things stand
 
 - **Release 1 is accepted and live** at **https://lms-lego.lmslego.workers.dev** (owner acceptance 1 November 2026). Details and evidence: [CURRENT-PROGRESS.md](../CURRENT-PROGRESS.md).
-- **In progress: release 1.1 "Keep the space tidy"** ([contract](09-CONTRACT-R1.1.md), approved 2 November 2026 by the delegate): AT-6 delivered (#25), AT-7 delivered (#27); AT-8 (build task 12) in build; then hardening task H-1; then the owner presses Run workflow to put release 1.1 live. The current task and its pull request are always named at the top of [CURRENT-PROGRESS.md](../CURRENT-PROGRESS.md).
+- **In progress: release 1.1 "Keep the space tidy"** ([contract](09-CONTRACT-R1.1.md), approved 2 November 2026 by the delegate): AT-6 delivered (#25), AT-7 delivered (#27); **AT-8 (build task 12) at pull request #29**: red `26df8eb` and `99af13f`, green `066acae`, still needing the Lead check, a Verifier and the merge, unless [CURRENT-PROGRESS.md](../CURRENT-PROGRESS.md) already records it delivered. Then hardening task H-1 (not started). Then the owner presses Run workflow to put release 1.1 live. The current task and its pull request are always named at the top of [CURRENT-PROGRESS.md](../CURRENT-PROGRESS.md).
 - Next after that by the [roadmap](05-ROADMAP.md): release 2 (guardians and exam results) when Mesk School has used the product for one term, or earlier if the school asks.
 
 ## 2. Read in this order
@@ -16,6 +16,13 @@
 4. [09-CONTRACT-R1.1.md](09-CONTRACT-R1.1.md) (the release in build), [01-PRODUCT-CONTRACT.md](01-PRODUCT-CONTRACT.md) (release 1, accepted, closed), [02-LEGO-MODEL.md](02-LEGO-MODEL.md), [05-ROADMAP.md](05-ROADMAP.md), [04-LATER.md](04-LATER.md).
 5. [03-HOSTING-DECISION.md](03-HOSTING-DECISION.md) and [07-FIRST-DEPLOY.md](07-FIRST-DEPLOY.md): hosting, the owner's decisions, deploy.
 6. `README.md`: run the product and its tests locally, routes, known limits, first deploy, password strength, last-resort reset.
+
+## 2a. First thing to do in a new session
+
+1. Read the top block of [CURRENT-PROGRESS.md](../CURRENT-PROGRESS.md) to find the active task and its pull request.
+2. Check that pull request's commits and CI runs on GitHub.
+3. Continue the line from the step it reached: Lead check, Verifier, bound merge, green `main`, record.
+4. Never redo a step that already has evidence on the pull request.
 
 ## 3. How the team runs (repeat exactly)
 
@@ -77,6 +84,8 @@ Merged branches (`build/*`, `ops/*`, `contract-0.3`, `later/*`) are kept on GitH
 If a session ends while a task is in flight: open pull requests show where it stands (red run, green run, Lead stamp and Verifier comments are on the pull request). A Builder's branch `build/<name>` holds its commits; a fresh Builder can continue from it with a self-contained brief (template), adding commits on top, never force-pushing. A candidate without a Verifier comment needs the Lead check and a Verifier; one with PASS needs only the bound merge, the green `main` check and the record.
 
 ## 9. Lessons recorded
+
+- An agent can stop mid-task at the account's weekly usage limit (2 November 2026, AT-8 Builder on Opus). Its pushed commits and its worktree keep the work; resume the same agent after the reset (SendMessage), or start a fresh Builder from the pushed branch with a self-contained brief. Do not restart the task from scratch.
 
 - The full CI suite takes about 11 minutes (2 November 2026); wait loops for a green `main` need at least 15 minutes, or the merge looks unfinished when it is not.
 
