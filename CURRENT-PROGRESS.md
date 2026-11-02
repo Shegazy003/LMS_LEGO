@@ -1,6 +1,25 @@
 # Current progress
 
-## Current state, 1 November 2026 (late night, UTC): RELEASE 1 ACCEPTED and live
+## Current state, 2 November 2026: release 1 live; release 1.1 "Keep the space tidy" approved and in build
+
+**What is true now**
+
+- **Release 1 is live and accepted** at https://lms-lego.lmslego.workers.dev (owner acceptance 1 November 2026; evidence in the historical block below). Live version `3d84e561` from `258bbdb`.
+- **Release 1.1 contract approved** ([docs/09-CONTRACT-R1.1.md](docs/09-CONTRACT-R1.1.md), version 0.2). The owner asked to keep working. The Product Manager drafted 0.1; the critic gave "Revise first" with seven findings, all resolved in 0.2. The owner's delegate approved it by merging (decision 002).
+  - Its promise: the admin and the publisher correct everyday mistakes from the screens, and every removal can be undone.
+  - Three acceptance tests: AT-6 (correct a person, including mobile and end access now), AT-7 (tidy groups and subjects), AT-8 (rename, replace, remove and restore content).
+- **Hardening task H-1** follows 1.1: switch on Workers Logs safely, with a no-secrets guard and the re-hash race test.
+
+**Active priority:** build task 10, **AT-6**. Same route: Opus Builder in a worktree → red then green in CI → Lead stamp → Sonnet Verifier → delegate merges on PASS. Then AT-7, AT-8, H-1.
+
+**Going live with 1.1:** when AT-6 to AT-8 are merged, the owner presses Run workflow once (the school is using the product, so each live deploy is the owner's press).
+
+**Waiting on the human owner:** nothing now. Welcome any time: subject names from Hadeer and Shimaa; the owner's pass over the Arabic kit labels; the school's feedback.
+
+**Known limits:** release 1's list in the historical block below; release 1.1 removes the "nothing is renamed, ended early, extended or removed" limits once delivered.
+
+## Earlier on 1 November 2026 (late night, UTC): RELEASE 1 ACCEPTED and live (historical)
+
 
 **What is true now**
 

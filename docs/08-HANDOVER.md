@@ -1,19 +1,19 @@
 # Handover: continuing LMS Lego from Claude Desktop (or any new session)
 
-**Date:** 1 November 2026 (UTC). **Written by:** the founding Claude Code cloud session, acting as owner's delegate, Project Lead and Product Manager (decision 002). Everything needed to continue is in this repository; nothing depends on the cloud session that wrote it.
+**Date:** 1 November 2026 (UTC), kept current since. **Last updated:** 2 November 2026 (release 1.1 approved, build task 10 started). **Written by:** the founding Claude Code cloud session, acting as owner's delegate, Project Lead and Product Manager (decision 002). Everything needed to continue is in this repository; nothing depends on the cloud session that wrote it.
 
 ## 1. Where things stand
 
 - **Release 1 is accepted and live** at **https://lms-lego.lmslego.workers.dev** (owner acceptance 1 November 2026). Details and evidence: [CURRENT-PROGRESS.md](../CURRENT-PROGRESS.md).
-- `main` is green; no open pull requests; no work in progress.
-- Next by the [roadmap](05-ROADMAP.md): release 2 (guardians and exam results) when Mesk School has used release 1 for one term, or earlier if the school asks.
+- **In progress: release 1.1 "Keep the space tidy"** ([contract](09-CONTRACT-R1.1.md), approved 2 November 2026 by the delegate): AT-6 (build task 10) first, then AT-7, AT-8, then hardening task H-1. The current task and its pull request are always named at the top of [CURRENT-PROGRESS.md](../CURRENT-PROGRESS.md).
+- Next after that by the [roadmap](05-ROADMAP.md): release 2 (guardians and exam results) when Mesk School has used the product for one term, or earlier if the school asks.
 
 ## 2. Read in this order
 
 1. [CURRENT-PROGRESS.md](../CURRENT-PROGRESS.md): the one current-state block on top is the truth.
 2. [AGENTS.md](../AGENTS.md) and [00-OPERATING-CONTRACT.md](00-OPERATING-CONTRACT.md): roles, decision classes, test-first, evidence.
 3. [06-DELEGATION-AND-ROLES.md](06-DELEGATION-AND-ROLES.md): the owner's delegation, who runs each role on which model, the track record, the lessons.
-4. [01-PRODUCT-CONTRACT.md](01-PRODUCT-CONTRACT.md) (accepted, closed), [02-LEGO-MODEL.md](02-LEGO-MODEL.md), [05-ROADMAP.md](05-ROADMAP.md), [04-LATER.md](04-LATER.md).
+4. [09-CONTRACT-R1.1.md](09-CONTRACT-R1.1.md) (the release in build), [01-PRODUCT-CONTRACT.md](01-PRODUCT-CONTRACT.md) (release 1, accepted, closed), [02-LEGO-MODEL.md](02-LEGO-MODEL.md), [05-ROADMAP.md](05-ROADMAP.md), [04-LATER.md](04-LATER.md).
 5. [03-HOSTING-DECISION.md](03-HOSTING-DECISION.md) and [07-FIRST-DEPLOY.md](07-FIRST-DEPLOY.md): hosting, the owner's decisions, deploy.
 6. `README.md`: run the product and its tests locally, routes, known limits, first deploy, password strength, last-resort reset.
 
@@ -72,7 +72,11 @@ From [CURRENT-PROGRESS.md](../CURRENT-PROGRESS.md), none blocking:
 
 Merged branches (`build/*`, `ops/*`, `contract-0.3`, `later/*`) are kept on GitHub as history; every one is merged into `main`, so deleting them later loses nothing.
 
-## 8. Lessons recorded
+## 8. Picking up a task in the middle
+
+If a session ends while a task is in flight: open pull requests show where it stands (red run, green run, Lead stamp and Verifier comments are on the pull request). A Builder's branch `build/<name>` holds its commits; a fresh Builder can continue from it with a self-contained brief (template), adding commits on top, never force-pushing. A candidate without a Verifier comment needs the Lead check and a Verifier; one with PASS needs only the bound merge, the green `main` check and the record.
+
+## 9. Lessons recorded
 
 - A brand-new `workers.dev` address answers 404 for a few seconds; the smoke check now waits through it (task 9).
 - The Workers Free plan's 10 ms CPU limit governs password hashing; measure before choosing a strength (task 7).
