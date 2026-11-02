@@ -81,3 +81,18 @@ test('labels: the Arabic "access ended" sentence reads correctly for any admin l
   );
   assert.ok(!UI.ar.accessEnded.includes('تواصل مع'), 'no phrasing that needs the definite article');
 });
+
+// Release 1.1 (carried from the AT-7 Verifier): «تغيير اسم الـ{item}» showed a
+// visible tatweel ("الـفصل"). No Arabic sentence may glue the article to a
+// placeholder that a kit word fills, so every sentence reads cleanly for any kit.
+test('labels: no Arabic sentence glues the definite article to a kit word (no visible tatweel such as «الـفصل»)', () => {
+  for (const [key, template] of Object.entries(UI.ar)) {
+    assert.ok(!/(?:ال|لل)ـ?\{(?:space|admin|publisher|learner|group|subject|chapter|lesson|material|item|inside)\}/.test(template), `ar.${key} attaches ال to a kit word: ${template}`);
+  }
+  for (const seed of ['school', 'company', 'university']) {
+    const t = makeLabel('ar', seedKit(seed));
+    for (const concept of ['group', 'subject', 'chapter', 'lesson', 'material'] as const) {
+      assert.equal(t('renameItem', { item: t(concept) }), `تغيير الاسم: ${t(concept)}`, `${seed}: the rename heading for ${concept} reads cleanly`);
+    }
+  }
+});

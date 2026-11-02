@@ -124,6 +124,12 @@ jobs:
       - name: AT-7 guard - unassigning takes effect on every direct link
         if: success() || failure()
         run: npm run test:guard:unassign
+      - name: AT-8 the publisher corrects content safely
+        if: success() || failure()
+        run: npm run test:at8
+      - name: AT-8 guard - removed content never reaches a learner
+        if: success() || failure()
+        run: npm run test:guard:removed
       # The deploy rails (build task 6), proven with no Cloudflare account:
       # the production bundle builds without the test hooks; deploy.yml starts
       # only by hand from main, with a read-only token, and never prints its
