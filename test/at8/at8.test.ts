@@ -75,7 +75,11 @@ const EN = {
   recentlyRemoved: 'Recently removed',
   restored: 'Restored in its old place.',
   notFound: 'This page does not exist.',
+  noAccess: 'You do not have access to this page.',
 };
+
+/** The path of the page a browser shows (a GET form adds an empty query, "…/remove?"). */
+const pathOf = (page: Page) => new URL(page.url()).pathname;
 
 let worker: RunningWorker;
 let browser: Browser;
@@ -199,7 +203,7 @@ async function openRemoved(): Promise<void> {
 async function removeFromPage(expectTitle: string): Promise<number> {
   const p = hadeer.page;
   await Promise.all([p.waitForEvent('load'), p.locator('form#remove-item button[type=submit]').click()]);
-  assert.ok(p.url().endsWith('/remove'), 'the confirm step is its own page');
+  assert.ok(pathOf(p).endsWith('/remove'), 'the confirm step is its own page');
   assert.equal(await text(p, '#remove-title'), expectTitle, 'the confirm step names the item');
   return submit(p, 'form#confirm-remove');
 }
@@ -279,7 +283,7 @@ describe('AT-8 the publisher corrects content safely', { concurrency: false }, (
     assert.equal(await p.inputValue('form#rename-chapter input[name=title]'), 'Fractions', 'the form starts with the current title');
     await shot(p, '01-chapter-page-rename');
     const before = await snapshot(worker);
-    for (const [value, why] of [['', 'an empty title'], ['ك'.repeat(101), 'a title over 100 characters'], ['Frac\ntions', 'a title on two lines']]) {
+    for (const [value, why] of [['', 'an empty title'], ['ك'.repeat(101), 'a title over 100 characters'], ['Frac\u2028tions', 'a title on two lines']]) {
       await typeAround(p, '#rename-chapter', 'title', value);
       assert.equal(await submit(p, '#rename-chapter'), 400, `${why} is refused`);
       assert.equal(await errorText(p), AR.nameRefused, `${why}: the plain message`);
@@ -287,6 +291,10 @@ describe('AT-8 the publisher corrects content safely', { concurrency: false }, (
       await assertSpacePage(p, `${why} refused`);
     }
     await shot(p, '02-chapter-name-refused');
+    // Line breaks a form field cannot carry, sent the way a forged request would.
+    for (const value of ['Frac\ntions', 'Frac\r\ntions', 'Frac\ttions', '\u202EFractions', 'ك'.repeat(101), '😀'.repeat(101)]) {
+      assert.equal((await hadeerHttp.post(`${partPath(ids.fractions)}/name`, { title: value })).status, 400, `${JSON.stringify(value.slice(0, 12))} is refused at request level`);
+    }
     assert.deepEqual(changes(before, await snapshot(worker)), {}, 'nothing stored by a refused title');
     await p.fill('form#rename-chapter input[name=title]', NEW_CHAPTER);
     assert.equal(await submit(p, '#rename-chapter'), 303, 'the chapter is renamed');
@@ -415,14 +423,14 @@ describe('AT-8 the publisher corrects content safely', { concurrency: false }, (
     // The confirm step is a GET page: opening it (even twice, by its address) removes nothing; Cancel goes back.
     await openItem(ids.worksheet);
     await Promise.all([p.waitForEvent('load'), p.locator('form#remove-item button[type=submit]').click()]);
-    assert.ok(p.url().endsWith(`${itemPath(ids.worksheet)}/remove`), 'the confirm step');
+    assert.ok(pathOf(p).endsWith(`${itemPath(ids.worksheet)}/remove`), 'the confirm step');
     assert.equal(await text(p, '#remove-title'), AR.removeTitle(AR.material, NEW_MATERIAL), 'it names the material');
     await assertSpacePage(p, 'remove confirm step');
     await shot(p, '11-remove-material-confirm');
     await p.goto(at(`${itemPath(ids.worksheet)}/remove`));
     await p.reload();
     await follow(p, '#cancel-remove');
-    assert.ok(p.url().includes(itemPath(ids.worksheet)) && !p.url().endsWith('/remove'), 'Cancel goes back to the material');
+    assert.ok(pathOf(p).endsWith(itemPath(ids.worksheet)), 'Cancel goes back to the material');
     assert.deepEqual(changes(start, await snapshot(worker)), {}, 'Cancel and plain visits changed nothing');
     await salma.page.goto(at(`/s/${spaceId}/read/${ids.adding}`));
     assert.deepEqual(await materialTitles(salma.page), [NEW_MATERIAL, ...ORDER.slice(1)], 'the learner still sees it');
@@ -456,7 +464,7 @@ describe('AT-8 the publisher corrects content safely', { concurrency: false }, (
 
     // Recently removed lists it; Restore puts it back in its old place, with the same file.
     await openRemoved();
-    assert.equal(await text(p, 'h1'), AR.recentlyRemoved);
+    assert.equal(await text(p, '#removed-title'), AR.recentlyRemoved);
     const listed = p.locator(`#removed > li[data-removed="${ids.worksheet}"]`);
     assert.equal(await listed.count(), 1, 'the removed material is listed');
     assert.ok((await listed.innerText()).includes(NEW_MATERIAL), 'by its title');
@@ -582,7 +590,7 @@ describe('AT-8 the publisher corrects content safely', { concurrency: false }, (
     await shot(p, '27-en-lesson-refused');
 
     await openRemoved();
-    assert.equal(await text(p, 'h1'), EN.recentlyRemoved);
+    assert.equal(await text(p, '#removed-title'), EN.recentlyRemoved);
     await assertSpacePage(p, 'recently removed (English)', 'en');
     await shot(p, '28-en-recently-removed');
     assert.equal(await submit(p, `#removed > li[data-removed="${ids.worksheet}"] form.restore`), 303);
@@ -646,7 +654,8 @@ describe('AT-8 the publisher corrects content safely', { concurrency: false }, (
         const res = await c.get(path);
         assert.equal(res.status, 403, `${who}: GET ${path} refused`);
         const body = await res.text();
-        assert.ok(body.includes(AR.noAccess), `${who}: GET ${path} gives the plain refusal`);
+        // Salma chose English pages in AT-8.5; Shimaa and the admin read Arabic.
+        assert.ok(body.includes(who === 'Salma' ? EN.noAccess : AR.noAccess), `${who}: GET ${path} gives the plain refusal`);
         for (const title of [NEW_MATERIAL, NEW_LESSON, 'Practice online']) assert.ok(!body.includes(title), `${who}: ${path} leaks nothing`);
       }
       for (const [path, body] of writes) assert.equal((await c.post(path, body())).status, 403, `${who}: POST ${path} refused`);
