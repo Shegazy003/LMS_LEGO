@@ -1,6 +1,22 @@
 # Current progress
 
-## Current state, 2 November 2026 (11:50 UTC): RELEASE 1.1 ACCEPTED and live; owner moving to Claude Desktop
+## Current state, 2 November 2026 (evening UTC): hardening task H-1 in build
+
+**What is true now**
+
+- **Live** at https://lms-lego.lmslego.workers.dev: version `9d8f2430` (release 1.1, accepted). Rollback target `3d84e561`.
+- **Hardening task H-1** ([contract](docs/09-CONTRACT-R1.1.md) section 4; Paperclip PIL-114, LMS Builder) is in build as one pull request. It is a team task, not part of release 1.1's promise.
+  - **Logs (H1-1, H1-2):** Workers Logs on; request logs **off**, because a reset link's token is in its address; traces off; sampling 1. At most 2 lines per request means at most 200,000 lines a day on the free plan's 100,000 requests, within the free allowance of 200,000 log events a day (0.5 GB a day from 1 December 2026). README "Logs".
+  - **No-secrets guard (H1-3):** every product log line goes through `src/log.ts` (a fixed event and a scrubbed error). A CI guard checks the source, the scrubbing and every line the running router writes.
+  - **Re-hash race (H1-4):** the race test found a real gap. On `main`, a sign-in that checked the old password just before a password change still got a session afterwards. The re-write itself was already safe. Fixed: the session is written only while the checked hash is still the stored one.
+  - **Live step (H1-5):** after the merge, the owner presses Run workflow and does the three-line check in README "Logs". Nothing is live until then.
+- **Route:** Builder, then the Publisher opens the pull request (red CI run first, then green), then Lead, then Verifier, then the owner's delegate merges.
+
+**Next:** red CI run, then green, then `CANDIDATE READY` on PIL-114. After the merge: the owner's deploy and the three-line log check. Then release 2, by its roadmap trigger.
+
+**Waiting on the human owner:** nothing until H-1 is merged.
+
+## Earlier on 2 November 2026 (11:50 UTC): RELEASE 1.1 ACCEPTED and live; owner moving to Claude Desktop (historical)
 
 **What is true now**
 

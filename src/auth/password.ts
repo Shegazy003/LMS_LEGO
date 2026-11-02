@@ -127,17 +127,21 @@ export function dummyHash(iterations: number = DEFAULT_ITERATIONS): Promise<stri
  * another strength, re-writes it at the configured one. One database write,
  * and only when needed; the write applies only if the stored hash is still the
  * one that was checked (a password changed meanwhile is never overwritten).
- * Returns whether a write was made. */
+ * Returns the stored hash the sign-in now stands on: the checked one when no
+ * write was needed, the re-written one, or null when the password changed
+ * meanwhile (the sign-in then fails; hardening task H-1,
+ * test/guards/rehash-race.test.ts). */
 export async function rehashIfNeeded(
   db: Db,
   user: { id: string; password_hash: string },
   password: string,
   iterations: number,
-): Promise<boolean> {
-  if (!needsRehash(user.password_hash, iterations)) return false;
+): Promise<string | null> {
+  if (!needsRehash(user.password_hash, iterations)) return user.password_hash;
+  const rehashed = await hashPassword(password, iterations);
   const changed = await db.run(
     'UPDATE user SET password_hash = ? WHERE id = ? AND password_hash = ?',
-    await hashPassword(password, iterations), user.id, user.password_hash,
+    rehashed, user.id, user.password_hash,
   );
-  return changed === 1;
+  return changed === 1 ? rehashed : null;
 }

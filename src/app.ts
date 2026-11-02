@@ -120,9 +120,23 @@ async function ownerExists(db: Db): Promise<boolean> {
   return (await db.first('SELECT 1 AS one FROM user WHERE is_owner = 1')) !== null;
 }
 
-async function startSession(c: C, userId: string): Promise<void> {
+/** Starts a sign-in. Given the stored password hash a sign-in was checked
+ * against, the session is written only if that hash is still the stored one,
+ * in the same statement: a password changed since (a reset link, the admin,
+ * the person's own change) wins, and the old password starts nothing
+ * (hardening task H-1, test/guards/rehash-race.test.ts). Returns whether a
+ * session was started. */
+async function startSession(c: C, userId: string, checkedHash?: string): Promise<boolean> {
   const token = randomToken();
-  await c.get('db').run('INSERT INTO session (id, user_id, expires_at) VALUES (?, ?, ?)', await tokenHash(token), userId, now() + SESSION_IDLE_MS);
+  const id = await tokenHash(token);
+  const expires = now() + SESSION_IDLE_MS;
+  const written = checkedHash === undefined
+    ? await c.get('db').run('INSERT INTO session (id, user_id, expires_at) VALUES (?, ?, ?)', id, userId, expires)
+    : await c.get('db').run(
+      'INSERT INTO session (id, user_id, expires_at) SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM user WHERE id = ? AND password_hash = ?)',
+      id, userId, expires, userId, checkedHash,
+    );
+  if (written !== 1) return false;
   setCookie(c, SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: 'Lax',
@@ -130,6 +144,7 @@ async function startSession(c: C, userId: string): Promise<void> {
     secure: new URL(c.req.url).protocol === 'https:',
     maxAge: SESSION_IDLE_MS / 1000,
   });
+  return true;
 }
 
 function loadKit(json: string): KitJson {
@@ -293,9 +308,13 @@ app.post('/signin', async (c) => {
     return page(c, signInPage(t, c.get('lang'), { error: t('signInFailed'), username }), 401);
   }
   await clearUser(db, door);
-  // A hash made at another strength is re-written at the configured one (one write, only then).
-  await rehashIfNeeded(db, user, password, c.get('iterations'));
-  await startSession(c, user.id);
+  // A hash made at another strength is re-written at the configured one (one
+  // write, only then). If the password changed since it was checked, neither
+  // the re-write nor the sign-in happens: the newer password wins.
+  const standing = await rehashIfNeeded(db, user, password, c.get('iterations'));
+  if (standing === null || !(await startSession(c, user.id, standing))) {
+    return page(c, signInPage(t, c.get('lang'), { error: t('signInFailed'), username }), 401);
+  }
   return c.redirect('/');
 });
 
@@ -1270,7 +1289,6 @@ app.post('/r/:token', async (c) => {
   if (password.length < MIN_PASSWORD) return page(c, resetPage(t, lang, space, { action, username, error: t('passwordTooShort') }), 400);
   if (!(await useResetLink(db, link, await hashPassword(password, c.get('iterations')), now()))) return deadLink(c, r);
   await clearUser(db, door);
-  console.log('reset link used', c.req.url); // PLANTED for the H-1 red run: a log line holding a reset token
   return page(c, resetDonePage(t, lang, space));
 });
 
