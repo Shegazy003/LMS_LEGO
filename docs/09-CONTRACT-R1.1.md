@@ -1,5 +1,7 @@
 # Product contract: LMS Lego, release 1.1 "Keep the space tidy"
 
+**Delivered in code:** AT-6 (#25), AT-7 (#27), AT-8 (#29), each Lead ACCEPTED and Verifier PASS, merged by 2 November 2026. **Not yet live:** the owner presses Run workflow to deploy, then checks the release on the live address (CURRENT-PROGRESS lists the short check).
+
 **Version:** 0.2, 2 November 2026. **Status:** `CONTRACT READY`. The product critic's one review of 0.1 ("Revise first", seven findings) is resolved in section 8. **Approval:** the owner's delegate approves contracts (decision 002) by merging the pull request that carries this version; from that merge it is frozen. The owner may veto at any time.
 
 **Why now:** release 1 is live at Mesk School. Its known limits (README) say the admin and the publisher can add and order but cannot correct anything. The pilot meets these in its first days: a misspelled name, a wrong mobile number, a learner who leaves, a wrong PDF. This release closes those gaps before release 2 (guardians and exam results), which keeps its roadmap trigger.
