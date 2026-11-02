@@ -3,9 +3,10 @@
 // gate, with neutral address words (people, sets, topics) so that no address
 // names a concept; every word on the page comes from the label function and
 // the space's kit.
-import { html } from 'hono/html';
+import { html, raw } from 'hono/html';
 import type { Label, Lang } from '../labels.ts';
-import type { Choice, PersonRow, SetRow, TopicRow } from '../admin.ts';
+import { SEARCH_MAX, type Choice, type PersonRow, type SetRow, type TopicRow } from '../admin.ts';
+import { endedDate } from '../access.ts';
 import { DISPLAY_NAME_MAX, USERNAME_MAX } from '../names.ts';
 import { lastDigits } from '../reset.ts';
 import { errorBox, sentence, type Html } from './layout.ts';
@@ -24,20 +25,40 @@ export interface AppointForm {
   valid_until?: string;
 }
 
-/** The people of the space (publishers and learners) and the form to appoint one. */
+/** A person on the people list: their row, and whether their access has ended. */
+export type ListedPerson = PersonRow & { ended: boolean };
+
+function personRow(t: Label, space: SpaceView, p: ListedPerson): Html {
+  const when = p.ended
+    ? sentence(t, 'endedOn', { date: endedDate(p.valid_until, p.ended_on) })
+    : sentence(t, 'validUntil', { date: p.valid_until });
+  return html`<li data-user="${p.id}"><a class="person" href="${base(space)}/people/${p.id}"><bdi>${p.display_name}</bdi></a>
+  <div class="muted">${t(p.role === 'publisher' ? 'publisher' : 'learner')} · ${when} · ${sentence(t, 'mobileEnding', { digits: lastDigits(p.mobile) })}</div></li>`;
+}
+
+/** The people of the space (publishers and learners), found by the search box
+ * when something was typed: those with access first, then the ended ones in a
+ * collapsed "Ended" part; and the form to appoint one. */
 export function peoplePage(
   t: Label,
   lang: Lang,
   space: SpaceView,
-  v: { people: PersonRow[]; today: string; ownEnd: string; values: AppointForm; error?: string },
+  v: { people: ListedPerson[]; search: string; today: string; ownEnd: string; values: AppointForm; error?: string },
 ): Html {
-  const rows = v.people.map(
-    (p) => html`<li data-user="${p.id}"><a class="person" href="${base(space)}/people/${p.id}"><bdi>${p.display_name}</bdi></a>
-  <div class="muted">${t(p.role === 'publisher' ? 'publisher' : 'learner')} · ${sentence(t, 'validUntil', { date: p.valid_until })} · ${sentence(t, 'mobileEnding', { digits: lastDigits(p.mobile) })}</div></li>`,
-  );
+  const current = v.people.filter((p) => !p.ended).map((p) => personRow(t, space, p));
+  const ended = v.people.filter((p) => p.ended).map((p) => personRow(t, space, p));
   const role = v.values.role ?? 'publisher';
+  const none = v.search ? html`<p id="search-none" class="card muted">${sentence(t, 'searchNone', { q: v.search })}</p>` : html`<p id="people" class="card muted">${t('noneAppointed')}</p>`;
   const body = html`<h1>${t('people')}</h1>
-${rows.length ? html`<ul id="people" class="list card">${rows}</ul>` : html`<p id="people" class="card muted">${t('noneAppointed')}</p>`}
+<form id="search" class="inline-add card" method="get" action="${base(space)}/people" role="search">
+  <label>${t('searchLabel')}<input name="q" type="search" maxlength="${SEARCH_MAX}" value="${v.search}" dir="auto" autocomplete="off"></label>
+  <button type="submit">${t('searchButton')}</button>
+  ${v.search ? html`<a id="show-everyone" href="${base(space)}/people">${t('showEveryone')}</a>` : ''}
+</form>
+${current.length ? html`<ul id="people" class="list card">${current}</ul>` : ended.length ? '' : none}
+${ended.length
+  ? html`<details id="ended" class="card"${v.search ? raw(' open') : ''}><summary>${t('endedTitle', { count: String(ended.length) })}</summary><ul class="list">${ended}</ul></details>`
+  : ''}
 <h2>${t('appointPerson')}</h2>
 ${errorBox(v.error)}
 <form id="appoint" class="stack card" method="post" action="${base(space)}/people">

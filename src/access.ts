@@ -24,9 +24,33 @@ export function membershipActive(validUntil: string, nowMs: number): boolean {
 }
 
 /** Where a membership stands today: before its start date, within its dates,
- * or after its end date (both dates included, UTC calendar days). */
-export function membershipStatus(validFrom: string, validUntil: string, nowMs: number): 'not-started' | 'active' | 'ended' {
+ * or after its end date (both dates included, UTC calendar days). A membership
+ * ended with "End access now" (endedOn, release 1.1) is ended at once,
+ * whatever its dates say. */
+export function membershipStatus(
+  validFrom: string,
+  validUntil: string,
+  nowMs: number,
+  endedOn: string | null = null,
+): 'not-started' | 'active' | 'ended' {
+  if (endedOn) return 'ended';
   const today = utcDate(nowMs);
   if (today < validFrom) return 'not-started';
   return membershipActive(validUntil, nowMs) ? 'active' : 'ended';
+}
+
+/** The day an ended membership ended: the day of "End access now", else its end date. */
+export function endedDate(validUntil: string, endedOn: string | null): string {
+  return endedOn ?? validUntil;
+}
+
+export type TypedEndDate = { ok: true } | { ok: false; error: 'endDateInvalid' | 'endDateBeyondOwn' };
+
+/** A typed end date (release 1 rules 2 and 3; release 1.1 AT-6): a real date,
+ * not before today, and not later than the granter's own end date (none for
+ * the owner). The rule is for typed dates only. */
+export function checkTypedEndDate(date: string, nowMs: number, ownEnd: string | null): TypedEndDate {
+  if (!isIsoDate(date) || date < utcDate(nowMs)) return { ok: false, error: 'endDateInvalid' };
+  if (ownEnd !== null && date > ownEnd) return { ok: false, error: 'endDateBeyondOwn' };
+  return { ok: true };
 }

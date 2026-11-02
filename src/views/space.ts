@@ -43,6 +43,7 @@ export function accessEndedPage(
   first: { t: Label; lang: Lang },
   second: { t: Label; lang: Lang } | null,
   v: { spaceName: string; date: string; contactKey: 'ownerWord' | 'admin'; notStarted?: boolean },
+  signedIn = true,
 ): Html {
   const key = v.notStarted ? 'accessNotStarted' : 'accessEnded';
   const id = v.notStarted ? 'access-not-started' : 'access-ended';
@@ -51,7 +52,7 @@ export function accessEndedPage(
   <p id="${id}" class="message">${sentence(first.t, key, vars(first.t))}</p>
   ${second ? html`<p id="${id}-alt" lang="${second.lang}" dir="${dirFor(second.lang)}">${sentence(second.t, key, vars(second.t))}</p>` : ''}
 </div>`;
-  return layout({ t: first.t, lang: first.lang, title: first.t(key, vars(first.t)), body, signedIn: true });
+  return layout({ t: first.t, lang: first.lang, title: first.t(key, vars(first.t)), body, signedIn });
 }
 
 /** For a person with more than one space. */
