@@ -1,23 +1,19 @@
 # Current progress
 
-## Current state, 2 November 2026 (midday UTC): release 1.1 delivered in code, waiting for the owner's deploy press; owner moving to Claude Desktop
+## Current state, 2 November 2026 (11:50 UTC): RELEASE 1.1 ACCEPTED and live; owner moving to Claude Desktop
 
 **What is true now**
 
-- **Release 1 is live and accepted** at https://lms-lego.lmslego.workers.dev. The live version is `3d84e561` from `258bbdb`.
-- **Release 1.1 "Keep the space tidy" is delivered in code** ([contract 0.2](docs/09-CONTRACT-R1.1.md)). Every task went through Builder (Opus), then Lead ACCEPTED, then Verifier PASS (Sonnet), then a merge bound to the verified sha, with green CI on `main`:
+- **Live at** https://lms-lego.lmslego.workers.dev: version `9d8f2430` from `71de46b` (release 1.1). Release 1 was accepted on 1 November 2026; its version `3d84e561` is the rollback target.
+- **Release 1.1 "Keep the space tidy" is delivered, live and accepted** ([contract 0.2](docs/09-CONTRACT-R1.1.md)). Every task went through Builder (Opus), then Lead ACCEPTED, then Verifier PASS (Sonnet), then a merge bound to the verified sha, with green CI on `main`:
   - **AT-6, the admin corrects a person** (#25, `293294e`). Search; correct name and mobile number (old reset links die); end dates; End access now (atomic); Ended section; Restore.
   - **AT-7, the admin tidies groups and subjects** (#27, `cba9fba`). Renames; removing a learner or unassigning a group takes effect on every link, including cached files. Also the AT-6 follow-ups: ended people get no reset link or password; session refresh cannot revive an ended session; `/home` marks ended spaces.
   - **AT-8, the publisher corrects content safely** (#29, `e571904`). Rename; replace a file in place; remove and restore through "Recently removed", where nothing is deleted. A guard proves removed content never reaches a learner. The Arabic rename heading is clean.
-- **Not live yet.** `main` holds release 1.1; the live site still runs release 1.
+- **Release 1.1 is live.** The owner pressed Run workflow: deploy run 41437034787 on `71de46b` applied migrations 0005 and 0006 to the live database, deployed version `9d8f2430`, and passed the smoke check (redirect to sign-in, cross-origin posts refused, test hooks absent).
 
-**Next step (owner):** press **Run workflow** on the `deploy` workflow (GitHub → Actions → deploy → main). Migrations 0005 and 0006 are additive and apply before the new code. Then a 10-minute live check at Mesk School:
-1. As the admin, search a person, correct a name, end one learner's access now, then restore it.
-2. Rename the group and a subject.
-3. As Hadeer, rename a lesson, replace a PDF, remove a material, then restore it from "Recently removed".
-4. As the learner, check what you see after each step.
+**Owner acceptance:** the owner ran the live check at Mesk School and reported "I CHECKED" on 2 November 2026 (11:50 UTC). The check covered: the admin searches, corrects a name, ends a learner's access and restores it; renames the group and a subject; Hadeer renames a lesson, replaces a PDF, removes a material and restores it; the learner sees each change. **Release 1.1 is accepted.**
 
-**After that (team):** hardening task H-1, **not started**: Workers Logs safely, a no-secrets guard, and the re-hash race test (contract section 4). Then release 2 by its roadmap trigger.
+**Next (team):** hardening task H-1, **not started**: Workers Logs safely, a no-secrets guard, and the re-hash race test (contract section 4). Then release 2 by its roadmap trigger.
 
 **Known limits of release 1.1** (README has the full list):
 - Arabic search matches letter for letter.
@@ -27,7 +23,7 @@
 - Username and role cannot be corrected (Later).
 - On a code rollback, removed items show again (nothing is lost).
 
-**Waiting on the human owner:** the deploy press and the live check above. Welcome any time: subject names from Hadeer and Shimaa, the Arabic kit-label pass, the school's feedback.
+**Waiting on the human owner:** nothing. Welcome any time: subject names from Hadeer and Shimaa, the Arabic kit-label pass, the school's feedback.
 
 ## Earlier on 2 November 2026 (morning): release 1.1 approved and in build (historical)
 

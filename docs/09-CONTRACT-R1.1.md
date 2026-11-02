@@ -1,6 +1,6 @@
 # Product contract: LMS Lego, release 1.1 "Keep the space tidy"
 
-**Delivered in code:** AT-6 (#25), AT-7 (#27), AT-8 (#29), each Lead ACCEPTED and Verifier PASS, merged by 2 November 2026. **Not yet live:** the owner presses Run workflow to deploy, then checks the release on the live address (CURRENT-PROGRESS lists the short check).
+**Delivered in code:** AT-6 (#25), AT-7 (#27), AT-8 (#29), each Lead ACCEPTED and Verifier PASS, merged by 2 November 2026. **Live** since 2 November 2026 (deploy run 41437034787, version `9d8f2430`). **Accepted** by the owner after the live check on 2 November 2026. This contract is closed.
 
 **Version:** 0.2, 2 November 2026. **Status:** `CONTRACT READY`. The product critic's one review of 0.1 ("Revise first", seven findings) is resolved in section 8. **Approval:** the owner's delegate approves contracts (decision 002) by merging the pull request that carries this version; from that merge it is frozen. The owner may veto at any time.
 
