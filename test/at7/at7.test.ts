@@ -125,17 +125,29 @@ async function homeList(page: Page): Promise<string[]> {
   return page.locator('#my-list li').evaluateAll((els) => els.map((e) => (e.textContent ?? '').trim()));
 }
 
+/** Opens a direct link in the person's browser: a page is navigated to; a file
+ * (which the browser would download or show in its PDF viewer) is fetched with
+ * the same browser's cookies. Returns the status and the content type. */
+async function open(page: Page, path: string): Promise<{ status: number; type: string }> {
+  if (path.includes('/file/')) {
+    const res = await page.request.get(at(path));
+    return { status: res.status(), type: res.headers()['content-type'] ?? '' };
+  }
+  const res = await page.goto(at(path));
+  return { status: res?.status() ?? 0, type: res?.headers()['content-type'] ?? '' };
+}
+
 /** Every direct link of a subject (the subject, its lesson, its file) answers 403 and no file bytes. */
 async function assertRefusedEverywhere(page: Page, links: string[], where: string): Promise<void> {
   for (const path of links) {
-    const res = await page.goto(at(path));
-    assert.equal(res?.status(), 403, `${where}: ${path} is refused`);
-    assert.ok(!(res?.headers()['content-type'] ?? '').includes('pdf'), `${where}: ${path} sends no file bytes`);
+    const res = await open(page, path);
+    assert.equal(res.status, 403, `${where}: ${path} is refused`);
+    assert.ok(!res.type.includes('pdf'), `${where}: ${path} sends no file bytes`);
   }
 }
 
 async function assertOpensEverywhere(page: Page, links: string[], where: string): Promise<void> {
-  for (const path of links) assert.equal((await page.goto(at(path)))?.status(), 200, `${where}: ${path} opens`);
+  for (const path of links) assert.equal((await open(page, path)).status, 200, `${where}: ${path} opens`);
 }
 
 const mathLinks = () => [`/s/${spaceId}/learn/${content.math}`, `/s/${spaceId}/read/${content.mathLesson}`, `/s/${spaceId}/file/${content.mathPdf}`];

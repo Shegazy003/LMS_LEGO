@@ -29,6 +29,8 @@ const SALMA = { username: 'salma.learner', password: 'salma-first-pass', display
 const OMAR = { username: 'omar.learner', password: 'omar-first-pass', display_name: 'Omar Nabil', mobile: '01055556666', role: 'learner' as const };
 const KARIM = { username: 'karim.employee', password: 'karim-first-pass', display_name: 'Karim Said', mobile: '01077778888', role: 'learner' as const };
 const DAY = 86_400_000;
+/** The password the appointer's "Set a new password" form sends in these checks. */
+const SET_BY_APPOINTER = 'set-by-appointer-2026';
 
 const REFUSED_AR = (name: string) => `انتهى وصول ${name}. استعِد الوصول أولاً؛ وبعدها يمكنك إرسال رابط إعادة تعيين أو تعيين كلمة مرور جديدة.`;
 const REFUSED_EN = (name: string) => `Access for ${name} has ended. Restore access first; then you can send a reset link or set a new password.`;
@@ -52,7 +54,7 @@ function resetActions(who: Client, base: string): [string, () => Promise<Respons
   return [
     ['GET link (the confirmation step)', () => who.get(`${base}/link`)],
     ['POST link (the confirming tap)', () => who.post(`${base}/link`, {})],
-    ['POST password', () => who.post(`${base}/password`, { new_password: 'a-new-pass-2026' })],
+    ['POST password', () => who.post(`${base}/password`, { new_password: SET_BY_APPOINTER })],
   ];
 }
 
@@ -107,8 +109,8 @@ describe('AT-6 follow-ups: ended people and ended spaces', { concurrency: false 
     await assertAllRefused(admin, person(salmaId), REFUSED_AR(SALMA.display_name), 'ended learner (Arabic)');
     assert.equal(await (await worker.sql(`SELECT COUNT(*) AS n FROM reset_link WHERE user_id = '${salmaId}' AND used_at IS NULL`))[0].n, 0, 'no open reset link');
     assert.equal((await worker.sql(`SELECT password_hash FROM user WHERE id = '${salmaId}'`))[0].password_hash, hashBefore, 'the password is unchanged');
-    // Her old password still signs her in, to the "access ended" message only (release 1 rule 3).
-    const again = await signedIn(worker.url, SALMA.username, SALMA.password);
+    // Her password is the one the positive control set; she can sign in, to the "access ended" message only (release 1 rule 3).
+    const again = await signedIn(worker.url, SALMA.username, SET_BY_APPOINTER);
     assert.equal((await again.get(`/s/${spaceId}`)).status, 403);
 
     assert.equal((await admin.post('/account/language', { lang: 'en' })).status, 303, 'the admin reads English');
