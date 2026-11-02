@@ -257,4 +257,12 @@ describe('no-secrets guard, part 3: no line the running product writes holds a s
     assert.deepEqual(secretsIn(lines, secrets), []);
     for (const l of lines) assert.ok(EVENTS.includes((JSON.parse(l) as { event: string }).event), l);
   });
+
+  it('self-check: a Node runtime warning is not taken for a product line, and a console line still is', async () => {
+    const before = w.log().length;
+    process.emitWarning('log capture self-check');
+    await new Promise((r) => setTimeout(r, 10));
+    console.error('log capture self-check line');
+    assert.deepEqual(w.log().slice(before), ['log capture self-check line']);
+  });
 });

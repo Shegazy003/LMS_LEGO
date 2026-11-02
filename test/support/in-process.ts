@@ -133,6 +133,8 @@ export async function startInProcess(vars: Record<string, string> = {}): Promise
   const lines: string[] = [];
   const original = { log: console.log, info: console.info, warn: console.warn, error: console.error, debug: console.debug };
   const capture = (level: keyof typeof original) => (...args: unknown[]) => {
+    // Node prints its own process warnings through console.error; they are the runtime's, not the product's.
+    if (new Error().stack?.includes('node:internal/process/warning')) return original[level](...args);
     lines.push(args.map((a) => (typeof a === 'string' ? a : a instanceof Error ? `${a.name}: ${a.message}\n${a.stack ?? ''}` : JSON.stringify(a))).join(' '));
     void level;
   };
