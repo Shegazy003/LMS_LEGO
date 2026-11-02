@@ -214,6 +214,28 @@ const en = {
   languageInvalid: 'Choose one of the languages offered.',
   languageCurrent: 'Language of your pages: {language}',
   changeLanguage: 'Change the language',
+  // Release 1.1, AT-6: the admin corrects a person.
+  searchLabel: 'Find a person: part of a name, or a username',
+  searchButton: 'Search',
+  searchNone: 'Nobody here matches “{q}”.',
+  showEveryone: 'Show everyone',
+  endedTitle: 'Ended ({count})',
+  endedOn: 'access ended on {date}',
+  correctTitle: 'Correct the details',
+  mobileKeepHint: 'Leave it empty to keep the number ending {digits}. Type a new one the local way (for example 010…).',
+  correctNote: 'A new mobile number stops every reset link sent before it.',
+  saveCorrection: 'Save the corrections',
+  mobileChanged: 'Saved. Every reset link sent before no longer works; the next one goes to the new number.',
+  endNow: 'End access now',
+  endNowNote: 'Access ends at once, today. Nothing is deleted, and access can be restored.',
+  endConfirmTitle: 'End access for {name} now?',
+  endConfirmNote:
+    'From this moment {name} sees that their access to {space} ended: every page and link there is refused, every sign-in ends and every reset link stops working. Nothing is deleted.',
+  endConfirmYes: 'Yes, end access now',
+  accessEndedDone: 'Access ended. Nothing was deleted; you can restore it below.',
+  restoreTitle: 'Restore access',
+  restoreNote: 'Access comes back with everything assigned as before. Choose a new end date.',
+  accessRestored: 'Access restored.',
 };
 
 export type UiKey = keyof typeof en;
@@ -428,6 +450,27 @@ const ar: Record<UiKey, string> = {
   languageInvalid: 'اختر إحدى اللغات المعروضة.',
   languageCurrent: 'لغة صفحاتك: {language}',
   changeLanguage: 'تغيير اللغة',
+  searchLabel: 'ابحث عن شخص: جزء من الاسم أو اسم المستخدم',
+  searchButton: 'بحث',
+  searchNone: 'لا أحد هنا يطابق «{q}».',
+  showEveryone: 'عرض الجميع',
+  endedTitle: 'انتهى وصولهم ({count})',
+  endedOn: 'انتهى الوصول في {date}',
+  correctTitle: 'تصحيح البيانات',
+  mobileKeepHint: 'اتركه فارغاً للإبقاء على الرقم المنتهي بـ {digits}. اكتب الرقم الجديد بالطريقة المحلية (مثل 010…).',
+  correctNote: 'تغيير رقم الهاتف المحمول يوقف كل رابط إعادة تعيين أُرسل قبله.',
+  saveCorrection: 'حفظ التصحيحات',
+  mobileChanged: 'تم الحفظ. لم يعد أي رابط إعادة تعيين أُرسل من قبل يعمل؛ والرابط التالي يذهب إلى الرقم الجديد.',
+  endNow: 'إنهاء الوصول الآن',
+  endNowNote: 'ينتهي الوصول فوراً، اليوم. لا يُحذف شيء، ويمكن استعادة الوصول.',
+  endConfirmTitle: 'إنهاء وصول {name} الآن؟',
+  endConfirmNote:
+    'من هذه اللحظة يرى {name} أن وصوله إلى {space} انتهى: تُرفض كل صفحة وكل رابط هناك، وينتهي كل تسجيل دخول، ويتوقف كل رابط إعادة تعيين. لا يُحذف شيء.',
+  endConfirmYes: 'نعم، أنهِ الوصول الآن',
+  accessEndedDone: 'انتهى الوصول. لم يُحذف شيء؛ ويمكنك استعادته أدناه.',
+  restoreTitle: 'استعادة الوصول',
+  restoreNote: 'يعود الوصول مع كل ما كان مخصّصاً من قبل. اختر تاريخ انتهاء جديداً.',
+  accessRestored: 'تمت استعادة الوصول.',
 };
 
 export const UI: Record<'ar' | 'en', Record<UiKey, string>> = { en, ar };

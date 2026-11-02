@@ -1,0 +1,12 @@
+-- LMS Lego, release 1.1: "End access now" (AT-6, build task 10).
+-- Additive only: one nullable column; no table from 0001 to 0004 is changed
+-- otherwise, and older code simply ignores it.
+--
+-- NULL (the default) means the membership's dates decide, as in release 1:
+-- access from valid_from through valid_until (UTC days). A date here
+-- (YYYY-MM-DD, UTC) is the day the appointer pressed "End access now": from
+-- that moment the membership is ended, whatever valid_until says, and the
+-- "access ended" message gives this date. valid_until is kept as it was, and
+-- nothing else is deleted: the person's groups and subjects stay. "Restore
+-- access" sets it back to NULL with a new valid_until.
+ALTER TABLE membership ADD COLUMN ended_on TEXT;

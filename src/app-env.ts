@@ -29,6 +29,9 @@ export interface AppEnv {
   Variables: {
     db: Db;
     user: CurrentUser | null;
+    /** The person whose sign-in was stopped by "End access now" and arrives
+     * with this request for the last time (release 1.1, AT-6); otherwise null. */
+    endedSignIn: string | null;
     lang: Lang;
     space: CurrentSpace;
     /** The configured password strength (PASSWORD_ITERATIONS), read on every request. */

@@ -3,10 +3,11 @@ import { Hono, type Context, type MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import type { AppEnv, CurrentSpace } from './app-env.ts';
-import { isIsoDate, membershipStatus, utcDate } from './access.ts';
+import { checkTypedEndDate, endedDate, isIsoDate, membershipStatus, utcDate } from './access.ts';
 import {
-  appoint, createSet, createTopic, findSet, findTopic, isAppointable, learnersOf, managedPerson, peopleOf, publishersOf,
-  saveSetMembers, saveTopic, setPassword, setsOf, spaceAdmin, topicReaders, topicsOf, type PersonRow,
+  ADMIN_MANAGES, OWNER_MANAGES, appoint, correctPerson, createSet, createTopic, endAccess, findSet, findTopic, isAppointable, learnersOf,
+  managedPerson, peopleOf, publishersOf, restoreAccess, saveSetMembers, saveTopic, searchText, setPassword, setsOf, spaceAdmin, topicReaders,
+  topicsOf, type ManagedRoles, type PersonRow,
 } from './admin.ts';
 import { attemptBlock, clearUser, minutesUntil, openDoor, recordFailure } from './auth/limits.ts';
 import { dummyHash, hashPassword, passwordIterations, rehashIfNeeded, verifyPassword } from './auth/password.ts';
@@ -44,7 +45,9 @@ import { learnerHome, lessonPage, spacePage, subjectPage } from './views/learn.t
 import {
   kitConfirmPage, newSpacePage, ownerHome, ownerSpacePage, type AdminRow, type AppointValues, type NewSpaceValues, type OwnerSpaceExtra,
 } from './views/owner.ts';
-import { confirmLinkPage, linkReadyPage, personPage, type PersonFrame, type PersonView } from './views/people.ts';
+import {
+  confirmLinkPage, endConfirmPage, linkReadyPage, personPage, type CorrectionValues, type PersonFrame, type PersonNotice, type PersonView,
+} from './views/people.ts';
 import { lessonEditor, publisherHome, subjectEditor } from './views/publish.ts';
 import { resetDeadPage, resetDonePage, resetPage, type ResetSpace } from './views/reset.ts';
 import { accessEndedPage, adminHome, membershipsPage, type SpaceView } from './views/space.ts';
@@ -159,6 +162,7 @@ use('*', async (c, next) => {
   c.set('db', new Db(c.env.DB, (rows) => m.recordWrites(rows, now())));
   c.set('lang', productLang(c.req.header('accept-language')));
   c.set('user', null);
+  c.set('endedSignIn', null);
   await next();
   const batch = m.takeFlush(now());
   if (batch) c.executionCtx.waitUntil(flushUsage(c.env.DB, batch));
@@ -198,6 +202,9 @@ use('*', async (c, next) => {
       if (lang) c.set('lang', lang);
     } else {
       if (row) await db.run('DELETE FROM session WHERE id = ?', id);
+      // A sign-in stopped by "End access now" (expiry 0, src/admin.ts) is over
+      // with this request; the space's page may still say why, this once.
+      if (row && Number(row.expires_at) === 0) c.set('endedSignIn', row.id);
       deleteCookie(c, SESSION_COOKIE, { path: '/' });
     }
   }
@@ -437,12 +444,15 @@ async function renderOwnerSpace(c: C, spaceId: string, extra: OwnerSpaceExtra & 
   if (!space) return refuse(c, 404, 'notFound');
   const done = c.req.method === 'GET' ? c.req.query('done') ?? '' : '';
   const doneKey = Object.hasOwn(OWNER_DONE, done) ? OWNER_DONE[done as keyof typeof OWNER_DONE] : undefined;
-  const admins = await c.get('db').all<AdminRow>(
-    `SELECT u.id, u.username, u.display_name, u.mobile, m.valid_until
+  const rows = await c.get('db').all<Omit<AdminRow, 'ended'> & { valid_from: string; ended_on: string | null }>(
+    `SELECT u.id, u.username, u.display_name, u.mobile, m.valid_from, m.valid_until, m.ended_on
        FROM membership m JOIN user u ON u.id = m.user_id
       WHERE m.space_id = ? AND m.role = 'admin' ORDER BY u.username`,
     spaceId,
   );
+  const admins: AdminRow[] = rows.map((a) => ({
+    ...a, ended: membershipStatus(a.valid_from, a.valid_until, now(), a.ended_on) === 'ended' ? endedDate(a.valid_until, a.ended_on) : null,
+  }));
   const t = makeLabel(c.get('lang'), space.kit);
   const body = ownerSpacePage(t, c.get('lang'), {
     space, admins, values: extra.values ?? {}, today: utcDate(now()), kits: kitChoices(c.get('lang')),
@@ -608,19 +618,23 @@ const ROLE_ORDER = ['admin', 'publisher', 'learner'];
 
 use('/s/:spaceId/*', async (c, next) => {
   const user = c.get('user');
-  if (!user) return c.redirect('/signin');
+  // A sign-in that "End access now" stopped arrives here once more: if this
+  // space is where access ended, its page says so; otherwise, sign in.
+  const personId = user?.id ?? c.get('endedSignIn');
+  if (!personId) return c.redirect('/signin');
   const spaceId = c.req.param('spaceId');
-  const rows = await c.get('db').all<{ name: string; json: string; role: string; valid_from: string; valid_until: string }>(
-    `SELECT s.name, k.json, m.role, m.valid_from, m.valid_until
+  const rows = await c.get('db').all<{ name: string; json: string; role: string; valid_from: string; valid_until: string; ended_on: string | null }>(
+    `SELECT s.name, k.json, m.role, m.valid_from, m.valid_until, m.ended_on
        FROM membership m JOIN space s ON s.id = m.space_id JOIN kit k ON k.id = s.kit_id
       WHERE m.space_id = ? AND m.user_id = ?
-      ORDER BY m.valid_until DESC`,
-    spaceId, user.id,
+      ORDER BY COALESCE(m.ended_on, m.valid_until) DESC`,
+    spaceId, personId,
   );
+  const status = (r: (typeof rows)[number]) => membershipStatus(r.valid_from, r.valid_until, now(), r.ended_on);
+  if (!user && (!rows.length || rows.some((r) => status(r) !== 'ended'))) return c.redirect('/signin');
   if (!rows.length) return refuse(c, 403, 'noAccess');
   const kit = loadKit(rows[0].json);
   const [first, second] = kit.languages;
-  const status = (r: (typeof rows)[number]) => membershipStatus(r.valid_from, r.valid_until, now());
   const active = rows.filter((r) => status(r) === 'active');
   if (!active.length) {
     // A place that starts later is the one to tell about; otherwise the last that ended.
@@ -631,10 +645,12 @@ use('/s/:spaceId/*', async (c, next) => {
       second ? { t: makeLabel(second, kit), lang: second } : null,
       waiting
         ? { spaceName: waiting.name, date: waiting.valid_from, contactKey: 'admin', notStarted: true }
-        : { spaceName: last.name, date: last.valid_until, contactKey: last.role === 'admin' ? 'ownerWord' : 'admin' },
+        : { spaceName: last.name, date: endedDate(last.valid_until, last.ended_on), contactKey: last.role === 'admin' ? 'ownerWord' : 'admin' },
+      Boolean(user),
     );
     return page(c, body, 403);
   }
+  if (!user) return c.redirect('/signin');
   const rank = (role: string) => (ROLE_ORDER.includes(role) ? ROLE_ORDER.indexOf(role) : ROLE_ORDER.length);
   const main = [...active].sort((x, y) => rank(x.role) - rank(y.role))[0];
   const space: CurrentSpace = {
@@ -754,11 +770,18 @@ async function countryCodeOf(c: C, spaceId: string): Promise<string> {
   return row?.default_country_code ?? '';
 }
 
+/** Whether a person's access here has ended (by its end date, or with "End access now"). */
+const hasEnded = (p: PersonRow) => membershipStatus(p.valid_from, p.valid_until, now(), p.ended_on) === 'ended';
+
+// The people list (release 1.1): a search box that the server answers (part
+// of a name or a username, in this space only), and the people whose access
+// has ended in a collapsed "Ended" part below the others.
 async function renderPeople(c: C, extra: { values?: AppointForm; error?: string } = {}, status: 200 | 400 = 200) {
   const { t, lang, view } = spaceLabel(c);
-  const people = await peopleOf(c.get('db'), view.id);
+  const search = c.req.method === 'GET' ? searchText(c.req.query('q') ?? '') : '';
+  const people = (await peopleOf(c.get('db'), view.id, search)).map((p) => ({ ...p, ended: hasEnded(p) }));
   const body = peoplePage(t, lang, view, {
-    people, today: utcDate(now()), ownEnd: c.get('space').validUntil, values: extra.values ?? {}, error: extra.error,
+    people, search, today: utcDate(now()), ownEnd: c.get('space').validUntil, values: extra.values ?? {}, error: extra.error,
   });
   return page(c, body, status);
 }
@@ -808,10 +831,16 @@ app.post('/s/:spaceId/admin/people', async (c) => {
   return c.redirect(`/s/${space.id}/admin/people#people`, 303);
 });
 
-// One person's page and its two actions (rule 5): set a new password, or
-// send a one-time reset link. The same three pages serve the owner for admins.
+// One person's page and its actions (rule 5): set a new password, or send a
+// one-time reset link; and from release 1.1 (AT-6) correct the name, the
+// mobile number and the end date, end access now, and restore access. The
+// same pages serve the owner for the admins they appointed (AMBER: the owner
+// already had this page for them; the owner has no end date of their own).
 function personView(p: PersonRow, roleLabel: string): PersonView {
-  return { id: p.id, username: p.username, display_name: p.display_name, roleLabel, valid_until: p.valid_until, digits: lastDigits(p.mobile) };
+  return {
+    id: p.id, username: p.username, display_name: p.display_name, roleLabel, valid_until: p.valid_until, digits: lastDigits(p.mobile),
+    ended: hasEnded(p), endedDate: endedDate(p.valid_until, p.ended_on),
+  };
 }
 
 interface PersonPlace {
@@ -819,6 +848,10 @@ interface PersonPlace {
   view: PersonView;
   person: PersonRow;
   spaceId: string;
+  /** The memberships this appointer manages (src/admin.ts). */
+  roles: ManagedRoles;
+  /** Mobile numbers typed the local way are read with this country code. */
+  countryCode: string;
   /** The message's language: the space's first, with its kit. */
   message: { t: Label; spaceName: string; role: string };
 }
@@ -836,10 +869,15 @@ async function adminPlace(c: C): Promise<PersonPlace | null> {
       base: `/s/${view.id}/admin/people/${person.id}`,
       back: { href: `/s/${view.id}/admin/people`, label: t('backToPeople') },
       frame: (title, body) => spacePage(t, lang, view, title, body),
+      today: utcDate(now()),
+      ownEnd: c.get('space').validUntil,
+      spaceName: view.name,
     },
     view: personView(person, t(person.role as Concept)),
     person,
     spaceId: view.id,
+    roles: ADMIN_MANAGES,
+    countryCode: await countryCodeOf(c, view.id),
     message: { t: firstT, spaceName: view.name, role: firstT('admin') },
   };
 }
@@ -857,18 +895,94 @@ async function ownerPlace(c: C): Promise<PersonPlace | null> {
       base: `/owner/spaces/${space.id}/people/${person.id}`,
       back: { href: `/owner/spaces/${space.id}`, label: space.name },
       frame: (title, body) => layout({ t, lang: c.get('lang'), title, body, signedIn: true }),
+      today: utcDate(now()),
+      ownEnd: null,
+      spaceName: space.name,
     },
     view: personView(person, t('admin')),
     person,
     spaceId: space.id,
+    roles: OWNER_MANAGES,
+    countryCode: space.countryCode,
     message: { t: spaceT, spaceName: space.name, role: spaceT('ownerWord') },
   };
+}
+
+const NOTICES = { saved: 'saved', mobile: 'mobileChanged', ended: 'accessEndedDone', restored: 'accessRestored' } as const satisfies Record<string, PersonNotice>;
+
+/** The notice a person page shows after a done form (?done=…), if any. */
+function noticeOf(c: C): PersonNotice | undefined {
+  const done = c.req.query('done') ?? '';
+  return Object.hasOwn(NOTICES, done) ? NOTICES[done as keyof typeof NOTICES] : undefined;
+}
+
+/** The refusal for a typed end date, in the appointer's language, or undefined when it may be used. */
+function typedEndDateError(p: PersonPlace, date: string): string | undefined {
+  const check = checkTypedEndDate(date, now(), p.frame.ownEnd);
+  if (check.ok) return undefined;
+  return check.error === 'endDateBeyondOwn' ? p.frame.t('endDateBeyondOwn', { date: p.frame.ownEnd ?? '' }) : p.frame.t('endDateInvalid');
 }
 
 function personRoutes(path: string, place: (c: C) => Promise<PersonPlace | null>): void {
   app.get(path, async (c) => {
     const p = await place(c);
-    return p ? page(c, personPage(p.frame, p.view)) : refuse(c, 403, 'noAccess');
+    return p ? page(c, personPage(p.frame, p.view, { notice: noticeOf(c) })) : refuse(c, 403, 'noAccess');
+  });
+
+  // Corrections (AT-6): the display name (release 1 bounds), the mobile
+  // number (read with the space's country code; empty keeps the old one; a new
+  // one kills every earlier reset link), and, while access lasts, the end date.
+  // A typed end date is a real date, not before today and not later than the
+  // appointer's own; an end date left as it was is not checked again.
+  app.post(`${path}/correct`, async (c) => {
+    const p = await place(c);
+    if (!p) return refuse(c, 403, 'noAccess');
+    const { t } = p.frame;
+    const body = await c.req.parseBody();
+    const values: CorrectionValues = { display_name: field(body, 'display_name'), mobile: field(body, 'mobile'), valid_until: field(body, 'valid_until') };
+    const displayName = cleanDisplayName(values.display_name ?? '');
+    const mobile = values.mobile ? normaliseMobile(values.mobile, p.countryCode) : p.person.mobile;
+    const end = p.view.ended ? null : values.valid_until ?? '';
+    const changedEnd = end !== null && end !== p.person.valid_until ? end : null;
+    const error = !displayName ? t('displayNameInvalid')
+      : !mobile ? t('mobileInvalid')
+        : changedEnd !== null ? typedEndDateError(p, changedEnd)
+          : undefined;
+    if (error || !displayName || !mobile) return page(c, personPage(p.frame, p.view, { error, values }), 400);
+    const mobileChanged = mobile !== p.person.mobile;
+    await correctPerson(c.get('db'), {
+      spaceId: p.spaceId, userId: p.person.id, roles: p.roles, displayName, mobile, mobileChanged, validUntil: changedEnd, now: now(),
+    });
+    return c.redirect(`${p.frame.base}?done=${mobileChanged ? 'mobile' : 'saved'}`, 303);
+  });
+
+  // End access now, step one: a page that names the person (a GET changes nothing).
+  app.get(`${path}/end`, async (c) => {
+    const p = await place(c);
+    if (!p) return refuse(c, 403, 'noAccess');
+    return p.view.ended ? c.redirect(p.frame.base) : page(c, endConfirmPage(p.frame, p.view));
+  });
+
+  // The confirming tap: access ends at once, with every sign-in and open reset
+  // link of the person (src/admin.ts). Ending an ended person changes nothing.
+  app.post(`${path}/end`, async (c) => {
+    const p = await place(c);
+    if (!p) return refuse(c, 403, 'noAccess');
+    if (p.view.ended) return c.redirect(p.frame.base, 303);
+    await endAccess(c.get('db'), { spaceId: p.spaceId, userId: p.person.id, roles: p.roles, today: utcDate(now()), now: now() });
+    return c.redirect(`${p.frame.base}?done=ended`, 303);
+  });
+
+  // Restore access: a new (typed) end date; the groups and subjects were never removed.
+  app.post(`${path}/restore`, async (c) => {
+    const p = await place(c);
+    if (!p) return refuse(c, 403, 'noAccess');
+    if (!p.view.ended) return c.redirect(p.frame.base, 303);
+    const end = field(await c.req.parseBody(), 'valid_until');
+    const error = typedEndDateError(p, end);
+    if (error) return page(c, personPage(p.frame, p.view, { error, values: { valid_until: end } }), 400);
+    await restoreAccess(c.get('db'), { spaceId: p.spaceId, userId: p.person.id, roles: p.roles, validUntil: end });
+    return c.redirect(`${p.frame.base}?done=restored`, 303);
   });
 
   app.get(`${path}/link`, async (c) => {
@@ -900,7 +1014,7 @@ function personRoutes(path: string, place: (c: C) => Promise<PersonPlace | null>
     const password = typeof body.new_password === 'string' ? body.new_password : '';
     if (password.length < MIN_PASSWORD) return page(c, personPage(p.frame, p.view, { error: p.frame.t('passwordTooShort') }), 400);
     await setPassword(c.get('db'), p.person.id, await hashPassword(password, c.get('iterations')));
-    return page(c, personPage(p.frame, p.view, { done: true }));
+    return page(c, personPage(p.frame, p.view, { notice: 'setPasswordDone' }));
   });
 }
 

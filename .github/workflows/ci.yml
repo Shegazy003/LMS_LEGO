@@ -108,6 +108,13 @@ jobs:
       - name: AT-5 guard - usernames, display names and kit labels are bounded
         if: success() || failure()
         run: npm run test:guard:bounds
+      # Release 1.1 (contract 0.2): one named step per acceptance test.
+      - name: AT-6 the admin corrects a person
+        if: success() || failure()
+        run: npm run test:at6
+      - name: AT-6 guard - ending access is immediate and stops sessions and reset links
+        if: success() || failure()
+        run: npm run test:guard:end-access
       # The deploy rails (build task 6), proven with no Cloudflare account:
       # the production bundle builds without the test hooks; deploy.yml starts
       # only by hand from main, with a read-only token, and never prints its

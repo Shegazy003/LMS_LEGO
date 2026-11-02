@@ -22,7 +22,10 @@ export interface PersonRow {
   display_name: string;
   mobile: string;
   role: string;
+  valid_from: string;
   valid_until: string;
+  /** The day of "End access now" (release 1.1), or null. */
+  ended_on: string | null;
 }
 
 export interface Choice {
@@ -30,14 +33,26 @@ export interface Choice {
   display_name: string;
 }
 
-/** The publishers and learners of this space, publishers first. */
-export function peopleOf(db: Db, spaceId: string): Promise<PersonRow[]> {
+/** The longest search the people list reads; anything longer is cut. */
+export const SEARCH_MAX = 100;
+
+/** What was typed into the people list's search box, trimmed and bounded. */
+export function searchText(raw: string): string {
+  return [...raw.trim()].slice(0, SEARCH_MAX).join('');
+}
+
+/** The publishers and learners of this space, publishers first. With a
+ * search, only those whose name or username contains it (letter case aside,
+ * for a–z), in this space only. instr() reads the typed text as plain text
+ * (no wildcards) and has no pattern-length limit, which D1 sets on LIKE. */
+export function peopleOf(db: Db, spaceId: string, search = ''): Promise<PersonRow[]> {
   return db.all<PersonRow>(
-    `SELECT u.id, u.username, u.display_name, u.mobile, m.role, m.valid_until
+    `SELECT u.id, u.username, u.display_name, u.mobile, m.role, m.valid_from, m.valid_until, m.ended_on
        FROM membership m JOIN user u ON u.id = m.user_id
       WHERE m.space_id = ? AND m.role IN ('publisher', 'learner')
+        AND (instr(lower(u.display_name), lower(?)) > 0 OR instr(u.username, lower(?)) > 0)
       ORDER BY CASE m.role WHEN 'publisher' THEN 0 ELSE 1 END, u.display_name, u.username`,
-    spaceId,
+    spaceId, search, search,
   );
 }
 
@@ -45,7 +60,7 @@ export function peopleOf(db: Db, spaceId: string): Promise<PersonRow[]> {
  * space who is not also an admin here, and not the owner. Otherwise null. */
 export function managedPerson(db: Db, spaceId: string, userId: string): Promise<PersonRow | null> {
   return db.first<PersonRow>(
-    `SELECT u.id, u.username, u.display_name, u.mobile, m.role, m.valid_until
+    `SELECT u.id, u.username, u.display_name, u.mobile, m.role, m.valid_from, m.valid_until, m.ended_on
        FROM membership m JOIN user u ON u.id = m.user_id
       WHERE m.space_id = ? AND m.user_id = ? AND m.role IN ('publisher', 'learner') AND u.is_owner = 0
         AND NOT EXISTS (SELECT 1 FROM membership a WHERE a.space_id = m.space_id AND a.user_id = m.user_id AND a.role = 'admin')
@@ -58,10 +73,67 @@ export function managedPerson(db: Db, spaceId: string, userId: string): Promise<
 /** An admin of this space (whom the owner manages). Otherwise null. */
 export function spaceAdmin(db: Db, spaceId: string, userId: string): Promise<PersonRow | null> {
   return db.first<PersonRow>(
-    `SELECT u.id, u.username, u.display_name, u.mobile, m.role, m.valid_until
+    `SELECT u.id, u.username, u.display_name, u.mobile, m.role, m.valid_from, m.valid_until, m.ended_on
        FROM membership m JOIN user u ON u.id = m.user_id
       WHERE m.space_id = ? AND m.user_id = ? AND m.role = 'admin' AND u.is_owner = 0`,
     spaceId, userId,
+  );
+}
+
+// ---------------------------------------------- corrections (release 1.1) ----
+// The appointer corrects a person (AT-6): the admin for the publishers and
+// learners of their space, the owner for the admins of a space. `roles` names
+// the memberships the appointer manages: ['publisher', 'learner'] or
+// ['admin', 'admin'] (always two, so every statement stays one fixed text).
+// Nothing here deletes a row: ending keeps the end date, the groups and the
+// subjects; restoring sets a new end date and clears the end.
+export type ManagedRoles = readonly [string, string];
+export const ADMIN_MANAGES: ManagedRoles = ['publisher', 'learner'];
+export const OWNER_MANAGES: ManagedRoles = ['admin', 'admin'];
+
+/** Kills every reset link of this person that is still open. */
+const killResetLinks = (userId: string, now: number): [string, ...Param[]] => [
+  'UPDATE reset_link SET used_at = ? WHERE user_id = ? AND used_at IS NULL', now, userId,
+];
+
+/** Saves a corrected display name and mobile number, and an end date when one
+ * is given, in one transaction. A changed number kills every reset link issued
+ * before it, so a link already sent to the wrong number stops working. */
+export async function correctPerson(
+  db: Db,
+  v: { spaceId: string; userId: string; roles: ManagedRoles; displayName: string; mobile: string; mobileChanged: boolean; validUntil: string | null; now: number },
+): Promise<void> {
+  await db.batch([
+    ['UPDATE user SET display_name = ?, mobile = ? WHERE id = ? AND is_owner = 0', v.displayName, v.mobile, v.userId],
+    ...(v.validUntil === null ? [] : [[
+      'UPDATE membership SET valid_until = ? WHERE space_id = ? AND user_id = ? AND role IN (?, ?) AND ended_on IS NULL',
+      v.validUntil, v.spaceId, v.userId, v.roles[0], v.roles[1],
+    ] as [string, ...Param[]]]),
+    ...(v.mobileChanged ? [killResetLinks(v.userId, v.now)] : []),
+  ]);
+}
+
+/** "End access now": the membership ends at once (ended_on is today), every
+ * sign-in of the person stops (its expiry becomes 0, so the next page they
+ * open can still say why, once; see src/app.ts), and every open reset link is
+ * killed. One transaction. */
+export async function endAccess(db: Db, v: { spaceId: string; userId: string; roles: ManagedRoles; today: string; now: number }): Promise<void> {
+  await db.batch([
+    [
+      'UPDATE membership SET ended_on = ? WHERE space_id = ? AND user_id = ? AND role IN (?, ?) AND ended_on IS NULL',
+      v.today, v.spaceId, v.userId, v.roles[0], v.roles[1],
+    ],
+    ['UPDATE session SET expires_at = 0 WHERE user_id = ?', v.userId],
+    killResetLinks(v.userId, v.now),
+  ]);
+}
+
+/** "Restore access": the same memberships come back with a new end date; the
+ * person's groups and subjects were never removed. */
+export async function restoreAccess(db: Db, v: { spaceId: string; userId: string; roles: ManagedRoles; validUntil: string }): Promise<void> {
+  await db.run(
+    'UPDATE membership SET ended_on = NULL, valid_until = ? WHERE space_id = ? AND user_id = ? AND role IN (?, ?)',
+    v.validUntil, v.spaceId, v.userId, v.roles[0], v.roles[1],
   );
 }
 
