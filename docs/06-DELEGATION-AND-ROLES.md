@@ -39,6 +39,7 @@ The platform's rule asks for a Verifier from a **different AI vendor** than the 
 | 7 · password strength as a setting | #17 | Opus 5.5, worktree, `build/password-strength` | 41273882788 | 41274441035 on `bfd5eff` | ACCEPTED | PASS (Sonnet 5.5) | `7fbe525`, 1 November 2026 |
 | 8 · apply password option B | #19 | Opus 5.5, worktree, `build/password-option-b` | 41335118455 | 41335950520 on `e973713` | ACCEPTED | PASS (Sonnet 5.5) | `19a22af`, 1 November 2026 |
 | 9 · smoke check waits through a fresh address's 404 | #21 | Opus 5.5, worktree, `build/smoke-first-deploy` | 41357672029 | 41358496582 on `4a38477` | ACCEPTED | PASS (Sonnet 5.5) | `258bbdb`, 1 November 2026 |
+| 10 · AT-6 the admin corrects a person (release 1.1) | #25 | Opus 5.5, worktree, `build/at-6` | 41389910460, 41392283971 | 41393277887 on `0311761` | ACCEPTED | PASS (Sonnet 5.5) | `293294e`, 2 November 2026 |
 
 ## Working rules for the agents (in addition to AGENTS.md)
 
