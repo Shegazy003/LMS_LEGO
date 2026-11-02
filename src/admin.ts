@@ -220,6 +220,13 @@ export async function saveSetMembers(db: Db, spaceId: string, groupId: string, m
   ]);
 }
 
+/** Renames a group of this space (AT-7); the caller has checked the name's
+ * bounds. One statement on the group's own row: its members and the subjects
+ * assigned to it are untouched, and every page reads the name from this row. */
+export async function renameSet(db: Db, spaceId: string, groupId: string, name: string): Promise<void> {
+  await db.run('UPDATE "group" SET name = ? WHERE id = ? AND space_id = ?', name, groupId, spaceId);
+}
+
 // -------------------------------------------------------------- subjects ----
 export interface TopicRow {
   id: string;
@@ -264,6 +271,13 @@ export async function createTopic(db: Db, spaceId: string, title: string, publis
   const id = crypto.randomUUID();
   await db.run('INSERT INTO subject (id, space_id, title, publisher_user_id, is_published) VALUES (?, ?, ?, ?, 0)', id, spaceId, title, publisherId);
   return id;
+}
+
+/** Renames a subject of this space (AT-7); the caller has checked the name's
+ * bounds. Only the title changes: the publisher, the published state, who may
+ * read it and its chapters, lessons and materials are untouched. */
+export async function renameTopic(db: Db, spaceId: string, subjectId: string, title: string): Promise<void> {
+  await db.run('UPDATE subject SET title = ? WHERE id = ? AND space_id = ?', title, subjectId, spaceId);
 }
 
 /** Sets a subject's responsible publisher and replaces who may read it. The

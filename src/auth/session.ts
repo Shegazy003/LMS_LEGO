@@ -15,7 +15,11 @@ export function sessionDecision(expiresAt: number, now: number): 'valid' | 'refr
   return 'valid';
 }
 
-/** Writes a session's new expiry (the once-a-day refresh); returns the rows changed. */
+/** Writes a session's new expiry (the once-a-day refresh); returns the rows changed.
+ * The request read the row a moment before. If "End access now" set its expiry
+ * to 0 since (src/admin.ts endAccess), the refresh must not bring that sign-in
+ * back, so it only extends a session whose expiry is still above 0
+ * (AT-6 follow-up; test/unit/session-refresh.test.ts drives the race). */
 export function refreshSession(db: Db, id: string, expiresAt: number): Promise<number> {
-  return db.run('UPDATE session SET expires_at = ? WHERE id = ?', expiresAt, id);
+  return db.run('UPDATE session SET expires_at = ? WHERE id = ? AND expires_at > 0', expiresAt, id);
 }

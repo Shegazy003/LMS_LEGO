@@ -37,3 +37,11 @@ export function oneLine(raw: string, max: number): string | null {
 export function cleanDisplayName(raw: string): string | null {
   return oneLine(raw, DISPLAY_NAME_MAX);
 }
+
+/** The new name of a group or a subject (release 1.1, AT-7) keeps the display-name
+ * bounds: 1 to 100 characters on one line. */
+export const RENAME_MAX = DISPLAY_NAME_MAX;
+
+export function cleanItemName(raw: string): string | null {
+  return oneLine(raw, RENAME_MAX);
+}

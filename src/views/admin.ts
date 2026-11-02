@@ -7,7 +7,7 @@ import { html, raw } from 'hono/html';
 import type { Label, Lang } from '../labels.ts';
 import { SEARCH_MAX, type Choice, type PersonRow, type SetRow, type TopicRow } from '../admin.ts';
 import { endedDate } from '../access.ts';
-import { DISPLAY_NAME_MAX, USERNAME_MAX } from '../names.ts';
+import { DISPLAY_NAME_MAX, RENAME_MAX, USERNAME_MAX } from '../names.ts';
 import { lastDigits } from '../reset.ts';
 import { errorBox, sentence, type Html } from './layout.ts';
 import { spacePage } from './learn.ts';
@@ -101,22 +101,38 @@ ${errorBox(v.error)}
   return spacePage(t, lang, space, t('group'), body);
 }
 
-/** One group: change who is in it. */
+/** What the page of a group or a subject says after a done form (AT-2 saved, AT-7 renamed). */
+export type ItemNotice = 'saved' | 'renamed';
+
+/** The rename form of a group or a subject (AT-7): one line of 1 to 100
+ * characters; the page reads the current name, or what was typed when refused. */
+function renameForm(t: Label, v: { id: string; heading: Html | string; action: string; field: 'name' | 'title'; value: string }): Html {
+  return html`<h2 id="${v.id}-title">${v.heading}</h2>
+<form id="${v.id}" class="stack card" method="post" action="${v.action}">
+  <label>${t('newName')}<input name="${v.field}" required maxlength="${RENAME_MAX}" dir="auto" autocomplete="off" value="${v.value}"></label>
+  <p class="muted">${t('renameNote')}</p>
+  <button type="submit">${t('saveName')}</button>
+</form>`;
+}
+
+/** One group: change who is in it, and rename it (AT-7). */
 export function setPage(
   t: Label,
   lang: Lang,
   space: SpaceView,
-  v: { set: { id: string; name: string }; learners: Choice[]; members: readonly string[]; saved?: boolean; error?: string },
+  v: { set: { id: string; name: string }; learners: Choice[]; members: readonly string[]; notice?: ItemNotice; error?: string; typedName?: string },
 ): Html {
+  const action = `${base(space)}/sets/${v.set.id}`;
   const body = html`<p><a id="back" href="${base(space)}/sets">${t('back')}</a></p>
 <p class="muted">${t('group')}</p>
 <h1 id="set-name" dir="auto">${v.set.name}</h1>
-${v.saved ? html`<p id="done" class="done" role="status">${t('saved')}</p>` : ''}
+${v.notice ? html`<p id="done" class="done" role="status">${t(v.notice)}</p>` : ''}
 ${errorBox(v.error)}
-<form id="set-members" class="stack card" method="post" action="${base(space)}/sets/${v.set.id}">
+<form id="set-members" class="stack card" method="post" action="${action}">
   <fieldset class="checks"><legend>${t('membersField')}</legend>${memberChoices('member', v.learners, v.members, t)}</fieldset>
   <button type="submit">${t('save')}</button>
-</form>`;
+</form>
+${renameForm(t, { id: 'rename-set', heading: t('renameItem', { item: t('group') }), action: `${action}/name`, field: 'name', value: v.typedName ?? v.set.name })}`;
   return spacePage(t, lang, space, v.set.name, body);
 }
 
@@ -145,7 +161,7 @@ ${errorBox(v.error)}
   return spacePage(t, lang, space, t('subject'), body);
 }
 
-/** One subject: its responsible publisher and who may read it (groups, learners). */
+/** One subject: its responsible publisher and who may read it (groups, learners), and its name (AT-7). */
 export function topicPage(
   t: Label,
   lang: Lang,
@@ -156,22 +172,25 @@ export function topicPage(
     sets: { id: string; display_name: string }[];
     learners: Choice[];
     readers: { sets: string[]; learners: string[] };
-    saved?: boolean;
+    notice?: ItemNotice;
     error?: string;
+    typedName?: string;
   },
 ): Html {
+  const action = `${base(space)}/topics/${v.topic.id}`;
   const body = html`<p><a id="back" href="${base(space)}/topics">${t('back')}</a></p>
 <p class="muted">${t('subject')}</p>
 <h1 id="topic-title" dir="auto">${v.topic.title}</h1>
 <p class="muted">${v.topic.is_published ? t('published') : t('notPublished')}</p>
-${v.saved ? html`<p id="done" class="done" role="status">${t('saved')}</p>` : ''}
+${v.notice ? html`<p id="done" class="done" role="status">${t(v.notice)}</p>` : ''}
 ${errorBox(v.error)}
-<form id="topic-access" class="stack card" method="post" action="${base(space)}/topics/${v.topic.id}">
+<form id="topic-access" class="stack card" method="post" action="${action}">
   ${publisherSelect(t, v.publishers, v.topic.publisher_user_id)}
   <h3>${t('assignedTo')}</h3>
   <fieldset class="checks"><legend>${t('group')}</legend>${memberChoices('set', v.sets, v.readers.sets, t)}</fieldset>
   <fieldset class="checks"><legend>${t('learner')}</legend>${memberChoices('learner', v.learners, v.readers.learners, t)}</fieldset>
   <button type="submit">${t('save')}</button>
-</form>`;
+</form>
+${renameForm(t, { id: 'rename-topic', heading: t('renameItem', { item: t('subject') }), action: `${action}/name`, field: 'title', value: v.typedName ?? v.topic.title })}`;
   return spacePage(t, lang, space, v.topic.title, body);
 }

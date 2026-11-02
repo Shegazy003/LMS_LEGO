@@ -6,8 +6,8 @@ import type { AppEnv, CurrentSpace } from './app-env.ts';
 import { checkTypedEndDate, endedDate, isIsoDate, membershipStatus, utcDate } from './access.ts';
 import {
   ADMIN_MANAGES, OWNER_MANAGES, appoint, correctPerson, createSet, createTopic, endAccess, findSet, findTopic, isAppointable, learnersOf,
-  managedPerson, peopleOf, publishersOf, restoreAccess, saveSetMembers, saveTopic, searchText, setPassword, setsOf, spaceAdmin, topicReaders,
-  topicsOf, type ManagedRoles, type PersonRow,
+  managedPerson, peopleOf, publishersOf, renameSet, renameTopic, restoreAccess, saveSetMembers, saveTopic, searchText, setPassword, setsOf,
+  spaceAdmin, topicReaders, topicsOf, type ManagedRoles, type PersonRow,
 } from './admin.ts';
 import { attemptBlock, clearUser, minutesUntil, openDoor, recordFailure } from './auth/limits.ts';
 import { dummyHash, hashPassword, passwordIterations, rehashIfNeeded, verifyPassword } from './auth/password.ts';
@@ -19,7 +19,7 @@ import {
   LOGO_MAX_BYTES, MATERIAL_MAX_BYTES, fileHeaders, materialBodyTooLarge, materialFileHeaders, sniffLogo, sniffMaterial,
 } from './files.ts';
 import { LANGS, makeLabel, productLang, type Concept, type KitJson, type Label, type Lang, type LabelKey } from './labels.ts';
-import { cleanDisplayName, isUsername, typedUsername } from './names.ts';
+import { cleanDisplayName, cleanItemName, isUsername, typedUsername } from './names.ts';
 import { readLabels, switchedKit } from './kits/edit.ts';
 import {
   findFile, findLesson, lessonMaterials, outline, readableSubject, subjectsForLearner, subjectsForPublisher, type SubjectRow,
@@ -38,7 +38,7 @@ import {
 import { registerTestHooks } from './test-hooks.ts';
 import { FREE_PLAN, UsageMeter, type FlushBatch } from './usage.ts';
 import { accountPage, languagePage } from './views/account.ts';
-import { peoplePage, setPage, setsPage, topicPage, topicsPage, type AppointForm } from './views/admin.ts';
+import { peoplePage, setPage, setsPage, topicPage, topicsPage, type AppointForm, type ItemNotice } from './views/admin.ts';
 import { recoverPage, recoveryCodePage, setupPage, signInPage } from './views/auth.ts';
 import { layout, messagePage, type Html } from './views/layout.ts';
 import { learnerHome, lessonPage, spacePage, subjectPage } from './views/learn.ts';
@@ -50,7 +50,7 @@ import {
 } from './views/people.ts';
 import { lessonEditor, publisherHome, subjectEditor } from './views/publish.ts';
 import { resetDeadPage, resetDonePage, resetPage, type ResetSpace } from './views/reset.ts';
-import { accessEndedPage, adminHome, membershipsPage, type SpaceView } from './views/space.ts';
+import { accessEndedPage, adminHome, membershipsPage, type MembershipItem, type SpaceView } from './views/space.ts';
 import { isSameOrigin } from './origin.ts';
 import { logoKey, saveTheme, storedLogoKey } from './theme.ts';
 
@@ -195,6 +195,7 @@ use('*', async (c, next) => {
     );
     const decision = row ? sessionDecision(row.expires_at, now()) : 'expired';
     if (row && decision !== 'expired') {
+      // The refresh never revives a sign-in that End access stopped meanwhile (src/auth/session.ts).
       if (decision === 'refresh') await refreshSession(db, id, now() + SESSION_IDLE_MS);
       const lang = LANGS.find((l) => l === row.lang) ?? null;
       c.set('user', { id: row.id, username: row.username, display_name: row.display_name, is_owner: row.is_owner, sessionId: id, lang });
@@ -602,10 +603,20 @@ app.get('/home', async (c) => {
   const user = c.get('user');
   if (!user) return c.redirect('/signin');
   if (user.is_owner) return c.redirect('/owner');
-  const spaces = await c.get('db').all<{ id: string; name: string }>(
-    'SELECT DISTINCT s.id, s.name FROM membership m JOIN space s ON s.id = m.space_id WHERE m.user_id = ? ORDER BY s.name',
+  const rows = await c.get('db').all<{ id: string; name: string; valid_from: string; valid_until: string; ended_on: string | null }>(
+    `SELECT s.id, s.name, m.valid_from, m.valid_until, m.ended_on
+       FROM membership m JOIN space s ON s.id = m.space_id WHERE m.user_id = ? ORDER BY s.name, s.id`,
     user.id,
   );
+  // One entry per space. A space is marked ended (with the day it ended) when
+  // every place the person has there has ended (AT-6 follow-up).
+  const spaces: MembershipItem[] = [];
+  for (const r of rows) {
+    const ended = membershipStatus(r.valid_from, r.valid_until, now(), r.ended_on) === 'ended' ? endedDate(r.valid_until, r.ended_on) : null;
+    const item = spaces.find((s) => s.id === r.id);
+    if (!item) spaces.push({ id: r.id, name: r.name, endedOn: ended });
+    else if (item.endedOn !== null) item.endedOn = ended === null ? null : ended > item.endedOn ? ended : item.endedOn;
+  }
   if (spaces.length === 1) return c.redirect(`/s/${spaces[0].id}`);
   return page(c, membershipsPage(label(c), c.get('lang'), spaces));
 });
@@ -985,9 +996,16 @@ function personRoutes(path: string, place: (c: C) => Promise<PersonPlace | null>
     return c.redirect(`${p.frame.base}?done=restored`, 303);
   });
 
+  // A person whose access has ended gets no reset link and no new password
+  // (AT-6 follow-up): the appointer restores access first. The page says so
+  // plainly and nothing is stored.
+  const endedRefusal = (c: C, p: PersonPlace) =>
+    page(c, personPage(p.frame, p.view, { error: p.frame.t('endedNoReset', { name: p.person.display_name }) }), 400);
+
   app.get(`${path}/link`, async (c) => {
     const p = await place(c);
-    return p ? page(c, confirmLinkPage(p.frame, p.view)) : refuse(c, 403, 'noAccess');
+    if (!p) return refuse(c, 403, 'noAccess');
+    return p.view.ended ? endedRefusal(c, p) : page(c, confirmLinkPage(p.frame, p.view));
   });
 
   // The confirming tap: kills every earlier link of this person, makes a new
@@ -996,6 +1014,7 @@ function personRoutes(path: string, place: (c: C) => Promise<PersonPlace | null>
   app.post(`${path}/link`, async (c) => {
     const p = await place(c);
     if (!p) return refuse(c, 403, 'noAccess');
+    if (p.view.ended) return endedRefusal(c, p);
     const sender = c.get('user')!;
     const token = await issueResetLink(c.get('db'), { userId: p.person.id, spaceId: p.spaceId, createdBy: sender.id, now: now() });
     const address = new URL(c.req.url).origin;
@@ -1010,6 +1029,7 @@ function personRoutes(path: string, place: (c: C) => Promise<PersonPlace | null>
   app.post(`${path}/password`, async (c) => {
     const p = await place(c);
     if (!p) return refuse(c, 403, 'noAccess');
+    if (p.view.ended) return endedRefusal(c, p);
     const body = await c.req.parseBody();
     const password = typeof body.new_password === 'string' ? body.new_password : '';
     if (password.length < MIN_PASSWORD) return page(c, personPage(p.frame, p.view, { error: p.frame.t('passwordTooShort') }), 400);
@@ -1049,7 +1069,21 @@ app.post('/s/:spaceId/admin/sets', async (c) => {
   return c.redirect(`/s/${c.get('space').id}/admin/sets#sets`, 303);
 });
 
-async function renderSet(c: C, set: { id: string; name: string }, extra: { saved?: boolean; error?: string } = {}, status: 200 | 400 = 200) {
+/** The notice on the page of a group or a subject after a done form (?saved=1, ?renamed=1). */
+function itemNotice(c: C): ItemNotice | undefined {
+  return c.req.query('renamed') === '1' ? 'renamed' : c.req.query('saved') === '1' ? 'saved' : undefined;
+}
+
+/** A new name for a group or a subject (AT-7): the display-name bounds (1 to
+ * 100 characters, one line), or null with nothing to store. */
+const typedItemName = (body: Record<string, unknown>, name: string) => cleanItemName(typeof body[name] === 'string' ? body[name] : '');
+
+async function renderSet(
+  c: C,
+  set: { id: string; name: string },
+  extra: { notice?: ItemNotice; error?: string; typedName?: string } = {},
+  status: 200 | 400 = 200,
+) {
   const { t, lang, view } = spaceLabel(c);
   const db = c.get('db');
   const members = (await setsOf(db, view.id)).find((s) => s.id === set.id)?.members.map((m) => m.id) ?? [];
@@ -1058,7 +1092,7 @@ async function renderSet(c: C, set: { id: string; name: string }, extra: { saved
 
 app.get('/s/:spaceId/admin/sets/:groupId', async (c) => {
   const set = await findSet(c.get('db'), c.get('space').id, c.req.param('groupId'));
-  return set ? renderSet(c, set, { saved: c.req.query('saved') === '1' }) : refuse(c, 403, 'noAccess');
+  return set ? renderSet(c, set, { notice: itemNotice(c) }) : refuse(c, 403, 'noAccess');
 });
 
 app.post('/s/:spaceId/admin/sets/:groupId', async (c) => {
@@ -1069,6 +1103,19 @@ app.post('/s/:spaceId/admin/sets/:groupId', async (c) => {
   if (!members) return renderSet(c, set, { error: spaceLabel(c).t('choiceInvalid') }, 400);
   await saveSetMembers(c.get('db'), spaceId, set.id, members);
   return c.redirect(`/s/${spaceId}/admin/sets/${set.id}?saved=1`, 303);
+});
+
+// Renaming a group (AT-7): every page reads the name from the group's row, so
+// the new name shows everywhere at the next page. A refused name stores nothing.
+app.post('/s/:spaceId/admin/sets/:groupId/name', async (c) => {
+  const spaceId = c.get('space').id;
+  const set = await findSet(c.get('db'), spaceId, c.req.param('groupId'));
+  if (!set) return refuse(c, 403, 'noAccess');
+  const body = await c.req.parseBody();
+  const name = typedItemName(body, 'name');
+  if (!name) return renderSet(c, set, { error: spaceLabel(c).t('renameInvalid'), typedName: field(body, 'name') }, 400);
+  await renameSet(c.get('db'), spaceId, set.id, name);
+  return c.redirect(`/s/${spaceId}/admin/sets/${set.id}?renamed=1`, 303);
 });
 
 // Subjects: a title, one responsible publisher, and who may read it.
@@ -1100,7 +1147,12 @@ app.post('/s/:spaceId/admin/topics', async (c) => {
   return c.redirect(`/s/${c.get('space').id}/admin/topics/${id}`, 303);
 });
 
-async function renderTopic(c: C, subjectId: string, extra: { saved?: boolean; error?: string } = {}, status: 200 | 400 = 200) {
+async function renderTopic(
+  c: C,
+  subjectId: string,
+  extra: { notice?: ItemNotice; error?: string; typedName?: string } = {},
+  status: 200 | 400 = 200,
+) {
   const db = c.get('db');
   const { t, lang, view } = spaceLabel(c);
   const topic = await findTopic(db, view.id, subjectId);
@@ -1116,7 +1168,7 @@ async function renderTopic(c: C, subjectId: string, extra: { saved?: boolean; er
   return page(c, body, status);
 }
 
-app.get('/s/:spaceId/admin/topics/:subjectId', (c) => renderTopic(c, c.req.param('subjectId'), { saved: c.req.query('saved') === '1' }));
+app.get('/s/:spaceId/admin/topics/:subjectId', (c) => renderTopic(c, c.req.param('subjectId'), { notice: itemNotice(c) }));
 
 app.post('/s/:spaceId/admin/topics/:subjectId', async (c) => {
   const db = c.get('db');
@@ -1133,6 +1185,20 @@ app.post('/s/:spaceId/admin/topics/:subjectId', async (c) => {
   }
   await saveTopic(db, spaceId, topic.id, { publisherId: publisher, setIds, learnerIds });
   return c.redirect(`/s/${spaceId}/admin/topics/${topic.id}?saved=1`, 303);
+});
+
+// Renaming a subject (AT-7): only its title changes; the publisher's chapters,
+// lessons and materials, and who may read it, are untouched.
+app.post('/s/:spaceId/admin/topics/:subjectId/name', async (c) => {
+  const db = c.get('db');
+  const spaceId = c.get('space').id;
+  const topic = await findTopic(db, spaceId, c.req.param('subjectId'));
+  if (!topic) return refuse(c, 403, 'noAccess');
+  const body = await c.req.parseBody();
+  const title = typedItemName(body, 'title');
+  if (!title) return renderTopic(c, topic.id, { error: spaceLabel(c).t('renameInvalid'), typedName: field(body, 'title') }, 400);
+  await renameTopic(db, spaceId, topic.id, title);
+  return c.redirect(`/s/${spaceId}/admin/topics/${topic.id}?renamed=1`, 303);
 });
 
 // ------------------------------------------------------------ reset link ----
