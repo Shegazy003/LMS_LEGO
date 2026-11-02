@@ -1,11 +1,11 @@
 # Handover: continuing LMS Lego from Claude Desktop (or any new session)
 
-**Date:** 1 November 2026 (UTC), kept current since. **Last updated:** 2 November 2026, 11:35 UTC. Release 1.1 is live (deploy run 41437034787, version `9d8f2430` from `71de46b`); the owner's live check is next; H-1 has not started. The owner is moving to Claude Desktop.
+**Date:** 1 November 2026 (UTC), kept current since. **Last updated:** 2 November 2026, 11:50 UTC. Release 1.1 is live and **accepted** by the owner (version `9d8f2430`). Next team task: H-1, not started. The owner is moving to Claude Desktop.
 
 ## 1. Where things stand
 
 - **Release 1 is accepted and live** at **https://lms-lego.lmslego.workers.dev** (owner acceptance 1 November 2026). Details and evidence: [CURRENT-PROGRESS.md](../CURRENT-PROGRESS.md).
-- **Release 1.1 "Keep the space tidy" is delivered in code** ([contract](09-CONTRACT-R1.1.md)): AT-6 (#25), AT-7 (#27), AT-8 (#29). **It is live** since deploy run 41437034787 (2 November 2026); the owner's live check is listed in [CURRENT-PROGRESS.md](../CURRENT-PROGRESS.md). Next team task: hardening task H-1 (Workers Logs safely), not started.
+- **Release 1.1 "Keep the space tidy" is delivered in code** ([contract](09-CONTRACT-R1.1.md)): AT-6 (#25), AT-7 (#27), AT-8 (#29). **It is live and accepted** (deploy run 41437034787, owner's live check 2 November 2026). Next team task: hardening task H-1 (Workers Logs safely), not started.
 - Next after that by the [roadmap](05-ROADMAP.md): release 2 (guardians and exam results) when Mesk School has used the product for one term, or earlier if the school asks.
 
 ## 2. Read in this order
