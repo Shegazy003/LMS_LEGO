@@ -23,7 +23,7 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { startWorker, type RunningWorker } from '../support/worker.ts';
-import { Client, setClockOffsetMs, setStartOffset, workerNow } from '../support/http.ts';
+import { Client, setClockOffsetMs, setClockTo, setStartOffset, workerNow } from '../support/http.ts';
 import { issueLink, userIdOf } from '../support/admin.ts';
 import { appointAdmin, b64, createSpace, seed, setUpOwner, signedIn, tinyPdf } from '../support/seed.ts';
 import { changes, snapshot } from '../support/state.ts';
@@ -218,9 +218,9 @@ describe('AT-6 guard: ending access is immediate and stops sessions and reset li
     assert.equal((await correct({ valid_until: today })).status, 303, 'today is accepted');
     const shimaa = await signedIn(worker.url, SHIMAA.username, SHIMAA.password);
     assert.equal((await shimaa.get(`/s/${spaceId}/publish`)).status, 200, 'access through the rest of today');
-    assert.equal((await clockAt(12 * 3_600_000 - 1_000)).status, 200, 'one second before midnight UTC');
+    assert.equal((await setClockTo(worker.url, Date.parse(`${today}T23:59:58Z`))).status, 200, 'two seconds before midnight UTC');
     assert.equal((await shimaa.get(`/s/${spaceId}/publish`)).status, 200, 'still in');
-    assert.equal((await clockAt(12 * 3_600_000 + 1_000)).status, 200, 'one second after midnight UTC');
+    assert.equal((await setClockTo(worker.url, Date.parse(`${plus(1)}T00:00:01Z`))).status, 200, 'one second after midnight UTC');
     await assertEnded(await shimaa.get(`/s/${spaceId}/publish`), today, 'the next UTC day');
 
     // The next day her stored end date is in the past. Correcting her name
@@ -231,8 +231,9 @@ describe('AT-6 guard: ending access is immediate and stops sessions and reset li
     // Restoring takes a typed date, so it follows the rule: the day before the clock's today is refused.
     const lateRestore = await admin.post(`${person(shimaaId)}/restore`, { valid_until: today });
     assert.equal(lateRestore.status, 400, 'yesterday is refused for a restore');
-    assert.equal((await clockAt(0)).status, 200);
     assert.equal((await admin.post(`${person(shimaaId)}/restore`, { valid_until: plus(61) })).status, 400, 'later than the admin\'s own is refused for a restore');
+    assert.deepEqual(await membership(shimaaId), { valid_until: today, ended_on: null }, 'nothing stored');
+    assert.equal((await clockAt(0)).status, 200);
     assert.equal((await shimaa.get(`/s/${spaceId}/publish`)).status, 200, 'back at midday today, the end date today still holds');
   });
 

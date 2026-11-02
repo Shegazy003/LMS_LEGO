@@ -18,7 +18,7 @@ import { mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { chromium, type Browser, type Page } from 'playwright';
 import { startWorker, type RunningWorker } from '../support/worker.ts';
-import { Client, setClockOffsetMs, setStartOffset, workerNow } from '../support/http.ts';
+import { Client, setClockOffsetMs, setClockTo, setStartOffset, workerNow } from '../support/http.ts';
 import { appointAdmin, b64, createSpace, seed, setUpOwner, tinyPdf } from '../support/seed.ts';
 import { assertPage, follow, phone, readable, shot as shotIn, signIn as signInAt, submit, type Phone } from '../support/browser.ts';
 import { changes, snapshot } from '../support/state.ts';
@@ -33,7 +33,7 @@ const SHIMAA: Person = { display_name: 'Shimaa', username: 'shimaa', password: '
 const SALMA: Person = { display_name: 'Salma Adell', username: 'salma.learner', password: 'salma-first-pass', role: 'learner', mobile: '01033334444' };
 const OMAR: Person = { display_name: 'عمر نبيل', username: 'omar.learner', password: 'omar-first-pass', role: 'learner', mobile: '01055556666' };
 const PEOPLE = [HADEER, SHIMAA, SALMA, OMAR];
-const SALMA_FIXED = { display_name: 'Salma Adel', mobile: '0102 9998 8877', stored: '+201029998877' };
+const SALMA_FIXED = { display_name: 'Salma Adel', mobile: '0102 999 8877', stored: '+201029998877' };
 const DAY = 86_400_000;
 
 // Plain messages, from the product dictionary (Arabic first).
@@ -325,7 +325,7 @@ describe('AT-6 the admin corrects a person', { concurrency: false }, () => {
     await openPerson(OMAR, 'عمر');
     const beforeCancel = await snapshot(worker);
     await follow(admin, 'form#end-access button[type=submit]');
-    assert.ok(admin.url().endsWith(`/s/${spaceId}/admin/people/${ids[OMAR.username]}/end`), 'the confirm step is a page of its own');
+    assert.ok(new URL(admin.url()).pathname.endsWith(`/s/${spaceId}/admin/people/${ids[OMAR.username]}/end`), 'the confirm step is a page of its own');
     assert.equal(await text(admin, '#end-title'), AR.endTitle(OMAR.display_name), 'the confirm step names the person');
     await assertSpacePage(admin, 'end access confirm step');
     await shot(admin, '08-end-access-confirm-step');
@@ -395,7 +395,7 @@ describe('AT-6 the admin corrects a person', { concurrency: false }, () => {
     await openPeople();
     assert.ok((await listed()).active.includes(ids[HADEER.username]), 'a publisher ending today is still listed with the active people');
     // 30 seconds after midnight UTC the day is over.
-    assert.equal((await clockAt(12 * 3_600_000 + 30_000)).status, 200);
+    assert.equal((await setClockTo(worker.url, Date.parse(`${plus(1)}T00:00:30Z`))).status, 200);
     await assertEndedPage(hadeer.page, (await hadeer.page.goto(at(`/s/${spaceId}/publish`)))?.status(), today, 'the publisher the next UTC day');
     await shot(hadeer.page, '14-publisher-ended-the-next-day');
     assert.equal((await clockAt(0)).status, 200);
