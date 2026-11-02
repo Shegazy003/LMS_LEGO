@@ -106,7 +106,7 @@ export type ItemNotice = 'saved' | 'renamed';
 
 /** The rename form of a group or a subject (AT-7): one line of 1 to 100
  * characters; the page reads the current name, or what was typed when refused. */
-function renameForm(t: Label, v: { id: string; heading: Html | string; action: string; field: 'name' | 'title'; value: string }): Html {
+export function renameForm(t: Label, v: { id: string; heading: Html | string; action: string; field: 'name' | 'title'; value: string }): Html {
   return html`<h2 id="${v.id}-title">${v.heading}</h2>
 <form id="${v.id}" class="stack card" method="post" action="${v.action}">
   <label>${t('newName')}<input name="${v.field}" required maxlength="${RENAME_MAX}" dir="auto" autocomplete="off" value="${v.value}"></label>

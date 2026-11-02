@@ -53,8 +53,8 @@ const AR = {
   nameRefused: 'اكتب اسماً من 1 إلى 100 حرف، في سطر واحد. لم يتغيّر شيء.',
   renamed: 'تم الحفظ. يظهر الاسم الجديد في كل صفحة.',
   saved: 'تم الحفظ.',
-  renameSet: 'تغيير اسم الـفصل',
-  renameTopic: 'تغيير اسم الـمادّة',
+  renameSet: 'تغيير الاسم: فصل',
+  renameTopic: 'تغيير الاسم: مادّة',
 };
 const EN = {
   nameRefused: 'Type a name of 1 to 100 characters, on one line. Nothing was changed.',
