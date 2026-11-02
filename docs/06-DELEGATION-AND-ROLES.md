@@ -41,6 +41,7 @@ The platform's rule asks for a Verifier from a **different AI vendor** than the 
 | 9 · smoke check waits through a fresh address's 404 | #21 | Opus 5.5, worktree, `build/smoke-first-deploy` | 41357672029 | 41358496582 on `4a38477` | ACCEPTED | PASS (Sonnet 5.5) | `258bbdb`, 1 November 2026 |
 | 10 · AT-6 the admin corrects a person (release 1.1) | #25 | Opus 5.5, worktree, `build/at-6` | 41389910460, 41392283971 | 41393277887 on `0311761` | ACCEPTED | PASS (Sonnet 5.5) | `293294e`, 2 November 2026 |
 | 11 · AT-7 the admin tidies groups and subjects (release 1.1) | #27 | Opus 5.5, worktree, `build/at-7` | 41397427989, 41398614921 | 41400102560 on `31e4a17` | ACCEPTED | PASS (Sonnet 5.5) | `cba9fba`, 2 November 2026 |
+| 12 · AT-8 the publisher corrects content safely (release 1.1) | #29 | Opus 5.5, worktree, `build/at-8`; paused once at the weekly usage limit and resumed | 41403423218, 41405132372 | 41429232976 on `066acae` | ACCEPTED | PASS (Sonnet 5.5) | `e571904`, 2 November 2026 |
 
 ## Working rules for the agents (in addition to AGENTS.md)
 

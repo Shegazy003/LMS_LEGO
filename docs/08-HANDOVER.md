@@ -1,11 +1,11 @@
 # Handover: continuing LMS Lego from Claude Desktop (or any new session)
 
-**Date:** 1 November 2026 (UTC), kept current since. **Last updated:** 2 November 2026, 10:40 UTC. The owner is moving to Claude Desktop now. AT-6 and AT-7 are delivered; AT-8 is pushed and green-in-progress at pull request #29; H-1 has not started. **Written by:** the founding Claude Code cloud session, acting as owner's delegate, Project Lead and Product Manager (decision 002). Everything needed to continue is in this repository; nothing depends on the cloud session that wrote it.
+**Date:** 1 November 2026 (UTC), kept current since. **Last updated:** 2 November 2026, midday UTC. Release 1.1 is delivered in code (AT-6 #25, AT-7 #27, AT-8 #29); it goes live when the owner presses Run workflow; H-1 has not started. The owner is moving to Claude Desktop.
 
 ## 1. Where things stand
 
 - **Release 1 is accepted and live** at **https://lms-lego.lmslego.workers.dev** (owner acceptance 1 November 2026). Details and evidence: [CURRENT-PROGRESS.md](../CURRENT-PROGRESS.md).
-- **In progress: release 1.1 "Keep the space tidy"** ([contract](09-CONTRACT-R1.1.md), approved 2 November 2026 by the delegate): AT-6 delivered (#25), AT-7 delivered (#27); **AT-8 (build task 12) at pull request #29**: red `26df8eb` and `99af13f`, green `066acae`, still needing the Lead check, a Verifier and the merge, unless [CURRENT-PROGRESS.md](../CURRENT-PROGRESS.md) already records it delivered. Then hardening task H-1 (not started). Then the owner presses Run workflow to put release 1.1 live. The current task and its pull request are always named at the top of [CURRENT-PROGRESS.md](../CURRENT-PROGRESS.md).
+- **Release 1.1 "Keep the space tidy" is delivered in code** ([contract](09-CONTRACT-R1.1.md)): AT-6 (#25), AT-7 (#27), AT-8 (#29). **It is not live until the owner presses Run workflow**; the live check after that is listed in [CURRENT-PROGRESS.md](../CURRENT-PROGRESS.md). Next team task: hardening task H-1 (Workers Logs safely), not started.
 - Next after that by the [roadmap](05-ROADMAP.md): release 2 (guardians and exam results) when Mesk School has used the product for one term, or earlier if the school asks.
 
 ## 2. Read in this order
@@ -46,7 +46,7 @@ Templates: [Builder brief](templates/BUILDER-BRIEF.md), [Verifier brief](templat
 | File storage | Cloudflare R2 `lms-lego-files` (owner's card on file, free up to 10 GB) |
 | Password strength | `PASSWORD_ITERATIONS` = 10,000 in `wrangler.jsonc` (owner decision B); move to 100,000 with the $5 plan (decision A) when a second organization joins |
 | Deploy | GitHub → Actions → `deploy` → Run workflow on `main`. Manual only; secrets `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` are the owner's, in GitHub repository secrets; nobody reads them |
-| Last good deploy | run 41361374176 on `258bbdb`, version `3d84e561` |
+| Last good deploy | run 41361374176 on `258bbdb`, version `3d84e561` (release 1). `main` now holds release 1.1, not yet deployed. |
 | Rollback | `npx wrangler rollback` with the owner's credentials, or one click in the Cloudflare dashboard (Worker → Deployments) |
 | Owner lost password and recovery code | `node scripts/owner-last-resort.mjs` on the owner's computer, then the one printed `wrangler d1 execute --remote` line, then `/recover` (README) |
 | Health | Cloudflare → Workers & Pages → `lms-lego` → Metrics (CPU time, errors). At acceptance: CPU 3 ms, 0 errors |
