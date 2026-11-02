@@ -1,6 +1,6 @@
 # Current progress
 
-## Current state, 2 November 2026 (midday UTC): release 1.1 delivered in code, waiting for the owner's deploy press; owner moving to Claude Desktop
+## Current state, 2 November 2026 (11:35 UTC): RELEASE 1.1 LIVE; owner's live check next; owner moving to Claude Desktop
 
 **What is true now**
 
@@ -9,9 +9,9 @@
   - **AT-6, the admin corrects a person** (#25, `293294e`). Search; correct name and mobile number (old reset links die); end dates; End access now (atomic); Ended section; Restore.
   - **AT-7, the admin tidies groups and subjects** (#27, `cba9fba`). Renames; removing a learner or unassigning a group takes effect on every link, including cached files. Also the AT-6 follow-ups: ended people get no reset link or password; session refresh cannot revive an ended session; `/home` marks ended spaces.
   - **AT-8, the publisher corrects content safely** (#29, `e571904`). Rename; replace a file in place; remove and restore through "Recently removed", where nothing is deleted. A guard proves removed content never reaches a learner. The Arabic rename heading is clean.
-- **Not live yet.** `main` holds release 1.1; the live site still runs release 1.
+- **Release 1.1 is live.** The owner pressed Run workflow: deploy run 41437034787 on `71de46b` applied migrations 0005 and 0006 to the live database, deployed version `9d8f2430`, and passed the smoke check (redirect to sign-in, cross-origin posts refused, test hooks absent).
 
-**Next step (owner):** press **Run workflow** on the `deploy` workflow (GitHub → Actions → deploy → main). Migrations 0005 and 0006 are additive and apply before the new code. Then a 10-minute live check at Mesk School:
+**Next step (owner):** a 10-minute live check at Mesk School, then tell the team it passed (release 1.1 accepted) or what looked wrong:
 1. As the admin, search a person, correct a name, end one learner's access now, then restore it.
 2. Rename the group and a subject.
 3. As Hadeer, rename a lesson, replace a PDF, remove a material, then restore it from "Recently removed".
@@ -27,7 +27,7 @@
 - Username and role cannot be corrected (Later).
 - On a code rollback, removed items show again (nothing is lost).
 
-**Waiting on the human owner:** the deploy press and the live check above. Welcome any time: subject names from Hadeer and Shimaa, the Arabic kit-label pass, the school's feedback.
+**Waiting on the human owner:** the live check above. Welcome any time: subject names from Hadeer and Shimaa, the Arabic kit-label pass, the school's feedback.
 
 ## Earlier on 2 November 2026 (morning): release 1.1 approved and in build (historical)
 
