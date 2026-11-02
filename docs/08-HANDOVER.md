@@ -1,11 +1,11 @@
 # Handover: continuing LMS Lego from Claude Desktop (or any new session)
 
-**Date:** 1 November 2026 (UTC), kept current since. **Last updated:** 2 November 2026 (AT-6 delivered; build task 11, AT-7, started). **Written by:** the founding Claude Code cloud session, acting as owner's delegate, Project Lead and Product Manager (decision 002). Everything needed to continue is in this repository; nothing depends on the cloud session that wrote it.
+**Date:** 1 November 2026 (UTC), kept current since. **Last updated:** 2 November 2026 (AT-6 and AT-7 delivered; build task 12, AT-8, started). **Written by:** the founding Claude Code cloud session, acting as owner's delegate, Project Lead and Product Manager (decision 002). Everything needed to continue is in this repository; nothing depends on the cloud session that wrote it.
 
 ## 1. Where things stand
 
 - **Release 1 is accepted and live** at **https://lms-lego.lmslego.workers.dev** (owner acceptance 1 November 2026). Details and evidence: [CURRENT-PROGRESS.md](../CURRENT-PROGRESS.md).
-- **In progress: release 1.1 "Keep the space tidy"** ([contract](09-CONTRACT-R1.1.md), approved 2 November 2026 by the delegate): AT-6 delivered (#25); AT-7 (build task 11) in build; then AT-8, then hardening task H-1. The current task and its pull request are always named at the top of [CURRENT-PROGRESS.md](../CURRENT-PROGRESS.md).
+- **In progress: release 1.1 "Keep the space tidy"** ([contract](09-CONTRACT-R1.1.md), approved 2 November 2026 by the delegate): AT-6 delivered (#25), AT-7 delivered (#27); AT-8 (build task 12) in build; then hardening task H-1; then the owner presses Run workflow to put release 1.1 live. The current task and its pull request are always named at the top of [CURRENT-PROGRESS.md](../CURRENT-PROGRESS.md).
 - Next after that by the [roadmap](05-ROADMAP.md): release 2 (guardians and exam results) when Mesk School has used the product for one term, or earlier if the school asks.
 
 ## 2. Read in this order

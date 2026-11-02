@@ -13,12 +13,15 @@
 **Delivered in release 1.1 so far:**
 - **AT-6, the admin corrects a person** (#25, merge `293294e`, 2 November 2026). It adds search, correcting a name and mobile number (open reset links die), end dates, End access now (one atomic change; sessions and links stop), an Ended section, and Restore. Lead ACCEPTED; Verifier PASS; CI green on `main`.
 
-**Active priority:** build task 11, **AT-7, the admin tidies groups and subjects.** It carries three small AT-6 follow-ups from the Verifier:
-- refuse reset-link and password actions for an ended person;
-- guard the session refresh against an End access race;
-- mark ended spaces on `/home`.
+- **AT-7, the admin tidies groups and subjects** (#27, merge `cba9fba`, 2 November 2026). Renaming groups and subjects is bounded on the server. Removing a learner or unassigning a group takes effect on every direct link, including cached files, and re-adding restores everything. Also delivered, from the AT-6 Verifier: ended people are refused reset links and passwords, the session refresh can no longer revive an ended session, and `/home` marks ended spaces. Lead ACCEPTED; Verifier PASS; CI green on `main`.
 
-Then AT-8, then H-1.
+**Active priority:** build task 12, **AT-8, the publisher corrects content safely**, the last acceptance test of release 1.1:
+- rename content, and replace a file in place;
+- remove and restore items through "Recently removed", where every removal is reversible;
+- removed content never reaches a learner, proven by a guard;
+- includes the Arabic rename heading tidy-up.
+
+Then hardening task H-1, then the owner's one press of Run workflow for release 1.1.
 
 **Note for whoever waits on CI:** the full suite now takes about 11 minutes, so wait at least 15 minutes for `main` before reading a result.
 
