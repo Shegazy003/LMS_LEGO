@@ -150,6 +150,20 @@ jobs:
       - name: Password strength - stored per password, upgraded at sign-in, production at the decided value
         if: success() || failure()
         run: npm run test:password-strength
+      # Hardening task H-1 (contract section 4): Workers Logs on with request
+      # logs off and the sampling stated against the free plan; no product log
+      # line holds a secret; a password change always beats the sign-in
+      # re-hash. All three run the product in this process or read the
+      # configuration: no Cloudflare account.
+      - name: H1-1 H1-2 Workers Logs on, request logs off, sampling within the free plan
+        if: success() || failure()
+        run: npm run test:h1:logs
+      - name: H1-3 guard - no product log line holds a password, a token, a full mobile number or a session id
+        if: success() || failure()
+        run: npm run test:guard:no-secrets
+      - name: H1-4 the sign-in re-hash never beats a concurrent password change
+        if: success() || failure()
+        run: npm run test:guard:rehash-race
       - name: Upload evidence (screenshots, reports)
         if: always() && hashFiles('evidence/**') != ''
         uses: actions/upload-artifact@v4

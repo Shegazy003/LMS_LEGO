@@ -25,6 +25,7 @@ import {
   findFile, findLesson, lessonMaterials, outline, readableSubject, subjectsForLearner, subjectsForPublisher, type SubjectRow,
 } from './learning.ts';
 import { externalUrl } from './links.ts';
+import { logError } from './log.ts';
 import { normaliseCountryCode, normaliseMobile } from './phone.ts';
 import {
   addChapter, addLesson, addMaterial, editableChapter, editableLesson, editableMaterial, editableSubject, isDirection,
@@ -82,7 +83,7 @@ async function flushUsage(d1: D1Database, batch: FlushBatch): Promise<void> {
     getMeter().recordWrites(res.meta.rows_written ?? 0, now()); // the flush is a write too
   } catch (err) {
     getMeter().restore(batch);
-    console.error('usage flush failed', err);
+    logError('usage flush failed', err);
   }
 }
 
@@ -119,9 +120,23 @@ async function ownerExists(db: Db): Promise<boolean> {
   return (await db.first('SELECT 1 AS one FROM user WHERE is_owner = 1')) !== null;
 }
 
-async function startSession(c: C, userId: string): Promise<void> {
+/** Starts a sign-in. Given the stored password hash a sign-in was checked
+ * against, the session is written only if that hash is still the stored one,
+ * in the same statement: a password changed since (a reset link, the admin,
+ * the person's own change) wins, and the old password starts nothing
+ * (hardening task H-1, test/guards/rehash-race.test.ts). Returns whether a
+ * session was started. */
+async function startSession(c: C, userId: string, checkedHash?: string): Promise<boolean> {
   const token = randomToken();
-  await c.get('db').run('INSERT INTO session (id, user_id, expires_at) VALUES (?, ?, ?)', await tokenHash(token), userId, now() + SESSION_IDLE_MS);
+  const id = await tokenHash(token);
+  const expires = now() + SESSION_IDLE_MS;
+  const written = checkedHash === undefined
+    ? await c.get('db').run('INSERT INTO session (id, user_id, expires_at) VALUES (?, ?, ?)', id, userId, expires)
+    : await c.get('db').run(
+      'INSERT INTO session (id, user_id, expires_at) SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM user WHERE id = ? AND password_hash = ?)',
+      id, userId, expires, userId, checkedHash,
+    );
+  if (written !== 1) return false;
   setCookie(c, SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: 'Lax',
@@ -129,6 +144,7 @@ async function startSession(c: C, userId: string): Promise<void> {
     secure: new URL(c.req.url).protocol === 'https:',
     maxAge: SESSION_IDLE_MS / 1000,
   });
+  return true;
 }
 
 function loadKit(json: string): KitJson {
@@ -292,9 +308,13 @@ app.post('/signin', async (c) => {
     return page(c, signInPage(t, c.get('lang'), { error: t('signInFailed'), username }), 401);
   }
   await clearUser(db, door);
-  // A hash made at another strength is re-written at the configured one (one write, only then).
-  await rehashIfNeeded(db, user, password, c.get('iterations'));
-  await startSession(c, user.id);
+  // A hash made at another strength is re-written at the configured one (one
+  // write, only then). If the password changed since it was checked, neither
+  // the re-write nor the sign-in happens: the newer password wins.
+  const standing = await rehashIfNeeded(db, user, password, c.get('iterations'));
+  if (standing === null || !(await startSession(c, user.id, standing))) {
+    return page(c, signInPage(t, c.get('lang'), { error: t('signInFailed'), username }), 401);
+  }
   return c.redirect('/');
 });
 
@@ -1738,7 +1758,7 @@ app.onError((err, c) => {
     return page(c, messagePage(t, lang, t('noAccess'), Boolean(c.var.user)), 403);
   }
   if (err instanceof HTTPException && err.status < 500) return err.getResponse();
-  console.error(err);
+  logError('request failed', err);
   return page(c, messagePage(t, lang, t('serverError'), false), 500);
 });
 
