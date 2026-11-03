@@ -33,7 +33,7 @@
 | Builder | a fresh agent per task, in its own git worktree, branch `build/<name>` | Opus |
 | Independent Verifier | a fresh read-only agent per candidate, different model from the Builder | Sonnet |
 
-Templates: [Builder brief](templates/BUILDER-BRIEF.md), [Verifier brief](templates/VERIFIER-BRIEF.md), [Lead checklist](templates/LEAD-CHECKLIST.md). The line: Builder (red commit and red CI run, then green) → Lead stamp on the pull request → Verifier PASS or HOLD → delegate merges bound to the verified sha → green CI on `main` → docs-only record pull request.
+Templates: [Builder brief](templates/BUILDER-BRIEF.md), [Verifier brief](templates/VERIFIER-BRIEF.md), [Lead checklist](templates/LEAD-CHECKLIST.md), [visual pages procedure](templates/VISUAL-PAGES-PROCEDURE.md). The line: Builder (red commit and red CI run, then green) → Lead stamp on the pull request → Verifier PASS or HOLD → delegate merges bound to the verified sha → green CI on `main` → docs-only record pull request.
 
 **The owner's delegation** (decision 002) lets the delegate approve contracts, accept candidates and merge. It does **not** cover accounts, credentials, money, first public publication of something new, or deleting real data: those go to the owner as one RED bundle with a recommendation.
 
@@ -55,7 +55,7 @@ Templates: [Builder brief](templates/BUILDER-BRIEF.md), [Verifier brief](templat
 
 - **Secrets:** the Cloudflare deploy token and account id live only in GitHub repository secrets; the Cloudflare login is the owner's.
 - **The owner's recovery code:** on paper with the owner.
-- **The two visual pages** are published on claude.ai; their source is in [docs/visual](visual/README.md).
+- **The two visual pages** are published on claude.ai; their source is in [docs/visual](visual/README.md). How to keep them current is the generic [visual pages procedure](templates/VISUAL-PAGES-PROCEDURE.md), written to be copied into any project: the triggers, who updates them, what to change, and how to publish to the same link. The Lead does it at every milestone (Lead checklist, step 6).
 - **The founding brainstorm** is in [docs/history](history/README.md).
 - **The parent platform** `Shegazy003/ai-engineering-platform` was read for its manifesto and roles and was never changed.
 
