@@ -19,11 +19,12 @@ function subjectList(space: SpaceView, items: SubjectItem[]): Html {
   )}</ul>`;
 }
 
-/** A learner's home: exactly the published subjects assigned to them. */
-export function learnerHome(t: Label, lang: Lang, space: SpaceView, displayName: string, items: SubjectItem[]): Html {
+/** A learner's home: exactly the published subjects assigned to them, and (release 2) the way to My results. */
+export function learnerHome(t: Label, lang: Lang, space: SpaceView, displayName: string, items: SubjectItem[], results = false): Html {
   const body = html`<p>${t('welcome', { name: displayName })}</p>
 <h2>${t('assignedToYou')} <span class="muted">· ${t('subject')}</span></h2>
-${items.length ? subjectList(space, items) : html`<p id="nothing-yet" class="card message">${t('nothingAssigned')}</p>`}`;
+${items.length ? subjectList(space, items) : html`<p id="nothing-yet" class="card message">${t('nothingAssigned')}</p>`}
+${results ? html`<p><a id="my-results" href="/s/${space.id}/results">${t('myResults')}</a></p>` : ''}`;
   return spacePage(t, lang, space, space.name, body);
 }
 

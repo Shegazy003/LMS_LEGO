@@ -116,7 +116,8 @@ ${parts.length ? '' : html`<p class="card muted">${t('nothingHere')}</p>`}
   <label>${t('add')} ${t('chapter')}<input name="title" required maxlength="${TITLE_MAX}"></label>
   <button type="submit">${t('add')}</button>
 </form>
-${recentlyRemovedLink(t, space, subject.id)}`;
+${recentlyRemovedLink(t, space, subject.id)}
+<p><a id="exam-list-link" href="${action}/marks">${t('examList')}</a></p>`;
   return spacePage(t, lang, space, subject.title, body);
 }
 

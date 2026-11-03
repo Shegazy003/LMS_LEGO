@@ -60,7 +60,15 @@ import { guardianHome, guardianLearnerPage, type LearnerCard } from './views/gua
 import {
   SEGMENT, chapterPage, lessonEditor, materialPage, publisherHome, removeConfirmPage, removedPage, subjectEditor, type EditorNotice,
 } from './views/publish.ts';
-import { resetDeadPage, resetDonePage, resetPage, type ResetSpace } from './views/reset.ts';
+import { resetAlreadyChangedPage, resetDeadPage, resetDonePage, resetPage, type ResetSpace } from './views/reset.ts';
+import {
+  confirmPage, examListPage, marksMessagePage, marksPage, myResultsPage, resultPage,
+  type ConfirmRowView, type MarkRowView, type MarksNotice, type NewExamValues,
+} from './views/exams.ts';
+import {
+  createExam, editableExam, examsOfSubject, markText, ownResult, ownResults, publishRows, readMaxMark, readRow, resultsOfExam, rosterOf, saveDraft,
+  secondIds, type DraftValue, type ExamRow, type ResultRow, type RosterRow,
+} from './exams.ts';
 import { accessEndedPage, adminHome, membershipsPage, type MembershipItem, type SpaceView } from './views/space.ts';
 import { isSameOrigin } from './origin.ts';
 import { logoKey, saveTheme, storedLogoKey } from './theme.ts';
@@ -104,7 +112,7 @@ async function storedBytes(bucket: R2Bucket): Promise<number> {
 // -------------------------------------------------------------- helpers ----
 const label = (c: C, kit?: KitJson) => makeLabel(c.get('lang'), kit);
 
-function page(c: C, body: Html, status: 200 | 400 | 401 | 403 | 404 | 410 | 413 | 429 | 500 = 200) {
+function page(c: C, body: Html, status: 200 | 400 | 401 | 403 | 404 | 409 | 410 | 413 | 429 | 500 = 200) {
   c.header('cache-control', 'no-store');
   return c.html(body, status);
 }
@@ -708,7 +716,7 @@ use('/s/:spaceId/*', async (c, next) => {
 // /s/<space>/publish. Anyone without that role today gets 403 with the plain
 // refusal, before any page is looked up (so unknown addresses there are 403
 // too, not 404).
-const requireSpaceRole = (role: 'admin' | 'publisher' | 'guardian'): MiddlewareHandler<AppEnv> => async (c, next) => {
+const requireSpaceRole = (role: 'admin' | 'publisher' | 'guardian' | 'learner'): MiddlewareHandler<AppEnv> => async (c, next) => {
   if (!c.get('space').roles.includes(role)) return refuse(c, 403, 'noAccess');
   await next();
 };
@@ -717,6 +725,8 @@ use('/s/:spaceId/admin/*', requireSpaceRole('admin'));
 use('/s/:spaceId/publish/*', requireSpaceRole('publisher'));
 // Release 2 (R2-a): the guardian's pages live under /s/<space>/linked.
 use('/s/:spaceId/linked/*', requireSpaceRole('guardian'));
+// Release 2 (R2-b): a learner's own results live under /s/<space>/results.
+use('/s/:spaceId/results/*', requireSpaceRole('learner'));
 
 function spaceView(space: CurrentSpace): SpaceView {
   return {
@@ -747,8 +757,9 @@ async function renderPublisherHome(c: C) {
 async function renderLearnerHome(c: C) {
   const { t, lang, view } = spaceLabel(c);
   const user = c.get('user')!;
-  const subjects = c.get('space').roles.includes('learner') ? await subjectsForLearner(c.get('db'), view.id, user.id) : [];
-  return page(c, learnerHome(t, lang, view, user.display_name, subjects));
+  const learner = c.get('space').roles.includes('learner');
+  const subjects = learner ? await subjectsForLearner(c.get('db'), view.id, user.id) : [];
+  return page(c, learnerHome(t, lang, view, user.display_name, subjects, learner));
 }
 
 // The guardian home (release 2, R2-a): every learner actively linked to this
@@ -789,6 +800,23 @@ app.get('/s/:spaceId/linked/:learnerId', async (c) => {
   const learner = await linkedLearner(db, view.id, c.get('user')!.id, c.req.param('learnerId'), now());
   if (!learner) return refuse(c, 403, 'noAccess');
   return page(c, guardianLearnerPage(t, lang, view, { learner, subjects: await subjectsSeenBy(db, view.id, learner.id) }));
+});
+
+// My results (release 2, R2-b, AT-11a to 11c), behind the learner gate: the
+// own published results of the person signed in, found from that person only.
+// One result's address answers the same 403 page, byte for byte, for anything
+// that is not one of the viewer's own published results: another person's,
+// a draft, another space's, or no such row.
+app.get('/s/:spaceId/results', async (c) => {
+  const { t, lang, view } = spaceLabel(c);
+  return page(c, myResultsPage(t, lang, view, await ownResults(c.get('db'), view.id, c.get('user')!.id)));
+});
+
+app.get('/s/:spaceId/results/:resultId', async (c) => {
+  const { t, lang, view } = spaceLabel(c);
+  const result = await ownResult(c.get('db'), view.id, c.get('user')!.id, c.req.param('resultId'));
+  if (!result) return refuse(c, 403, 'noAccess');
+  return page(c, resultPage(t, lang, view, result));
 });
 
 app.get('/s/:spaceId/logo', (c) => serveLogo(c, c.get('space').id, c.get('space').kit.theme.logoKey));
@@ -1368,10 +1396,42 @@ app.get('/r/:token', async (c) => {
   return page(c, resetPage(r.t, r.lang, r.space, { action: new URL(c.req.url).pathname }));
 });
 
+// The retry of a form whose first send changed the password but never got its
+// answer back (the client cut it off, HTTP 499; release 2, AT-10g). On a link
+// that this very password change used, within its 30 minutes, the same
+// username with the password now stored says so plainly, in both languages of
+// the space, instead of "link gone". Anything else on a used link (another
+// username or password, an expired link) gets the usual dead-link page; a
+// wrong guess counts toward the rate limit like a failed sign-in, so a used
+// link is no way to try passwords.
+async function retriedReset(c: C, r: ResetPlace) {
+  if (resetLinkState(r.link, now()) !== 'used' || now() >= Number(r.link.expires_at)) return null;
+  const db = c.get('db');
+  const body = await c.req.parseBody();
+  const username = typedUsername(field(body, 'username'));
+  const password = typeof body.new_password === 'string' ? body.new_password : '';
+  if (username !== r.link.username || password.length < MIN_PASSWORD) return null;
+  const door = await openDoor(db, r.link.username, clientAddress(c));
+  if (attemptBlock(door.rows, now())) return null;
+  const user = await db.first<{ password_hash: string }>('SELECT password_hash FROM user WHERE id = ?', r.link.user_id);
+  if (!user || !(await verifyPassword(password, user.password_hash))) {
+    await recordFailure(db, door, now());
+    return null;
+  }
+  const kit = loadKit(r.link.kit_json);
+  const [first, second] = kit.languages;
+  return page(c, resetAlreadyChangedPage(
+    { t: makeLabel(first, kit), lang: first },
+    second ? { t: makeLabel(second, kit), lang: second } : null,
+    r.space,
+  ));
+}
+
 app.post('/r/:token', async (c) => {
   const db = c.get('db');
   const r = await resetPlace(c);
-  if (!r || resetLinkState(r.link, now()) !== 'usable') return deadLink(c, r);
+  if (!r) return deadLink(c, r);
+  if (resetLinkState(r.link, now()) !== 'usable') return (await retriedReset(c, r)) ?? deadLink(c, r);
   const { t, lang, space, link } = r;
   const action = new URL(c.req.url).pathname;
   const body = await c.req.parseBody();
@@ -1772,6 +1832,170 @@ app.get('/s/:spaceId/publish/edit/:subjectId/removed', async (c) => {
   if (!subject) return refuse(c, 403, 'noAccess');
   const { t, lang, view } = spaceLabel(c);
   return page(c, removedPage(t, lang, view, { subject, items: await recentlyRemoved(db, view.id, subject.id) }));
+});
+
+// ------------------------------------------------- exams and marks (R2-b) ----
+// The publisher's exams and marks (release 2, AT-10), under /s/<space>/publish
+// behind the publisher gate. Each handler finds the subject or the exam only
+// inside this space and only when this publisher is responsible for its
+// subject (src/exams.ts), and each write repeats that check in its own
+// statement; anything else answers the same 403. Publishing takes two steps:
+// Publish on the marks page saves the typed marks as the draft and shows a
+// page listing every row (a POST answer: a plain link never publishes); its
+// confirming button publishes that list in one atomic batch.
+async function renderExamList(c: C, subject: SubjectRow, extra: { values?: NewExamValues; error?: string } = {}, status: 200 | 400 = 200) {
+  const { t, lang, view } = spaceLabel(c);
+  const exams = await examsOfSubject(c.get('db'), view.id, c.get('user')!.id, subject.id);
+  return page(c, examListPage(t, lang, view, { subject, exams, ...extra }), status);
+}
+
+app.get('/s/:spaceId/publish/edit/:subjectId/marks', async (c) => {
+  const subject = await editableSubject(c.get('db'), c.get('space').id, c.get('user')!.id, c.req.param('subjectId'));
+  if (!subject) return refuse(c, 403, 'noAccess');
+  return renderExamList(c, subject);
+});
+
+app.post('/s/:spaceId/publish/edit/:subjectId/marks', async (c) => {
+  const db = c.get('db');
+  const spaceId = c.get('space').id;
+  const userId = c.get('user')!.id;
+  const subject = await editableSubject(db, spaceId, userId, c.req.param('subjectId'));
+  if (!subject) return refuse(c, 403, 'noAccess');
+  const { t } = spaceLabel(c);
+  const body = await c.req.parseBody();
+  const values: NewExamValues = { title: field(body, 'title'), exam_date: field(body, 'exam_date'), max_mark: field(body, 'max_mark') };
+  const title = titleFrom(body);
+  const max = readMaxMark(values.max_mark ?? '');
+  const error = !title ? t('titleInvalid') : !isIsoDate(values.exam_date ?? '') ? t('examDateInvalid') : max === null ? t('maxMarkInvalid') : undefined;
+  if (error || !title || max === null) return renderExamList(c, subject, { values, error }, 400);
+  const id = await createExam(db, { spaceId, publisherId: userId, subjectId: subject.id, title, date: values.exam_date!, max, now: now() });
+  if (!id) return refuse(c, 403, 'noAccess');
+  return c.redirect(`/s/${spaceId}/publish/marks/${id}`, 303);
+});
+
+/** An exam of this publisher, with today's list of its subject and its stored rows; null when the exam is not theirs. */
+interface MarksPlace {
+  exam: ExamRow;
+  roster: RosterRow[];
+  tails: Map<string, string>;
+  results: Map<string, ResultRow>;
+}
+
+async function marksPlace(c: C): Promise<MarksPlace | null> {
+  const db = c.get('db');
+  const spaceId = c.get('space').id;
+  const userId = c.get('user')!.id;
+  const exam = await editableExam(db, spaceId, userId, c.req.param('examId') ?? '');
+  if (!exam) return null;
+  const roster = await rosterOf(db, spaceId, exam.subject_id, now());
+  const results = new Map((await resultsOfExam(db, spaceId, userId, exam.id)).map((r) => [r.learner_user_id, r]));
+  return { exam, roster, tails: secondIds(roster), results };
+}
+
+const MARKS_DONE: Record<string, MarksNotice> = { draft: 'draftSaved', published: 'marksPublished' };
+
+/** The marks page; typed values and errors come from a refused form, otherwise from the stored draft. */
+function renderMarks(c: C, m: MarksPlace, typed?: Map<string, { typed: string; absent: boolean; error?: string }>, error?: string) {
+  const { t, lang, view } = spaceLabel(c);
+  const rows: MarkRowView[] = m.roster.map((learner) => {
+    const stored = m.results.get(learner.id);
+    const tail = m.tails.get(learner.id) ?? '';
+    if (stored?.published_at != null) return { learner, tail, typed: '', absent: false, published: stored };
+    const entry = typed?.get(learner.id);
+    if (entry) return { learner, tail, ...entry };
+    return { learner, tail, typed: stored?.status === 'marked' ? markText(stored.mark ?? 0) : '', absent: stored?.status === 'absent' };
+  });
+  const notice = c.req.method === 'GET' ? MARKS_DONE[c.req.query('done') ?? ''] : undefined;
+  return page(c, marksPage(t, lang, view, { exam: m.exam, rows, notice, error }), typed ? 400 : 200);
+}
+
+/** The rows to publish now (every learner on today's list whose row is not
+ * published yet), how many people changed since the page the publisher
+ * filled in (`seen`), and a fingerprint of exactly what the page showed. */
+async function confirmation(m: MarksPlace, seen: string[]) {
+  const open = m.roster.filter((l) => m.results.get(l.id)?.published_at == null);
+  const rows: ConfirmRowView[] = open.map((learner) => ({ learner, tail: m.tails.get(learner.id) ?? '', result: m.results.get(learner.id) ?? null }));
+  const current = new Set(m.roster.map((l) => l.id));
+  const before = new Set(seen);
+  const changed = [...before].filter((id) => !current.has(id)).length + [...current].filter((id) => !before.has(id)).length;
+  const shown = JSON.stringify([m.roster.map((l) => l.id), rows.map((r) => [r.learner.id, r.result?.status ?? '', r.result?.mark ?? ''])]);
+  return { rows, changed, version: await tokenHash(shown) };
+}
+
+function renderConfirm(c: C, m: MarksPlace, v: Awaited<ReturnType<typeof confirmation>>, status: 200 | 409 = 200, error?: string) {
+  const { t, lang, view } = spaceLabel(c);
+  return page(c, confirmPage(t, lang, view, { exam: m.exam, ...v, learners: m.roster.map((l) => l.id), error }), status);
+}
+
+function alreadyPublished(c: C, m: MarksPlace) {
+  const { t, lang, view } = spaceLabel(c);
+  return page(c, marksMessagePage(t, lang, view, m.exam, t('alreadyPublished')), 409);
+}
+
+app.get('/s/:spaceId/publish/marks/:examId', async (c) => {
+  const m = await marksPlace(c);
+  return m ? renderMarks(c, m) : refuse(c, 403, 'noAccess');
+});
+
+// Save draft, or Publish (step one). Every row of the page is read first; any
+// refused row (letters, two decimals, outside 0 to the maximum, a mark and
+// Absent together, and for Publish an empty row) sends the page back with the
+// error beside it, and nothing is saved or published. A row published already
+// is never changed here, and a person who left the list is never saved.
+app.post('/s/:spaceId/publish/marks/:examId', async (c) => {
+  const m = await marksPlace(c);
+  if (!m) return refuse(c, 403, 'noAccess');
+  const { t } = spaceLabel(c);
+  const body = await c.req.parseBody({ all: true });
+  const publishing = field(body, 'action') === 'publish';
+  const seen = [...new Set(fieldList(body, 'learner'))];
+  const onList = new Set(m.roster.map((l) => l.id));
+  const typed = new Map<string, { typed: string; absent: boolean; error?: string }>();
+  const draft: { learnerId: string; value: DraftValue }[] = [];
+  let refused = false;
+  for (const id of seen) {
+    if (!onList.has(id) || m.results.get(id)?.published_at != null) continue;
+    const text = field(body, `mark:${id}`);
+    const absent = field(body, `absent:${id}`) === '1';
+    const row = readRow(text, absent, m.exam.max_mark);
+    const error = row.kind === 'refused' ? row.error : publishing && row.kind === 'empty' ? 'markMissing' as const : undefined;
+    typed.set(id, { typed: text, absent, error: error && t(error, { max: markText(m.exam.max_mark) }) });
+    if (error) refused = true;
+    else if (row.kind !== 'refused') draft.push({ learnerId: id, value: row });
+  }
+  if (refused) return renderMarks(c, m, typed, t('marksRefused'));
+  await saveDraft(c.get('db'), { spaceId: c.get('space').id, publisherId: c.get('user')!.id, examId: m.exam.id, rows: draft, now: now() });
+  if (!publishing) return c.redirect(`/s/${c.get('space').id}/publish/marks/${m.exam.id}?done=draft`, 303);
+  const saved = (await marksPlace(c))!;
+  const v = await confirmation(saved, seen);
+  if (!v.rows.length) return alreadyPublished(c, saved);
+  return renderConfirm(c, saved, v);
+});
+
+// Publish (step two): the confirming tap. It publishes exactly the rows the
+// confirmation page listed, in one batch, each with its history row. If the
+// list or a value changed since that page (another tab saved, a person joined
+// or left), nothing is published and the page is shown again; if those rows
+// are published already (a second tab), it says so and changes nothing.
+app.post('/s/:spaceId/publish/marks/:examId/publish', async (c) => {
+  const m = await marksPlace(c);
+  if (!m) return refuse(c, 403, 'noAccess');
+  const body = await c.req.parseBody({ all: true });
+  const v = await confirmation(m, [...new Set(fieldList(body, 'learner'))]);
+  if (!v.rows.length) return alreadyPublished(c, m);
+  if (v.changed || v.rows.some((r) => !r.result)) return renderConfirm(c, m, v, 409);
+  if (field(body, 'version') !== v.version) return renderConfirm(c, m, v, 409, spaceLabel(c).t('marksChanged'));
+  const db = c.get('db');
+  const spaceId = c.get('space').id;
+  try {
+    await publishRows(db, { spaceId, publisherId: c.get('user')!.id, examId: m.exam.id, rows: v.rows.map((r) => r.result!), now: now() });
+  } catch (err) {
+    // Another tab published these rows in the same moment: nothing of this batch was written.
+    const after = await marksPlace(c);
+    if (after && v.rows.every((r) => after.results.get(r.learner.id)?.published_at != null)) return alreadyPublished(c, after);
+    throw err;
+  }
+  return c.redirect(`/s/${spaceId}/publish/marks/${m.exam.id}?done=published#rows`, 303);
 });
 
 // ------------------------------------------------------------ my account ----

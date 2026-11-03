@@ -68,6 +68,17 @@ label.check{flex-direction:row;align-items:center;gap:8px;font-weight:400}
 .row form{margin:0}
 .share form button{flex:1}
 details.card>summary{cursor:pointer;font-weight:600}
+.marks{list-style:none;padding:0;margin:0;background:#fff;border:1px solid #e3e6ea;border-radius:12px}
+.marks>li{display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;padding:10px 12px;border-bottom:1px solid #eef0f3}
+.marks .who{flex:1 1 9em;min-width:0}
+.marks .who .name{display:block;font-weight:600}
+.marks label.mark{flex-direction:row;align-items:center;gap:6px;font-weight:400}
+.marks input.mark{width:5.5em}
+.marks .row-error{flex-basis:100%;margin:0}
+.marks .group{flex-basis:100%}
+.marks .value{font-weight:700}
+.result .score{font-weight:700;font-size:1.15rem}
+button.plain,a.button.plain{background:#fff;color:#1f6feb;border:1px solid #c9ced6}
 `;
 
 export interface LayoutOptions {
