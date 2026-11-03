@@ -690,9 +690,16 @@ describe('AT-8 the publisher corrects content safely', { concurrency: false }, (
     }
     // One removed material, so the restore addresses point at something restorable.
     assert.equal((await hadeerHttp.post(`${itemPath(ids.practice)}/remove`, {})).status, 303);
+    // One exam with a saved draft (release 2), so the marks and publish addresses point at something publishable.
+    const made = await hadeerHttp.post(`${editorPath()}/marks`, { title: 'Sweep exam', exam_date: today, max_mark: '20' });
+    assert.equal(made.status, 303, 'Hadeer creates an exam');
+    const examId = (made.headers.get('location') ?? '').split('/').pop() ?? '';
+    const learner = (await (await hadeerHttp.get(`${pub()}/marks/${examId}`)).text()).match(/name="learner" value="([^"]+)"/)?.[1] ?? '';
+    assert.ok(learner, 'the marks page lists a learner');
+    assert.equal((await hadeerHttp.post(`${pub()}/marks/${examId}`, { action: 'draft', learner, [`mark:${learner}`]: '17' })).status, 303, 'and saves a draft');
     const real: Record<string, string[]> = {
       subjectId: [ids.math], chapterId: [ids.fractions, ids.decimals], lessonId: [ids.adding, ids.quiz, ids.place],
-      materialId: [ids.worksheet, ids.practice, ids.remember],
+      materialId: [ids.worksheet, ids.practice, ids.remember], examId: [examId],
     };
     const before = await snapshot(worker);
     const stored = await storedBytes();
