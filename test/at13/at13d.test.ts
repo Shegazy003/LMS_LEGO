@@ -1,4 +1,4 @@
-// AT-13d (contract product-contract-r2, R2-a and R2-b pages): every new label and
+// AT-13d (contract product-contract-r2, R2-a, R2-b and R2-c pages): every new label and
 // message exists in Arabic (right to left) and English (left to right),
 // through the dictionary; `Cache-Control: no-store` is present on every
 // guardian page.
@@ -13,6 +13,7 @@ import { makeLabel } from '../../src/labels.ts';
 import { seedKit } from '../../src/kits/seed.ts';
 import { A, B, G1, G2, as, crawl, guardianPaths, privacyWorld, resultPaths, useLanguage, type PrivacyWorld } from './pages.ts';
 import { C, HADEER, personPath } from '../at9/world.ts';
+import { adminResultsPath, correctPath, correctionForm, examEditPath, historyPath } from '../at12/corrections.ts';
 
 /** The dictionary keys added by R2-a. */
 export const R2A_KEYS = [
@@ -30,10 +31,17 @@ export const R2B_KEYS = [
   'myResults', 'resultsNone', 'resultsNote', 'resetAlreadyChanged',
 ] as const;
 
+/** The dictionary keys added by R2-c (results views, corrections and their history, exam locks). */
+export const R2C_KEYS = [
+  'resultsOf', 'resultsAll', 'resultsAllNote', 'correctedOn', 'correct', 'correctTitle', 'correctNote', 'correctNew', 'correctReason',
+  'correctionReasonMissing', 'correctionSame', 'correctionChanged', 'correctionDone', 'historyLink', 'historyTitle', 'historyNow',
+  'historyPublished', 'historyCorrected', 'historyNone', 'examEdit', 'examSave', 'examSaved', 'examLocked', 'examLockedNote', 'maxBelowDraft',
+] as const;
+
 const placeholders = (s: string) => [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
 
 test('AT-13d every new label and message is in the dictionary in Arabic and English, with the same placeholders', () => {
-  for (const key of [...R2A_KEYS, ...R2B_KEYS]) {
+  for (const key of [...R2A_KEYS, ...R2B_KEYS, ...R2C_KEYS]) {
     const en = (UI.en as Record<string, string>)[key];
     const ar = (UI.ar as Record<string, string>)[key];
     assert.ok(en && en.trim(), `en.${key}`);
@@ -133,6 +141,40 @@ describe('AT-13d the running product: language and direction, and no-store, on e
       check('hadeer', lang, { path: 'a refused Publish', status: refused.status, cacheControl: refused.headers.get('cache-control'), body: await refused.text() });
     }
     assert.ok(checked >= 30, `results and marks pages checked: ${checked}`);
+  });
+
+  it('R2-c: every results view and correction page, 200 or refused, Arabic (rtl) and English (ltr), is no-store: the guardian\'s, the admin\'s and the publisher\'s', async () => {
+    let checked = 0;
+    const check = (who: string, lang: 'ar' | 'en', path: string, res: { status: number; cacheControl: string | null; body: string }) => {
+      checked++;
+      assert.equal(res.cacheControl, 'no-store', `${who} ${lang} ${path} (${res.status})`);
+      const html = res.body.match(/<html lang="(\w+)" dir="(\w+)">/);
+      assert.deepEqual(html?.slice(1), [lang, lang === 'ar' ? 'rtl' : 'ltr'], `${who} ${lang} ${path}: language and direction`);
+    };
+    const get = async (c: Awaited<ReturnType<typeof as>>, path: string) => {
+      const res = await c.get(path);
+      return { status: res.status, cacheControl: res.headers.get('cache-control'), body: await res.text() };
+    };
+    const hadeer = await as(w, HADEER);
+    const a = w.ids[A.username];
+    for (const lang of ['ar', 'en'] as const) {
+      await useLanguage(hadeer, lang);
+      await useLanguage(w.admin, lang);
+      for (const path of [historyPath(w, w.exam), `${correctPath(w, w.exam)}?learner=${a}`, `${correctPath(w, w.exam)}?learner=no-such`, historyPath(w, 'no-such-exam')]) {
+        check('hadeer', lang, path, await get(hadeer, path));
+      }
+      const refused = await hadeer.post(correctPath(w, w.exam), correctionForm(a, { mark: '99', reason: '', version: '' }));
+      check('hadeer', lang, 'a refused correction', { status: refused.status, cacheControl: refused.headers.get('cache-control'), body: await refused.text() });
+      const locked = await hadeer.post(examEditPath(w, w.exam), { title: 'x', exam_date: '2026-11-01', max_mark: '20' });
+      check('hadeer', lang, 'a refused exam edit', { status: locked.status, cacheControl: locked.headers.get('cache-control'), body: await locked.text() });
+      for (const path of [adminResultsPath(w), adminResultsPath(w, w.exam), adminResultsPath(w, 'no-such-exam')]) check('admin', lang, path, await get(w.admin, path));
+      for (const person of [G1, G2]) {
+        const c = await as(w, person);
+        await useLanguage(c, lang);
+        for (const path of [`/s/${w.spaceId}/linked/${a}`, `/s/${w.spaceId}/linked/${w.ids[C.username]}`]) check(person.username, lang, path, await get(c, path));
+      }
+    }
+    assert.ok(checked >= 26, `R2-c pages checked: ${checked}`);
   });
 
   it('the admin\'s pages about a guardian\'s links are no-store too', async () => {

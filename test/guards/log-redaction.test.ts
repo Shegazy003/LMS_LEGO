@@ -125,6 +125,9 @@ const MONA = { display_name: 'Mona', username: 'mona.guardian', password: 'mona-
 // Release 2 (R2-b, AT-13c): a publisher, and the marks she enters (section 3: no mark and no learner name in a log line).
 const HODA = { display_name: 'Hoda', username: 'hoda.teacher', password: 'hoda-secret-pass-1', role: 'publisher' as const, mobile: '01020202020' };
 const MARKS = ['13.5', '16.5'];
+// Release 2 (R2-c, AT-13c): a correction of Omar's mark, and its reason.
+const CORRECTED = '17.5';
+const REASON = 'Omar question 3 re-marked';
 
 /** Every written form of a full mobile number (typed with or without spaces, national, international, digits only). */
 function mobileForms(typed: string, countryCode = '+20'): string[] {
@@ -160,7 +163,8 @@ describe('no-secrets guard, part 3: no line the running product writes holds a s
     w = await startInProcess({ PASSWORD_ITERATIONS: '10000' });
     for (const [n, v] of [['owner password', OWNER.password], ['admin password', ADMIN.password], ['Omar password', OMAR.password],
       ['Omar new password', OMAR_NEW], ['Omar latest password', OMAR_LATEST], ['Salma password', SALMA.password], ['Mona password', MONA.password],
-      ['Hoda password', HODA.password], ['a mark', MARKS[0]], ['another mark', MARKS[1]], ['a learner name', OMAR.display_name], ['another learner name', SALMA.display_name]]) secrets.set(n, v);
+      ['Hoda password', HODA.password], ['a mark', MARKS[0]], ['another mark', MARKS[1]], ['a learner name', OMAR.display_name], ['another learner name', SALMA.display_name],
+      ['a corrected mark', CORRECTED], ['a correction reason', REASON]]) secrets.set(n, v);
     for (const [n, m] of [['owner mobile', OWNER.mobile], ['admin mobile', ADMIN.mobile], ['Omar mobile', OMAR.mobile], ['Salma mobile', SALMA.mobile], ['Omar corrected mobile', OMAR_CORRECTED_MOBILE], ['Mona mobile', MONA.mobile], ['Hoda mobile', HODA.mobile]]) {
       mobileForms(m).forEach((f, i) => secrets.set(`${n} (form ${i})`, f));
     }
@@ -256,6 +260,26 @@ describe('no-secrets guard, part 3: no line the running product writes holds a s
     assert.equal(results.status, 200, 'My results');
     assert.ok((await results.text()).includes(`${MARKS[0]} / 20`), 'Omar reads his own mark');
 
+    // Release 2 (R2-c, AT-13c): results views and corrections. Hoda corrects Omar's mark with a
+    // reason; the correction batch fails once on its history row (the learner's name, both marks and
+    // the reason in the message). Mona reads Omar's results on her guardian page and the admin reads
+    // the exam's rows, each failing once on its read. No mark, name or reason may reach a line.
+    const examPath = marks;
+    const correctionPage = await (await hoda.get(`${examPath}/correct?learner=${omarId}`)).text();
+    const version = correctionPage.match(/<form id="correct"[\s\S]*?name="version" value="([^"]*)"/)?.[1] ?? '';
+    const correction = { learner: omarId, mark: CORRECTED, reason: REASON, version };
+    fail(/^\s*INSERT INTO exam_result_history/, ` for ${OMAR.display_name} ${MARKS[0]} -> ${CORRECTED} because ${REASON}`);
+    assert.equal((await hoda.post(`${examPath}/correct`, correction)).status, 500, 'forced failure in the correction batch');
+    assert.equal((await hoda.post(`${examPath}/correct`, correction)).status, 303, 'corrected');
+    fail(/FROM exam_result r JOIN exam e/, ` for ${OMAR.display_name} ${CORRECTED}`);
+    assert.equal((await mona.get(`/s/${spaceId}/linked/${omarId}`)).status, 500, 'forced failure on the guardian\'s results');
+    const monaReads = await mona.get(`/s/${spaceId}/linked/${omarId}`);
+    assert.ok((await monaReads.text()).includes(`${CORRECTED} / 20`), 'Mona reads Omar\'s corrected mark');
+    const examId = examPath.split('/').pop();
+    fail(/FROM exam_result r JOIN exam e/, ` for ${OMAR.display_name} ${CORRECTED} ${REASON}`);
+    assert.equal((await admin.get(`/s/${spaceId}/admin/results/${examId}`)).status, 500, 'forced failure on the admin\'s results');
+    assert.equal((await admin.get(`/s/${spaceId}/admin/results/${examId}`)).status, 200, 'the admin reads the rows');
+
     // Forced failure: correcting Omar's mobile number fails on the row that carries the new number.
     fail(/^\s*UPDATE user SET display_name = \?, mobile = \?/);
     const corrected = await admin.post(`${omarPath}/correct`, { display_name: OMAR.display_name, mobile: OMAR_CORRECTED_MOBILE, valid_until: utcDatePlusDays(30) });
@@ -317,7 +341,7 @@ describe('no-secrets guard, part 3: no line the running product writes holds a s
 
   it('the run made the product log (each forced failure wrote its line)', () => {
     const parsed = lines.flatMap((l) => (l.startsWith('{') ? [JSON.parse(l) as { event: string }] : []));
-    assert.equal(parsed.filter((p) => p.event === 'request failed').length, 8, lines.join('\n'));
+    assert.equal(parsed.filter((p) => p.event === 'request failed').length, 11, lines.join('\n'));
     assert.equal(parsed.filter((p) => p.event === 'usage flush failed').length, 1, lines.join('\n'));
   });
 

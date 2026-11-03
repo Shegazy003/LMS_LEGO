@@ -15,7 +15,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { UI } from '../../src/i18n/ui.ts';
 import type { World } from '../at9/world.ts';
-import { A, B, G1, G2, as, crawl, guardianPaths, privacyWorld, useLanguage, visible } from './pages.ts';
+import { A, B, G1, G2, as, crawl, guardianPaths, privacyWorld, resultsSection, useLanguage, visible } from './pages.ts';
 import { HADEER } from '../at9/world.ts';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
@@ -84,8 +84,14 @@ describe('AT-13a the running product: guardian pages carry no activity, and open
     await w?.close();
   });
 
+  // From R2-c a guardian's learner page carries that learner's results (AT-11d, AT-12a): exam
+  // dates, marks and "Corrected on <date>". Those are not lesson activity. The whole page is
+  // still scanned for every phrase; the results section's digits are allowed only in exactly
+  // those forms (resultsSection, test/at13/pages.ts), and the rest of the page still carries
+  // no date, count, time or number at all.
   it('every page a guardian reaches (G1, G2 and the dual-role B), in Arabic and in English: no phrase, no date, no count, no time', async () => {
     let scanned = 0;
+    let sections = 0;
     for (const person of [G1, G2, B]) {
       const c = await as(w, person);
       for (const lang of ['ar', 'en'] as const) {
@@ -93,11 +99,24 @@ describe('AT-13a the running product: guardian pages carry no activity, and open
         const pages = await crawl(c, guardianPaths(w));
         for (const p of pages.filter((x) => x.contentType.startsWith('text/html') && x.path.includes('/linked'))) {
           scanned++;
-          assert.deepEqual(activityIn(visible(p.body)), [], `${person.username} ${lang} ${p.path}`);
+          const phrases = activityIn(visible(p.body)).filter((h) => !h.startsWith('a '));
+          assert.deepEqual(phrases, [], `${person.username} ${lang} ${p.path}: no lesson-activity phrase`);
+          const { rest, strays } = resultsSection(p.body);
+          if (rest !== p.body) sections++;
+          assert.deepEqual(strays, [], `${person.username} ${lang} ${p.path}: the results section holds digits only in its exam dates, scores and Corrected lines`);
+          assert.deepEqual(activityIn(visible(rest)), [], `${person.username} ${lang} ${p.path}`);
         }
       }
     }
     assert.ok(scanned >= 12, `guardian pages scanned: ${scanned}`);
+    assert.ok(sections >= 6, `results sections checked: ${sections}`);
+  });
+
+  test('AT-13a scan self-check (R2-c): the results section allows exam dates, scores and Corrected lines, and nothing else with a digit', () => {
+    const ok = '<section id="results" data-learner="x"><h2 id="results-title">Results: Salma</h2><ol><li class="card result"><span class="muted date" dir="ltr">2026-11-12</span><span class="score" dir="auto">17.5 / 20</span><span class="corrected">Corrected on 2026-11-03</span></li><li class="card result"><span class="score" dir="auto">Absent</span></li></ol></section>';
+    assert.deepEqual(resultsSection(`<p>a</p>${ok}`), { rest: '<p>a</p> ', strays: [] });
+    assert.deepEqual(resultsSection(ok.replace('Results: Salma', 'Last opened 3 times')).strays, ['3']);
+    assert.deepEqual(resultsSection(ok.replace('Corrected on 2026-11-03', 'Corrected at 10:15 on 2026-11-03')).strays, ['10:15', '2026-11-03']);
   });
 
   it('a learner opening their subject, lesson and file (twice), and a guardian, admin and publisher looking, store nothing', async () => {

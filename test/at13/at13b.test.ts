@@ -1,4 +1,4 @@
-// AT-13b (contract product-contract-r2, R2-a and R2-b pages): the forbidden-string scan
+// AT-13b (contract product-contract-r2, R2-a, R2-b and R2-c pages): the forbidden-string scan
 // finds nothing on every page and response body a guardian or learner can
 // reach, in Arabic and English, including the dual-role person. Forbidden
 // (section 3): any other person's mobile number or digits of it beyond the
@@ -19,10 +19,18 @@ import { issueLink } from '../support/admin.ts';
 import { ADMIN, C, D, HADEER, KARIM, OTHER_ADMIN, SHIMAA, personPath } from '../at9/world.ts';
 import { OWNER } from '../support/seed.ts';
 import { A, B, G1, G2, crawl, guardianPaths, privacyWorld, resultPaths, useLanguage, type PrivacyWorld } from './pages.ts';
+import { corrected } from '../at12/corrections.ts';
 
 const EVERYONE = [ADMIN, OTHER_ADMIN, HADEER, SHIMAA, A, B, C, D, KARIM, G1, G2];
 // R2-b: each learner's published score, which only that learner may read (AT-11a); A's draft, which nobody may.
-const SCORES: [string, string][] = [[A.username, '17 / 20'], [C.username, '12 / 20'], [D.username, '15.5 / 20'], ['nobody (A\'s draft)', '9 / 10']];
+// R2-c: a guardian reads the scores of the learners linked to them (AT-11d): A's score is A's and her
+// guardians' (G1, G2 and the dual-role B). Before the scan Hadeer corrects A's 17 to 18 with a reason
+// (AT-12a): the previous value and the reason are forbidden to every guardian and learner.
+const REASON = 'Question 4 re-marked after review';
+const SCORES: [string[], string][] = [
+  [[A.username, G1.username, G2.username, B.username], '18 / 20'], [[C.username], '12 / 20'], [[D.username], '15.5 / 20'],
+  [[], '9 / 10'], [[], '17 / 20'], [[], REASON],
+];
 
 /** Every written form of a full mobile number, and its last eight digits (more than the four a page may show). */
 function mobileForms(typed: string, countryCode = '20'): string[] {
@@ -43,6 +51,7 @@ describe('AT-13b the forbidden-string scan finds nothing a guardian or learner c
       assert.equal(issued.status, 200);
       resetTokens.push(issued.token);
     }
+    await corrected(w, w.hadeer, w.exam, w.ids[A.username], { mark: '18', reason: REASON });
   });
   after(async () => {
     await w?.close();
@@ -63,7 +72,7 @@ describe('AT-13b the forbidden-string scan finds nothing a guardian or learner c
       }
       forbidden.set('the session value', session);
       resetTokens.forEach((t, i) => forbidden.set(`reset token ${i}`, t));
-      for (const [owner, score] of SCORES) if (owner !== viewer.username) forbidden.set(`the score of ${owner}`, score);
+      for (const [readers, score] of SCORES) if (!readers.includes(viewer.username)) forbidden.set(`"${score}", which ${readers.join(', ') || 'nobody'} may read`, score);
 
       const typed = [
         ...Object.values(w.ids).map((id) => `/s/${w.spaceId}/linked/${id}`),
