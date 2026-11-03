@@ -55,7 +55,7 @@ Templates: [Builder brief](templates/BUILDER-BRIEF.md), [Verifier brief](templat
 
 - **Secrets:** the Cloudflare deploy token and account id live only in GitHub repository secrets; the Cloudflare login is the owner's.
 - **The owner's recovery code:** on paper with the owner.
-- **The two visual pages** are published on claude.ai; their source is in [docs/visual](visual/README.md).
+- **The two visual pages** are published on claude.ai; their source is in [docs/visual](visual/README.md). That README is also **the procedure for keeping them current**: the triggers, who updates them, what to change, and how to publish to the same link. The Lead does it at every milestone (Lead checklist, step 6).
 - **The founding brainstorm** is in [docs/history](history/README.md).
 - **The parent platform** `Shegazy003/ai-engineering-platform` was read for its manifesto and roles and was never changed.
 
