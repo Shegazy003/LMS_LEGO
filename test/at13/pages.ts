@@ -18,7 +18,10 @@ export interface Reached {
 export async function privacyWorld(): Promise<World> {
   const w = await buildWorld({ links: true, extra: [{ username: B.username, role: 'guardian', valid_until: utcDatePlusDays(30) }] });
   const res = await linkThrough(w, w.ids[B.username], w.ids[A.username]);
-  if (res.status !== 303) throw new Error(`B linked to A: ${res.status}`);
+  if (res.status !== 303) {
+    await w.close();
+    throw new Error(`B linked to A: ${res.status}`);
+  }
   return w;
 }
 

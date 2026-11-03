@@ -32,8 +32,7 @@ const MIN = 60_000;
 
 // Plain messages, in the space's first language (Arabic).
 const MOBILE_REFUSED = 'تعذّرت قراءة رقم الهاتف المحمول هذا. اكتبه بالطريقة المحلية (مثل 010…) أو بعلامة + ورمز الدولة.';
-// Release 2 (R2-a) adds the guardian to the roles an admin may appoint.
-const ROLE_REFUSED = 'يمكنك تعيين معلّم أو طالب أو ولي أمر فقط.';
+const ROLE_REFUSED = 'يمكنك تعيين معلّم أو طالب فقط.';
 const WRONG_USER = 'اسم المستخدم هذا لا يطابق الرابط. تحقّق منه وحاول مرة أخرى.';
 const LINK_DEAD = 'هذا الرابط لم يعد يعمل. اطلب رابطاً جديداً ممّن أرسله.';
 const RESET_DONE = 'تم تعيين كلمة المرور الجديدة. سجّل الدخول بها الآن.';

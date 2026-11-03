@@ -67,6 +67,16 @@ export function linkThrough(w: World, guardianId: string, learnerId: string, cli
 
 export async function buildWorld(opts: { guardians?: boolean; links?: boolean; extra?: Parameters<typeof seed>[1]['memberships'] } = {}): Promise<World> {
   const p = await startProduct();
+  // A failed setup must stop the product, or its process keeps the test run alive.
+  try {
+    return await populate(p, opts);
+  } catch (err) {
+    await p.stop();
+    throw err;
+  }
+}
+
+async function populate(p: Product, opts: Parameters<typeof buildWorld>[0] & object): Promise<World> {
   const owner = await setUpOwner(p.url);
   const spaceId = await createSpace(owner, { name: SPACE, kit: 'school' });
   const otherSpaceId = await createSpace(owner, { name: OTHER_SPACE, kit: 'company', languages: 'en,ar' });

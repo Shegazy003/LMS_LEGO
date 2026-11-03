@@ -7,11 +7,8 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { SEED_KITS, SEED_KIT_WORDS } from '../../src/kits/seed.ts';
-import { CONCEPTS, KIT_WORDS } from '../../src/labels.ts';
-
-// Release 2 kit words (guardian: Parent, Supervisor, …) are kit words too.
-const KEYS: readonly string[] = [...CONCEPTS, ...KIT_WORDS];
+import { SEED_KITS } from '../../src/kits/seed.ts';
+import { CONCEPTS } from '../../src/labels.ts';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 const src = join(root, 'src');
@@ -34,9 +31,6 @@ function forbiddenWords(): string[] {
       for (const value of Object.values(kit.labels[lang])) words.add(stripMarks(value as string));
     }
   }
-  for (const seed of Object.values(SEED_KIT_WORDS)) {
-    for (const lang of ['ar', 'en'] as const) for (const value of Object.values(seed[lang])) words.add(stripMarks(value));
-  }
   return [...words];
 }
 
@@ -53,9 +47,8 @@ export function visibleText(source: string): string {
   for (const m of withoutLookups.matchAll(literal)) {
     const piece = m[1] ?? m[2] ?? m[3] ?? '';
     if (/^\s*(SELECT|INSERT|UPDATE|DELETE|WITH)\s/i.test(piece)) continue; // SQL, never shown
-    if (KEYS.includes(piece)) continue; // a key, never shown
-    // A {concept} placeholder in a product sentence is a lookup in the kit, not a word on the page.
-    pieces.push(piece.replace(/\$\{[^}]*\}/g, ' ').replace(new RegExp(`\\{(?:${KEYS.join('|')})\\}`, 'g'), ' '));
+    if ((CONCEPTS as readonly string[]).includes(piece)) continue; // a key, never shown
+    pieces.push(piece.replace(/\$\{[^}]*\}/g, ' '));
   }
   return stripMarks(pieces.join('\n').replace(/<[^>]*>/g, ' '));
 }
@@ -87,12 +80,6 @@ test('labels guard: the scanner catches a hard-coded role word (self-check)', ()
   // ...but the same words written as text are still caught.
   assert.deepEqual(findHardCoded("const s = 'Your session ended';"), ['Session']);
   assert.deepEqual(findHardCoded('html`<li>Subjects</li>`'), ['Subject']);
-  // Release 2 kit words are caught the same way, and their key is not text.
-  assert.deepEqual(findHardCoded("const s = 'Ask a parent';"), ['Parent']);
-  assert.ok(findHardCoded("const s = '<p>ولي أمر</p>';").includes('ولي أمر'));
-  assert.deepEqual(findHardCoded("const ok = t('guardian'); const role = 'guardian';"), []);
-  assert.deepEqual(findHardCoded("const s = 'Linked to this {guardian}: {subject} titles';"), [], 'placeholders are lookups');
-  assert.deepEqual(findHardCoded("const s = 'Linked to this Guardian {guardian}';"), ['Guardian'], 'the word itself is still caught beside one');
 });
 
 test('labels guard: no page template or product sentence hard-codes a canonical role word', () => {

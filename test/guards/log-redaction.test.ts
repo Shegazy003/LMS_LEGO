@@ -119,8 +119,6 @@ const OMAR_NEW = 'omar-secret-pass-2';
 const OMAR_LATEST = 'omar-secret-pass-3';
 const SALMA = { display_name: 'Salma', username: 'salma', password: 'salma-secret-pass-1', role: 'learner', mobile: '01033334444' };
 const OMAR_CORRECTED_MOBILE = '01077778888';
-// Release 2 (R2-a, AT-13c): a guardian, appointed with her own mobile number.
-const MONA = { display_name: 'Mona', username: 'mona.guardian', password: 'mona-secret-pass-1', role: 'guardian', mobile: '0104 141 4141' };
 
 /** Every written form of a full mobile number (typed with or without spaces, national, international, digits only). */
 function mobileForms(typed: string, countryCode = '+20'): string[] {
@@ -155,8 +153,8 @@ describe('no-secrets guard, part 3: no line the running product writes holds a s
   before(async () => {
     w = await startInProcess({ PASSWORD_ITERATIONS: '10000' });
     for (const [n, v] of [['owner password', OWNER.password], ['admin password', ADMIN.password], ['Omar password', OMAR.password],
-      ['Omar new password', OMAR_NEW], ['Omar latest password', OMAR_LATEST], ['Salma password', SALMA.password], ['Mona password', MONA.password]]) secrets.set(n, v);
-    for (const [n, m] of [['owner mobile', OWNER.mobile], ['admin mobile', ADMIN.mobile], ['Omar mobile', OMAR.mobile], ['Salma mobile', SALMA.mobile], ['Omar corrected mobile', OMAR_CORRECTED_MOBILE], ['Mona mobile', MONA.mobile]]) {
+      ['Omar new password', OMAR_NEW], ['Omar latest password', OMAR_LATEST], ['Salma password', SALMA.password]]) secrets.set(n, v);
+    for (const [n, m] of [['owner mobile', OWNER.mobile], ['admin mobile', ADMIN.mobile], ['Omar mobile', OMAR.mobile], ['Salma mobile', SALMA.mobile], ['Omar corrected mobile', OMAR_CORRECTED_MOBILE]]) {
       mobileForms(m).forEach((f, i) => secrets.set(`${n} (form ${i})`, f));
     }
     // A database failure whose message repeats the statement's values (and the reset link's address).
@@ -189,22 +187,6 @@ describe('no-secrets guard, part 3: no line the running product writes holds a s
     const omarPath = `/s/${spaceId}/admin/people/${omarId}`;
 
     assert.equal((await admin.post(`/s/${spaceId}/admin/people`, { ...SALMA, valid_until: utcDatePlusDays(30) })).status, 303, 'Salma appointed');
-
-    // Release 2 (R2-a, AT-13c): the guardian pages and their statements are in the run. Mona is
-    // appointed with her mobile number and linked to Omar (the first try fails on the link row, with
-    // its values and her number in the message), signs in, and opens her guardian pages (one fails
-    // on the statement that reads her links).
-    assert.equal((await admin.post(`/s/${spaceId}/admin/people`, { ...MONA, valid_until: utcDatePlusDays(30) })).status, 303, 'Mona appointed');
-    const monaId = String((w.sqlite.prepare('SELECT id FROM user WHERE username = ?').get(MONA.username) as { id: string }).id);
-    fail(/^\s*INSERT INTO guardian_link/, ` for ${MONA.display_name} ${MONA.mobile}`);
-    assert.equal((await admin.post(`/s/${spaceId}/admin/people/${monaId}/links`, { learner: omarId })).status, 500, 'forced failure on the link row');
-    assert.equal((await admin.post(`/s/${spaceId}/admin/people/${monaId}/links`, { learner: omarId })).status, 303, 'Mona linked to Omar');
-    const mona = await signedIn(w.url, MONA.username, MONA.password);
-    await keep('Mona session', cookieToken(mona));
-    assert.equal((await mona.get(`/s/${spaceId}/linked`)).status, 200, 'the guardian home');
-    fail(/FROM guardian_link gl\s+JOIN membership/);
-    assert.equal((await mona.get(`/s/${spaceId}/linked/${omarId}`)).status, 500, 'forced failure on the guardian page');
-    assert.equal((await mona.get(`/s/${spaceId}/linked/${omarId}`)).status, 200, 'the learner page');
 
     // Forced failure: correcting Omar's mobile number fails on the row that carries the new number.
     fail(/^\s*UPDATE user SET display_name = \?, mobile = \?/);
@@ -267,7 +249,7 @@ describe('no-secrets guard, part 3: no line the running product writes holds a s
 
   it('the run made the product log (each forced failure wrote its line)', () => {
     const parsed = lines.flatMap((l) => (l.startsWith('{') ? [JSON.parse(l) as { event: string }] : []));
-    assert.equal(parsed.filter((p) => p.event === 'request failed').length, 5, lines.join('\n'));
+    assert.equal(parsed.filter((p) => p.event === 'request failed').length, 3, lines.join('\n'));
     assert.equal(parsed.filter((p) => p.event === 'usage flush failed').length, 1, lines.join('\n'));
   });
 

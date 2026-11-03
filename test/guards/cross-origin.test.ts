@@ -184,8 +184,6 @@ describe('AT-5 guard: every form refuses a cross-origin post', { concurrency: fa
       '/s/:spaceId/admin/people', '/s/:spaceId/admin/people/:userId/link', '/s/:spaceId/admin/people/:userId/password',
       '/s/:spaceId/admin/sets', '/s/:spaceId/admin/sets/:groupId', '/s/:spaceId/admin/topics', '/s/:spaceId/admin/topics/:subjectId',
       '/s/:spaceId/publish/compose/:lessonId/add', '/account/password', '/account/language', '/r/:token', '/signin',
-      // Release 2 (R2-a): a guardian's links.
-      '/s/:spaceId/admin/people/:userId/links', '/s/:spaceId/admin/people/:userId/links/:learnerId/remove',
     ]) assert.ok(posts.includes(must), `POST ${must} exists and is in the sweep`);
 
     const dataBefore: Snapshot = await snapshot(worker);

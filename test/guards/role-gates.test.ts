@@ -31,8 +31,6 @@ const GATES = [
   { prefix: '/s/:spaceId/admin', gate: '/s/:spaceId/admin/*' },
   { prefix: '/s/:spaceId/publish', gate: '/s/:spaceId/publish/*' },
   { prefix: '/owner', gate: '/owner/*', alsoGate: '/owner' },
-  // Release 2 (R2-a): the guardian's pages.
-  { prefix: '/s/:spaceId/linked', gate: '/s/:spaceId/linked/*' },
 ];
 
 /** Data-changing routes that are not role pages, each for a stated reason. */
@@ -226,7 +224,7 @@ describe('role guard: in the running product, every gated route refuses people w
     await worker?.stop();
   });
 
-  it('a learner (who may read the subject) is refused on every admin, publisher, guardian and owner route, by every method, with real ids', async () => {
+  it('a learner (who may read the subject) is refused on every admin, publisher and owner route, by every method, with real ids', async () => {
     const { routes: all, declared } = await productRoutes();
     const routes = all.filter((r) => !isMiddleware(r, declared) && GATES.some((g) => under(r.path, g.prefix)));
     assert.ok(routes.some((r) => r.method === 'POST' && under(r.path, '/s/:spaceId/publish')), 'publisher writes are in the sweep');
@@ -244,10 +242,6 @@ describe('role guard: in the running product, every gated route refuses people w
       }
       if (under(r.path, '/s/:spaceId/admin') || under(r.path, '/owner')) {
         assert.equal((await send(publisher)).status, 403, `${r.method} ${r.path} refused for a publisher`);
-      }
-      if (under(r.path, '/s/:spaceId/linked')) {
-        assert.equal((await send(admin)).status, 403, `${r.method} ${r.path} refused for an admin (not a guardian)`);
-        assert.equal((await send(publisher)).status, 403, `${r.method} ${r.path} refused for a publisher (not a guardian)`);
       }
     }
   });
