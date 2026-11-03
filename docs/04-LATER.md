@@ -26,6 +26,7 @@ Recorded here, not in release 1, under "completion before expansion". Each is wr
 - **What "monitor" means** must be decided before building: the assigned subjects (free), exam results (needs idea B), and whether a lesson was opened (needs a view log, which is a privacy decision for the owner, RED).
 - **Release 1 keeps it cheap:** `membership.role` is text, so `guardian` is one more value; a `guardian_link (guardian_user_id, learner_user_id, space_id)` table is added when the release starts. Nothing in release 1 assumes a person holds only one role.
 - **Trigger:** the pilot school asks for parents to see results, or idea B is approved.
+- **Status (3 November 2026):** in release 2 ("Guardians and results", contract `product-contract-r2` on PIL-120): the guardian role and links are built in task R2-a; results views in R2-c; the lesson-opened date (owner decision: yes, switched off by default) in R2-d.
 
 ### B. Exam results published through the space
 
@@ -36,6 +37,7 @@ Recorded here, not in release 1, under "completion before expansion". Each is wr
 - **Non-negotiables:** a published mark can be corrected, and the correction keeps the previous value and who changed it (data integrity); a learner must never see another learner's row (privacy, tested like AT-4).
 - **Release 1 keeps it cheap:** `exam (subject_id, title, date, max_mark)` and `exam_result (exam_id, user_id, mark, note, published_at, changed_by)` are two new tables; nothing in release 1 needs to change. The Later list's "Quizzes and grading" means tests taken inside the product; this idea is results entered by the teacher, which is far smaller, and comes first.
 - **Trigger:** the pilot school finishes its first term on the space.
+- **Status (3 November 2026):** in release 2 (the owner chose to start it without waiting for the trigger): exams, the one-page marks entry with draft and atomic Publish, and My results are task R2-b (migration `0008_exams.sql`); corrections with history and the other views are R2-c.
 
 ### C. Printing orders through a contracted shop
 
@@ -75,6 +77,21 @@ Recorded here, not in release 1, under "completion before expansion". Each is wr
 | **Merging duplicate groups or subjects** | Moves assignments and content between rows | A school creates duplicates |
 | **Emptying "Recently removed"** to free storage | Release 1.1 deletes nothing permanently by design | Storage passes half of the free 10 GB |
 | **Audit history** of who changed what | Beyond `granted_by`; needs its own privacy decision | The owner or a school asks who changed something |
+
+## From release 2 (3 November 2026)
+
+From the Later list of the frozen contract `product-contract-r2` (PIL-120, section 7). Each waits for its own decision.
+
+| Idea | Why it waits |
+|---|---|
+| Hide or restore an exam; withdraw a published result | Release 2 corrects a wrong mark with a reason instead (R2-c); an unpublish needs its own privacy rule |
+| Spreadsheet upload of marks | Names in a file must be matched to accounts; the pre-filled page avoids publishing to the wrong child |
+| Averages, grades, rankings, term reports | Not part of the release 2 promise; each changes what a learner and a guardian see |
+| Notifications of a mark or an open | Paid services and a privacy decision (RED) |
+| A guardian across several organizations; delegated teachers | One space per person in release 2 |
+| Guardian approving print orders | Release 4 (idea C) |
+| Token out of the reset address | PIL-109 Later item 1; parked unless the owner revisits it (the retry feedback, item 2, is in R2-b) |
+| Lesson activity for publishers or admins; time of day, duration or count of an open; per-person opt-out; a deletion screen; keeping activity when switched off; any automatic retention limit | Release 2 records the least it can (AT-15); each widens it |
 
 ## From the brainstorm comparison
 

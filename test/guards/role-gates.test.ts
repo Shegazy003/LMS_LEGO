@@ -33,6 +33,8 @@ const GATES = [
   { prefix: '/owner', gate: '/owner/*', alsoGate: '/owner' },
   // Release 2 (R2-a): the guardian's pages.
   { prefix: '/s/:spaceId/linked', gate: '/s/:spaceId/linked/*' },
+  // Release 2 (R2-b): a learner's own results.
+  { prefix: '/s/:spaceId/results', gate: '/s/:spaceId/results/*' },
 ];
 
 /** Data-changing routes that are not role pages, each for a stated reason. */
@@ -226,7 +228,7 @@ describe('role guard: in the running product, every gated route refuses people w
     await worker?.stop();
   });
 
-  it('a learner (who may read the subject) is refused on every admin, publisher, guardian and owner route, by every method, with real ids', async () => {
+  it('a learner (who may read the subject) is refused on every admin, publisher, guardian and owner route, by every method, with real ids; only a learner enters the results routes', async () => {
     const { routes: all, declared } = await productRoutes();
     const routes = all.filter((r) => !isMiddleware(r, declared) && GATES.some((g) => under(r.path, g.prefix)));
     assert.ok(routes.some((r) => r.method === 'POST' && under(r.path, '/s/:spaceId/publish')), 'publisher writes are in the sweep');
@@ -238,6 +240,12 @@ describe('role guard: in the running product, every gated route refuses people w
     for (const r of routes) {
       const path = address(r.path);
       const send = (c: typeof learner) => (r.method === 'GET' ? c.get(path) : c.post(path, { title: 'x', direction: 'up', kind: 'note', text: 'x' }));
+      // A learner's own results (R2-b) are the one gated zone a learner may enter: everyone else is refused there.
+      if (under(r.path, '/s/:spaceId/results')) {
+        assert.equal((await send(admin)).status, 403, `${r.method} ${r.path} refused for an admin (not a learner)`);
+        assert.equal((await send(publisher)).status, 403, `${r.method} ${r.path} refused for a publisher (not a learner)`);
+        continue;
+      }
       assert.equal((await send(learner)).status, 403, `${r.method} ${r.path} refused for a learner`);
       if (under(r.path, '/s/:spaceId/publish')) {
         assert.equal((await send(admin)).status, 403, `${r.method} ${r.path} refused for an admin (not a publisher)`);

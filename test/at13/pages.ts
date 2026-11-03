@@ -3,7 +3,8 @@
 // Arabic and in English, found by following the links on the pages themselves
 // from the person's home, plus the addresses a curious person could type.
 import { Client } from '../support/http.ts';
-import { A, B, G1, G2, as, buildWorld, linkThrough, type World } from '../at9/world.ts';
+import { A, B, G1, G2, as, linkThrough, type World } from '../at9/world.ts';
+import { resultsWorld } from '../at10/marks.ts';
 import { utcDatePlusDays } from '../support/http.ts';
 
 export interface Reached {
@@ -14,15 +15,28 @@ export interface Reached {
   body: string;
 }
 
-/** The R2-a world for AT-13: G1 linked to A and B, G2 to A, and B (a learner) also the guardian of A. */
-export async function privacyWorld(): Promise<World> {
-  const w = await buildWorld({ links: true, extra: [{ username: B.username, role: 'guardian', valid_until: utcDatePlusDays(30) }] });
+export type PrivacyWorld = Awaited<ReturnType<typeof resultsWorld>>;
+
+/** The world for AT-13: G1 linked to A and B, G2 to A, and B (a learner) also
+ * the guardian of A; from R2-b, a published Mathematics exam (A 17, B Absent,
+ * C 12, D 15.5) and an Arabic draft for A (test/at10/marks.ts). */
+export async function privacyWorld(): Promise<PrivacyWorld> {
+  const w = await resultsWorld({ links: true, extra: [{ username: B.username, role: 'guardian', valid_until: utcDatePlusDays(30) }] });
   const res = await linkThrough(w, w.ids[B.username], w.ids[A.username]);
   if (res.status !== 303) {
     await w.close();
     throw new Error(`B linked to A: ${res.status}`);
   }
   return w;
+}
+
+/** The results pages (R2-b) a curious person could type: My results, every result row (published and draft), and the marks pages. */
+export function resultPaths(w: PrivacyWorld): string[] {
+  return [
+    `/s/${w.spaceId}/results`,
+    ...[...Object.values(w.published), ...Object.values(w.draft)].map((r) => `/s/${w.spaceId}/results/${r.id}`),
+    `/s/${w.spaceId}/publish/marks/${w.exam}`, `/s/${w.spaceId}/publish/marks/${w.draftExam}`,
+  ];
 }
 
 export const VIEWERS = { G1, G2, B } as const;

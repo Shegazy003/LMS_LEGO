@@ -1,9 +1,12 @@
-// AT-13b (contract product-contract-r2, R2-a pages): the forbidden-string scan
+// AT-13b (contract product-contract-r2, R2-a and R2-b pages): the forbidden-string scan
 // finds nothing on every page and response body a guardian or learner can
 // reach, in Arabic and English, including the dual-role person. Forbidden
 // (section 3): any other person's mobile number or digits of it beyond the
 // last digits, any username other than the viewer's own, any password, token
-// or session value. (Marks and learner names in log lines are R2-b and 13c.)
+// or session value. (Marks and learner names in log lines are 13c.) From R2-b
+// the world holds published results and a draft, the learners reach My results
+// and their own result pages, every result address is typed as well, and each
+// learner's score is forbidden to every other viewer (the draft's to all).
 //
 // Each viewer's pages are found by following the links on the pages from
 // their home, plus the addresses a curious person could type: every guardian
@@ -13,11 +16,13 @@ import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { Client } from '../support/http.ts';
 import { issueLink } from '../support/admin.ts';
-import { ADMIN, C, D, HADEER, KARIM, OTHER_ADMIN, SHIMAA, personPath, type World } from '../at9/world.ts';
+import { ADMIN, C, D, HADEER, KARIM, OTHER_ADMIN, SHIMAA, personPath } from '../at9/world.ts';
 import { OWNER } from '../support/seed.ts';
-import { A, B, G1, G2, crawl, guardianPaths, privacyWorld, useLanguage } from './pages.ts';
+import { A, B, G1, G2, crawl, guardianPaths, privacyWorld, resultPaths, useLanguage, type PrivacyWorld } from './pages.ts';
 
 const EVERYONE = [ADMIN, OTHER_ADMIN, HADEER, SHIMAA, A, B, C, D, KARIM, G1, G2];
+// R2-b: each learner's published score, which only that learner may read (AT-11a); A's draft, which nobody may.
+const SCORES: [string, string][] = [[A.username, '17 / 20'], [C.username, '12 / 20'], [D.username, '15.5 / 20'], ['nobody (A\'s draft)', '9 / 10']];
 
 /** Every written form of a full mobile number, and its last eight digits (more than the four a page may show). */
 function mobileForms(typed: string, countryCode = '20'): string[] {
@@ -28,7 +33,7 @@ function mobileForms(typed: string, countryCode = '20'): string[] {
 const cookieOf = (c: Client) => c.lastSetCookie.map((l) => l.match(/^lms_session=([^;]+)/)?.[1]).find(Boolean) ?? '';
 
 describe('AT-13b the forbidden-string scan finds nothing a guardian or learner can reach, in Arabic and English', { concurrency: false }, () => {
-  let w: World;
+  let w: PrivacyWorld;
   const resetTokens: string[] = [];
   before(async () => {
     w = await privacyWorld();
@@ -58,12 +63,14 @@ describe('AT-13b the forbidden-string scan finds nothing a guardian or learner c
       }
       forbidden.set('the session value', session);
       resetTokens.forEach((t, i) => forbidden.set(`reset token ${i}`, t));
+      for (const [owner, score] of SCORES) if (owner !== viewer.username) forbidden.set(`the score of ${owner}`, score);
 
       const typed = [
         ...Object.values(w.ids).map((id) => `/s/${w.spaceId}/linked/${id}`),
         `/s/${w.spaceId}/learn/${w.content.arabic}`, `/s/${w.spaceId}/learn/${w.content.physics}`, `/s/${w.spaceId}/read/${w.content.lesson}`,
         `/s/${w.spaceId}/file/${w.content.pdf}`, `/s/${w.otherSpaceId}`, `/s/${w.otherSpaceId}/read/${w.content.otherLesson}`,
         `/s/${w.spaceId}/admin/people`, `/s/${w.spaceId}/admin/people/${w.ids[A.username]}`, `/home`, `/account`, `/account/language`,
+        ...resultPaths(w),
       ];
       let scanned = 0;
       for (const lang of ['ar', 'en'] as const) {

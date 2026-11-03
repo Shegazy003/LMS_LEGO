@@ -1,6 +1,21 @@
 # Current progress
 
-## Current state, 2 November 2026 (evening UTC): hardening task H-1 in build
+## Current state, 3 November 2026: release 2 "Guardians and results" in build
+
+**What is true now**
+
+- **Live:** release 1.1 with hardening task H-1, version `528786a4` (from `f3b1fa7`); rollback target `9d8f2430`.
+- **Release 2 contract frozen:** `product-contract-r2` on PIL-120 (version 6). The owner chose option B on 3 November 2026: start without waiting for the roadmap trigger. Made-up data only; deploy stays the owner's Run workflow. Four build tasks, one at a time:
+  - **R2-a Guardians** (PIL-128): merged (#34, `4cd6a11f`). Guardian role and links, the guardian home, the privacy scan, the CI job `rollback` (AT-14a).
+  - **R2-b Exams, publish, My results** (PIL-129): in build. Exams per subject, the one-page marks entry (numeric forms, Absent, draft), Publish after a page listing every row, in one atomic batch with a history row per result; My results for each learner; the reset-form retry feedback (AT-10g). Migration `0008_exams.sql`. CI job `release-2-results`.
+  - **R2-c Results views and corrections** (PIL-130) and **R2-d Lesson activity** (PIL-131): not started.
+- **Route per task:** Builder, then the Publisher opens the pull request (red CI run first, then green), then Lead, then Verifier, then the owner's delegate merges.
+
+**Next:** R2-b to `CANDIDATE READY`, then R2-c, then R2-d. After all four: one owner check on the test space, then the owner presses deploy.
+
+**Waiting on the human owner:** nothing until release 2 is complete.
+
+## Earlier, 2 November 2026 (evening UTC): hardening task H-1 in build (historical)
 
 **What is true now**
 
