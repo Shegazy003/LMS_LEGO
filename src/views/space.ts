@@ -38,7 +38,8 @@ export function adminHome(t: Label, lang: Lang, space: SpaceView, displayName: s
     (c) => html`<li data-concept="${c}"><a href="/s/${space.id}/admin/${ADMIN_TILES[c]}">${t(c)}</a></li>`,
   );
   const body = html`${spaceNav(t, space)}<p>${t('welcome', { name: displayName })}</p>
-<ul id="concepts" class="tiles">${concepts}</ul>`;
+<ul id="concepts" class="tiles">${concepts}</ul>
+<p><a id="admin-results" class="button plain" href="/s/${space.id}/admin/results">${t('resultsAll')}</a></p>`;
   return layout({ t, lang, title: space.name, body, signedIn: true, header: spaceHeader(space) });
 }
 

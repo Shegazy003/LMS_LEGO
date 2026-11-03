@@ -62,12 +62,13 @@ import {
 } from './views/publish.ts';
 import { resetAlreadyChangedPage, resetDeadPage, resetDonePage, resetPage, type ResetSpace } from './views/reset.ts';
 import {
-  confirmPage, examListPage, marksMessagePage, marksPage, myResultsPage, resultPage,
-  type ConfirmRowView, type MarkRowView, type MarksNotice, type NewExamValues,
+  REASON_MAX, adminResultsPage, confirmPage, correctionPage, examListPage, historyPage, marksMessagePage, marksPage, myResultsPage, resultPage,
+  type ConfirmRowView, type HistoryRowView, type MarkCorrectionValues, type MarkRowView, type MarksNotice, type NewExamValues,
 } from './views/exams.ts';
 import {
-  createExam, editableExam, examsOfSubject, markText, ownResult, ownResults, publishRows, readMaxMark, readRow, resultsOfExam, rosterOf, saveDraft,
-  secondIds, type DraftValue, type ExamRow, type ResultRow, type RosterRow,
+  correctRow, createExam, editExam, editableExam, examOfSpace, examsOfSubject, examsWithResults, historyOfExam, isLocked, markText, ownResult,
+  ownResults, publishRows, publishedRows, readMaxMark, readRow, resultsOfExam, rosterOf, saveDraft, secondIds,
+  type DraftValue, type ExamRow, type ResultRow, type RosterRow,
 } from './exams.ts';
 import { accessEndedPage, adminHome, membershipsPage, type MembershipItem, type SpaceView } from './views/space.ts';
 import { isSameOrigin } from './origin.ts';
@@ -799,7 +800,9 @@ app.get('/s/:spaceId/linked/:learnerId', async (c) => {
   const { t, lang, view } = spaceLabel(c);
   const learner = await linkedLearner(db, view.id, c.get('user')!.id, c.req.param('learnerId'), now());
   if (!learner) return refuse(c, 403, 'noAccess');
-  return page(c, guardianLearnerPage(t, lang, view, { learner, subjects: await subjectsSeenBy(db, view.id, learner.id) }));
+  // R2-c (AT-11d): the learner's own published results, read only once the link is checked.
+  const results = await ownResults(db, view.id, learner.id);
+  return page(c, guardianLearnerPage(t, lang, view, { learner, subjects: await subjectsSeenBy(db, view.id, learner.id) }, results));
 });
 
 // My results (release 2, R2-b, AT-11a to 11c), behind the learner gate: the
@@ -1892,10 +1895,16 @@ async function marksPlace(c: C): Promise<MarksPlace | null> {
   return { exam, roster, tails: secondIds(roster), results };
 }
 
-const MARKS_DONE: Record<string, MarksNotice> = { draft: 'draftSaved', published: 'marksPublished' };
+const MARKS_DONE: Record<string, MarksNotice> = { draft: 'draftSaved', published: 'marksPublished', details: 'examSaved' };
 
 /** The marks page; typed values and errors come from a refused form, otherwise from the stored draft. */
-function renderMarks(c: C, m: MarksPlace, typed?: Map<string, { typed: string; absent: boolean; error?: string }>, error?: string) {
+function renderMarks(
+  c: C,
+  m: MarksPlace,
+  typed?: Map<string, { typed: string; absent: boolean; error?: string }>,
+  error?: string,
+  examForm?: { values: NewExamValues; error: string },
+) {
   const { t, lang, view } = spaceLabel(c);
   const rows: MarkRowView[] = m.roster.map((learner) => {
     const stored = m.results.get(learner.id);
@@ -1906,7 +1915,13 @@ function renderMarks(c: C, m: MarksPlace, typed?: Map<string, { typed: string; a
     return { learner, tail, typed: stored?.status === 'marked' ? markText(stored.mark ?? 0) : '', absent: stored?.status === 'absent' };
   });
   const notice = c.req.method === 'GET' ? MARKS_DONE[c.req.query('done') ?? ''] : undefined;
-  return page(c, marksPage(t, lang, view, { exam: m.exam, rows, notice, error }), typed ? 400 : 200);
+  // R2-c (AT-12d): once any row is published, the exam's title, date and maximum are locked.
+  const locked = [...m.results.values()].some((r) => r.published_at != null);
+  return page(
+    c,
+    marksPage(t, lang, view, { exam: m.exam, rows, notice, error, locked, examValues: examForm?.values, examError: examForm?.error }),
+    typed || examForm ? 400 : 200,
+  );
 }
 
 /** The rows to publish now (every learner on today's list whose row is not
@@ -1996,6 +2011,122 @@ app.post('/s/:spaceId/publish/marks/:examId/publish', async (c) => {
     throw err;
   }
   return c.redirect(`/s/${spaceId}/publish/marks/${m.exam.id}?done=published#rows`, 303);
+});
+
+// ------------------------------------------- results views, corrections ----
+// Release 2, R2-c (contract product-contract-r2, AT-11d to 11f and AT-12).
+//
+// The exam's own fields: editable on the marks page until any row is
+// published, then locked (AT-12d). The statement that saves them repeats both
+// rules (src/exams.ts), so a row published meanwhile still locks them.
+app.post('/s/:spaceId/publish/marks/:examId/details', async (c) => {
+  const m = await marksPlace(c);
+  if (!m) return refuse(c, 403, 'noAccess');
+  const { t, lang, view } = spaceLabel(c);
+  const body = await c.req.parseBody();
+  const values: NewExamValues = { title: field(body, 'title'), exam_date: field(body, 'exam_date'), max_mark: field(body, 'max_mark') };
+  const title = titleFrom(body);
+  const max = readMaxMark(values.max_mark ?? '');
+  const locked = () => page(c, marksMessagePage(t, lang, view, m.exam, t('examLocked')), 409);
+  if (await isLocked(c.get('db'), view.id, m.exam.id)) return locked();
+  const error = !title ? t('titleInvalid') : !isIsoDate(values.exam_date ?? '') ? t('examDateInvalid') : max === null ? t('maxMarkInvalid') : undefined;
+  if (error || !title || max === null) return renderMarks(c, m, undefined, undefined, { values, error: error ?? t('titleInvalid') });
+  const saved = await editExam(c.get('db'), { spaceId: view.id, publisherId: c.get('user')!.id, examId: m.exam.id, title, date: values.exam_date!, max });
+  if (saved === 'locked') return locked();
+  if (saved === 'belowDraft') return renderMarks(c, m, undefined, undefined, { values, error: t('maxBelowDraft') });
+  return c.redirect(`/s/${view.id}/publish/marks/${m.exam.id}?done=details`, 303);
+});
+
+/** The history of every published row of an exam, with each row's second identifier. */
+async function historyRowsOf(c: C, exam: ExamRow): Promise<HistoryRowView[]> {
+  const db = c.get('db');
+  const spaceId = c.get('space').id;
+  const rows = await publishedRows(db, spaceId, exam.id);
+  const entries = await historyOfExam(db, spaceId, exam.id);
+  const tails = secondIds(rows.map((r) => ({ id: r.learner_user_id, display_name: r.display_name, username: r.username })));
+  return rows.map((row) => ({ row, tail: tails.get(row.learner_user_id) ?? '', entries: entries.filter((e) => e.result_id === row.id) }));
+}
+
+// The publisher's view (AT-11e, AT-12b): every published row of an exam of
+// theirs, with its history and a way to correct it. Anything else (one of
+// another publisher, one of another space, or none) answers the same 403.
+app.get('/s/:spaceId/publish/marks/:examId/history', async (c) => {
+  const exam = await editableExam(c.get('db'), c.get('space').id, c.get('user')!.id, c.req.param('examId'));
+  if (!exam) return refuse(c, 403, 'noAccess');
+  const { t, lang, view } = spaceLabel(c);
+  const notice = c.req.query('done') === 'corrected' ? t('correctionDone') : undefined;
+  const back = { href: `/s/${view.id}/publish/marks/${exam.id}`, label: t('backToMarks') };
+  return page(c, historyPage(t, lang, view, { exam, rows: await historyRowsOf(c, exam), back, correctable: true, notice }));
+});
+
+/** One published row of an exam of this publisher, by its learner, with its history; null for anything else. */
+async function correctionPlace(c: C, learnerId: string): Promise<{ exam: ExamRow; row: HistoryRowView } | null> {
+  const exam = await editableExam(c.get('db'), c.get('space').id, c.get('user')!.id, c.req.param('examId') ?? '');
+  if (!exam || !learnerId) return null;
+  const row = (await historyRowsOf(c, exam)).find((h) => h.row.learner_user_id === learnerId);
+  return row ? { exam, row } : null;
+}
+
+function renderCorrection(c: C, p: { exam: ExamRow; row: HistoryRowView }, extra: { values?: MarkCorrectionValues; error?: string } = {}, status: 200 | 400 | 409 = 200) {
+  const { t, lang, view } = spaceLabel(c);
+  return page(c, correctionPage(t, lang, view, { exam: p.exam, row: p.row, ...extra }), status);
+}
+
+// A correction (AT-12a, 12c): only the subject's current publisher, only a
+// published row, a new value from 0 to the maximum (or Absent) that differs
+// from the current one, and a reason. The publisher's own mistakes (no reason,
+// a mark out of range) bring the page back with the message and store
+// nothing; anyone else, or any other row, gets the same 403. The page's
+// version (the row's number of history rows) must still be the row's: a
+// correction made meanwhile makes this one change nothing (409).
+app.get('/s/:spaceId/publish/marks/:examId/correct', async (c) => {
+  const p = await correctionPlace(c, c.req.query('learner') ?? '');
+  return p ? renderCorrection(c, p) : refuse(c, 403, 'noAccess');
+});
+
+app.post('/s/:spaceId/publish/marks/:examId/correct', async (c) => {
+  const body = await c.req.parseBody();
+  const p = await correctionPlace(c, field(body, 'learner'));
+  if (!p) return refuse(c, 403, 'noAccess');
+  const { t } = spaceLabel(c);
+  const values: MarkCorrectionValues = { mark: field(body, 'mark'), absent: field(body, 'absent') === '1', reason: field(body, 'reason') };
+  const { row } = p.row;
+  // A page older than the row (another tab corrected it since) changes nothing.
+  if (field(body, 'version') !== String(row.versions)) return renderCorrection(c, p, { values, error: t('correctionChanged') }, 409);
+  const max = markText(p.exam.max_mark);
+  const read = readRow(values.mark ?? '', Boolean(values.absent), p.exam.max_mark);
+  if (read.kind === 'refused') return renderCorrection(c, p, { values, error: t(read.error, { max }) }, 400);
+  if (read.kind === 'empty') return renderCorrection(c, p, { values, error: t('markMissing') }, 400);
+  const reason = (values.reason ?? '').replace(/\s+/g, ' ').trim().slice(0, REASON_MAX);
+  if (!reason) return renderCorrection(c, p, { values, error: t('correctionReasonMissing') }, 400);
+  const next = read.kind === 'absent' ? { status: 'absent' as const, mark: null } : { status: 'marked' as const, mark: read.mark };
+  if (next.status === row.status && next.mark === row.mark) return renderCorrection(c, p, { values, error: t('correctionSame') }, 400);
+  const spaceId = c.get('space').id;
+  try {
+    await correctRow(c.get('db'), { spaceId, publisherId: c.get('user')!.id, examId: p.exam.id, row, next, reason, now: now() });
+  } catch (err) {
+    // Another tab corrected this row in the same moment: nothing of this batch was written.
+    const after = await correctionPlace(c, row.learner_user_id);
+    if (after && after.row.row.versions !== row.versions) return renderCorrection(c, after, { values, error: t('correctionChanged') }, 409);
+    throw err;
+  }
+  return c.redirect(`/s/${spaceId}/publish/marks/${p.exam.id}/history?done=corrected#row-${row.learner_user_id}`, 303);
+});
+
+// The admin's view (AT-11e, AT-12b): every exam of the space with a published
+// row, and each one's rows with their history, read-only. Drafts are their
+// publisher's only. Another space's exam, or none, answers the same 403.
+app.get('/s/:spaceId/admin/results', async (c) => {
+  const { t, lang, view } = spaceLabel(c);
+  return page(c, adminResultsPage(t, lang, view, await examsWithResults(c.get('db'), view.id)));
+});
+
+app.get('/s/:spaceId/admin/results/:examId', async (c) => {
+  const exam = await examOfSpace(c.get('db'), c.get('space').id, c.req.param('examId'));
+  if (!exam) return refuse(c, 403, 'noAccess');
+  const { t, lang, view } = spaceLabel(c);
+  const back = { href: `/s/${view.id}/admin/results`, label: t('resultsAll') };
+  return page(c, historyPage(t, lang, view, { exam, rows: await historyRowsOf(c, exam), back, correctable: false }));
 });
 
 // ------------------------------------------------------------ my account ----

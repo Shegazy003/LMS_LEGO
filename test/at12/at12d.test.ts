@@ -3,7 +3,7 @@
 // they are editable.
 //
 // The exam's fields are edited on its marks page (form #exam-edit, posted to
-// /s/<space>/publish/marks/<exam>/exam). Before any row is published the edit
+// /s/<space>/publish/marks/<exam>/details). Before any row is published the edit
 // is stored (a maximum below a mark already in the draft is refused, so no
 // draft row is ever above the maximum); once one row is published the page
 // shows the fields as locked, without the form, and a forged edit is refused
@@ -31,7 +31,7 @@ describe('AT-12d exam title, date and maximum are editable until a mark is publi
 
   it('before publishing: the marks page offers the edit form, and title, date and maximum are changed', async () => {
     const page = await (await w.hadeer.get(marksPath(w, exam))).text();
-    assert.ok(/<form id="exam-edit"[^>]*action="[^"]*\/exam"/.test(page), 'the edit form is on the marks page');
+    assert.ok(/<form id="exam-edit"[^>]*action="[^"]*\/details"/.test(page), 'the edit form is on the marks page');
     assert.ok(!page.includes('id="exam-locked"'));
     const res = await w.hadeer.post(examEditPath(w, exam), { title: 'Quiz 1 (fractions)', exam_date: '2026-11-06', max_mark: '25' });
     assert.equal(res.status, 303, 'saved');

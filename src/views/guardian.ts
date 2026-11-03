@@ -2,13 +2,16 @@
 // the guardian home, with one card per linked learner, and one learner's page.
 // Read-only: each card shows the learner's name and their assigned subject
 // titles, each with its publisher's name. No lesson, material, file, link,
-// date or other learner is ever on these pages (AT-9d, AT-13a). Addresses use
+// lesson date or other learner is ever on these pages (AT-9d, AT-13a); from
+// R2-c the learner's page also shows that learner's published results. Addresses use
 // the neutral word "linked" so that no address names a concept. Every word
 // comes from the label function and the space's kit.
 import { html } from 'hono/html';
+import type { OwnResult } from '../exams.ts';
 import type { GuardianSubject, LinkedLearner } from '../guardians.ts';
 import type { Label, Lang } from '../labels.ts';
-import type { Html } from './layout.ts';
+import { resultCard } from './exams.ts';
+import { sentence, type Html } from './layout.ts';
 import { spacePage } from './learn.ts';
 import type { SpaceView } from './space.ts';
 
@@ -46,9 +49,19 @@ export function guardianHome(t: Label, lang: Lang, space: SpaceView, displayName
   return spacePage(t, lang, space, t('guardianHome'), body);
 }
 
-/** One linked learner's page: the same card, and the way back to the guardian home. */
-export function guardianLearnerPage(t: Label, lang: Lang, space: SpaceView, c: LearnerCard): Html {
+/** One linked learner's page: the same card, the learner's published results
+ * (R2-c, AT-11d), headed with the learner's name, and the way back to the
+ * guardian home. A result shows its exam, subject, date, "mark / maximum" or
+ * Absent, and "Corrected on <date>" once corrected: never a previous value, a
+ * reason, a draft or a result id. */
+export function guardianLearnerPage(t: Label, lang: Lang, space: SpaceView, c: LearnerCard, results: OwnResult[]): Html {
   const body = html`<p><a id="back" href="${home(space)}">${t('guardianHome')}</a></p>
-<div id="linked">${card(t, space, c, 'plain')}</div>`;
+<div id="linked">${card(t, space, c, 'plain')}</div>
+<section id="results" class="card" data-learner="${c.learner.id}">
+  <h2 id="results-title">${sentence(t, 'resultsOf', { name: c.learner.display_name })}</h2>
+  ${results.length
+    ? html`<ol class="items">${results.map((r) => resultCard(t, space, r, 'guardian'))}</ol>`
+    : html`<p id="results-none" class="message">${t('resultsNone')}</p>`}
+</section>`;
   return spacePage(t, lang, space, c.learner.display_name, body);
 }

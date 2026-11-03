@@ -33,7 +33,7 @@ export const R2B_KEYS = [
 
 /** The dictionary keys added by R2-c (results views, corrections and their history, exam locks). */
 export const R2C_KEYS = [
-  'resultsOf', 'resultsAll', 'resultsAllNote', 'correctedOn', 'correct', 'correctTitle', 'correctNote', 'correctNew', 'correctReason',
+  'resultsOf', 'resultsAll', 'resultsAllNote', 'correctedOn', 'correct', 'markCorrectTitle', 'markCorrectNote', 'correctNew', 'correctReason',
   'correctionReasonMissing', 'correctionSame', 'correctionChanged', 'correctionDone', 'historyLink', 'historyTitle', 'historyNow',
   'historyPublished', 'historyCorrected', 'historyNone', 'examEdit', 'examSave', 'examSaved', 'examLocked', 'examLockedNote', 'maxBelowDraft',
 ] as const;

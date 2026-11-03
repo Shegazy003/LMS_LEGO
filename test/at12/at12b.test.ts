@@ -69,7 +69,8 @@ describe('AT-12b publisher and admin see each row\'s history: the first publish,
     const id = String((await w.p.sql(`SELECT id FROM user WHERE username = '${E.username}'`))[0].id);
     w.ids[E.username] = id;
     await setScience(w, [A.username, B.username, C.username, E.username]);
-    await publishAll(w, w.hadeer, exam, [E.username], { [E.username]: { mark: '9' } });
+    // The marks form as the page posts it: every learner on today's list, E's row the only open one.
+    await publishAll(w, w.hadeer, exam, [E, C, D, A, B].map((p) => p.username), { [E.username]: { mark: '9' } });
     const e = (await storedRows(w, exam))[E.username];
     assert.ok(e.published_at, 'E is published alone');
     await corrected(w, w.hadeer, exam, id, { mark: '10', reason: 'Late paper re-checked' });

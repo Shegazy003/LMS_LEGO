@@ -24,7 +24,8 @@ export function correctionWorld() {
 
 export const correctPath = (w: { spaceId: string }, examId: string) => `${marksPath(w as never, examId)}/correct`;
 export const historyPath = (w: { spaceId: string }, examId: string) => `${marksPath(w as never, examId)}/history`;
-export const examEditPath = (w: { spaceId: string }, examId: string) => `${marksPath(w as never, examId)}/exam`;
+// A neutral address word ("details"), so that no address names a kit word (test/guards/no-hardcoded-labels.test.ts).
+export const examEditPath = (w: { spaceId: string }, examId: string) => `${marksPath(w as never, examId)}/details`;
 export const adminResultsPath = (w: { spaceId: string }, examId?: string) => `/s/${w.spaceId}/admin/results${examId ? `/${examId}` : ''}`;
 export const linkedPath = (w: { spaceId: string; ids: Record<string, string> }, username: string) => `/s/${w.spaceId}/linked/${w.ids[username]}`;
 
