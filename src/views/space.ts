@@ -9,6 +9,8 @@ export interface SpaceView {
   name: string;
   primaryColor: string;
   hasLogo: boolean;
+  /** Whether the person holds the guardian role here today (release 2): the nav then leads to their guardian home too. */
+  guardian?: boolean;
 }
 
 export function spaceHeader(space: SpaceView): Html {
@@ -18,9 +20,12 @@ export function spaceHeader(space: SpaceView): Html {
 </header>`;
 }
 
-/** The two places every member can always go: this space's home and My account. */
+/** The two places every member can always go: this space's home and My
+ * account; and for a guardian (release 2) their guardian home, so a person who
+ * is also a publisher or a learner here reaches each view under its own role. */
 export function spaceNav(t: Label, space: SpaceView): Html {
-  return html`<nav class="nav"><a id="nav-home" href="/s/${space.id}">${t('home')}</a><a id="nav-account" href="/account">${t('myAccount')}</a></nav>`;
+  const guardian = space.guardian ? html`<a id="nav-guardian" href="/s/${space.id}/linked">${t('guardianHome')}</a>` : '';
+  return html`<nav class="nav"><a id="nav-home" href="/s/${space.id}">${t('home')}</a>${guardian}<a id="nav-account" href="/account">${t('myAccount')}</a></nav>`;
 }
 
 // Where each tile of the admin's home leads (neutral address words, AT-2).

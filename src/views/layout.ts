@@ -64,7 +64,8 @@ fieldset.checks legend{font-weight:600;padding:0 4px}
 label.check{flex-direction:row;align-items:center;gap:8px;font-weight:400}
 .items form.move{margin-top:8px}
 .share form{display:flex}
-#end-confirm .share>a{display:flex;align-items:center;justify-content:center}
+#end-confirm .share>a,#unlink-confirm .share>a{display:flex;align-items:center;justify-content:center}
+.row form{margin:0}
 .share form button{flex:1}
 details.card>summary{cursor:pointer;font-weight:600}
 `;

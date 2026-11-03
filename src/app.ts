@@ -24,6 +24,7 @@ import { readLabels, switchedKit } from './kits/edit.ts';
 import {
   findFile, findLesson, lessonMaterials, outline, readableSubject, subjectsForLearner, subjectsForPublisher, type SubjectRow,
 } from './learning.ts';
+import { isGuardianHere, isLearnerHere, link, linkedLearner, linkedLearners, linksOf, subjectsSeenBy, unlink } from './guardians.ts';
 import { externalUrl } from './links.ts';
 import { logError } from './log.ts';
 import { normaliseCountryCode, normaliseMobile } from './phone.ts';
@@ -52,8 +53,10 @@ import {
   kitConfirmPage, newSpacePage, ownerHome, ownerSpacePage, type AdminRow, type AppointValues, type NewSpaceValues, type OwnerSpaceExtra,
 } from './views/owner.ts';
 import {
-  confirmLinkPage, endConfirmPage, linkReadyPage, personPage, type CorrectionValues, type PersonFrame, type PersonNotice, type PersonView,
+  confirmLinkPage, endConfirmPage, linkReadyPage, personPage, unlinkConfirmPage, type CorrectionValues, type LinksView, type PersonFrame,
+  type PersonNotice, type PersonView,
 } from './views/people.ts';
+import { guardianHome, guardianLearnerPage, type LearnerCard } from './views/guardian.ts';
 import {
   SEGMENT, chapterPage, lessonEditor, materialPage, publisherHome, removeConfirmPage, removedPage, subjectEditor, type EditorNotice,
 } from './views/publish.ts';
@@ -705,16 +708,21 @@ use('/s/:spaceId/*', async (c, next) => {
 // /s/<space>/publish. Anyone without that role today gets 403 with the plain
 // refusal, before any page is looked up (so unknown addresses there are 403
 // too, not 404).
-const requireSpaceRole = (role: 'admin' | 'publisher'): MiddlewareHandler<AppEnv> => async (c, next) => {
+const requireSpaceRole = (role: 'admin' | 'publisher' | 'guardian'): MiddlewareHandler<AppEnv> => async (c, next) => {
   if (!c.get('space').roles.includes(role)) return refuse(c, 403, 'noAccess');
   await next();
 };
 // A pattern ending in /* also matches its own base (…/admin itself).
 use('/s/:spaceId/admin/*', requireSpaceRole('admin'));
 use('/s/:spaceId/publish/*', requireSpaceRole('publisher'));
+// Release 2 (R2-a): the guardian's pages live under /s/<space>/linked.
+use('/s/:spaceId/linked/*', requireSpaceRole('guardian'));
 
 function spaceView(space: CurrentSpace): SpaceView {
-  return { id: space.id, name: space.name, primaryColor: space.kit.theme.primaryColor, hasLogo: Boolean(space.kit.theme.logoKey) };
+  return {
+    id: space.id, name: space.name, primaryColor: space.kit.theme.primaryColor, hasLogo: Boolean(space.kit.theme.logoKey),
+    guardian: space.roles.includes('guardian'),
+  };
 }
 
 /** Words, language and theme of a page inside the space, in the language of this person's pages. */
@@ -743,16 +751,45 @@ async function renderLearnerHome(c: C) {
   return page(c, learnerHome(t, lang, view, user.display_name, subjects));
 }
 
+// The guardian home (release 2, R2-a): every learner actively linked to this
+// person whose own access is active today, each with the subjects they see.
+// Found from the session's person on every request, so a removed link or an
+// ended learner is gone from the very next page.
+async function renderGuardianHome(c: C) {
+  const { t, lang, view } = spaceLabel(c);
+  const db = c.get('db');
+  const user = c.get('user')!;
+  const learners = await linkedLearners(db, view.id, user.id, now());
+  const cards: LearnerCard[] = [];
+  for (const learner of learners) cards.push({ learner, subjects: await subjectsSeenBy(db, view.id, learner.id) });
+  return page(c, guardianHome(t, lang, view, user.display_name, cards));
+}
+
 // The space home is the home of the person's main role: an admin gets the
-// admin home, a publisher the publisher home, everyone else the learner home.
+// admin home, a publisher the publisher home, a learner the learner home, and
+// a guardian with no other role here the guardian home. A guardian who also
+// holds another role reaches the guardian home from the nav (AT-9h).
 app.get('/s/:spaceId', (c) => {
   const roles = c.get('space').roles;
   if (roles.includes('admin')) return renderAdminHome(c);
   if (roles.includes('publisher')) return renderPublisherHome(c);
+  if (roles.includes('guardian') && !roles.includes('learner')) return renderGuardianHome(c);
   return renderLearnerHome(c);
 });
 app.get('/s/:spaceId/admin', (c) => renderAdminHome(c));
 app.get('/s/:spaceId/publish', (c) => renderPublisherHome(c));
+app.get('/s/:spaceId/linked', (c) => renderGuardianHome(c));
+
+// One linked learner's page. Anyone the viewer may not see now (not linked,
+// link removed, access ended, another space, no such person) gets the same
+// 403 page, byte for byte, so an address reveals nothing.
+app.get('/s/:spaceId/linked/:learnerId', async (c) => {
+  const db = c.get('db');
+  const { t, lang, view } = spaceLabel(c);
+  const learner = await linkedLearner(db, view.id, c.get('user')!.id, c.req.param('learnerId'), now());
+  if (!learner) return refuse(c, 403, 'noAccess');
+  return page(c, guardianLearnerPage(t, lang, view, { learner, subjects: await subjectsSeenBy(db, view.id, learner.id) }));
+});
 
 app.get('/s/:spaceId/logo', (c) => serveLogo(c, c.get('space').id, c.get('space').kit.theme.logoKey));
 
@@ -902,12 +939,28 @@ interface PersonPlace {
   countryCode: string;
   /** The message's language: the space's first, with its kit. */
   message: { t: Label; spaceName: string; role: string };
+  /** For a guardian of this space (release 2, R2-a): their links, shown on their page. */
+  links?: LinksView;
+}
+
+/** A guardian's links as their person page shows them: linked now, removed,
+ * and the learners of the space who can still be linked (never the guardian
+ * themselves). */
+async function linksView(c: C, spaceId: string, guardianId: string): Promise<LinksView> {
+  const db = c.get('db');
+  const rows = await linksOf(db, spaceId, guardianId);
+  const active = rows.filter((r) => r.ended_at === null).map(({ id, display_name }) => ({ id, display_name }));
+  const ended = rows.filter((r) => r.ended_at !== null).map(({ id, display_name }) => ({ id, display_name }));
+  const linked = new Set(rows.map((r) => r.id));
+  const choices = (await learnersOf(db, spaceId)).filter((l) => l.id !== guardianId && !linked.has(l.id));
+  return { active, ended, choices };
 }
 
 async function adminPlace(c: C): Promise<PersonPlace | null> {
   const { t, lang, view } = spaceLabel(c);
   const person = await managedPerson(c.get('db'), view.id, c.req.param('userId') ?? '');
   if (!person) return null;
+  const links = (await isGuardianHere(c.get('db'), view.id, person.id)) ? await linksView(c, view.id, person.id) : undefined;
   // The WhatsApp message is always in the space's first language, whatever the admin reads.
   const kit = c.get('space').kit;
   const firstT = makeLabel(kit.languages[0], kit);
@@ -921,12 +974,13 @@ async function adminPlace(c: C): Promise<PersonPlace | null> {
       ownEnd: c.get('space').validUntil,
       spaceName: view.name,
     },
-    view: personView(person, t(person.role as Concept)),
+    view: personView(person, t(person.role as Concept | 'guardian')),
     person,
     spaceId: view.id,
     roles: ADMIN_MANAGES,
     countryCode: await countryCodeOf(c, view.id),
     message: { t: firstT, spaceName: view.name, role: firstT('admin') },
+    links,
   };
 }
 
@@ -956,7 +1010,10 @@ async function ownerPlace(c: C): Promise<PersonPlace | null> {
   };
 }
 
-const NOTICES = { saved: 'saved', mobile: 'mobileChanged', ended: 'accessEndedDone', restored: 'accessRestored' } as const satisfies Record<string, PersonNotice>;
+const NOTICES = {
+  saved: 'saved', mobile: 'mobileChanged', ended: 'accessEndedDone', restored: 'accessRestored',
+  linked: 'linkDone', unlinked: 'unlinkDone', relinked: 'linkRestored',
+} as const satisfies Record<string, PersonNotice>;
 
 /** The notice a person page shows after a done form (?done=…), if any. */
 function noticeOf(c: C): PersonNotice | undefined {
@@ -974,7 +1031,7 @@ function typedEndDateError(p: PersonPlace, date: string): string | undefined {
 function personRoutes(path: string, place: (c: C) => Promise<PersonPlace | null>): void {
   app.get(path, async (c) => {
     const p = await place(c);
-    return p ? page(c, personPage(p.frame, p.view, { notice: noticeOf(c) })) : refuse(c, 403, 'noAccess');
+    return p ? page(c, personPage(p.frame, p.view, { links: p.links, notice: noticeOf(c) })) : refuse(c, 403, 'noAccess');
   });
 
   // Corrections (AT-6): the display name (release 1 bounds), the mobile
@@ -996,7 +1053,7 @@ function personRoutes(path: string, place: (c: C) => Promise<PersonPlace | null>
       : !mobile ? t('mobileInvalid')
         : changedEnd !== null ? typedEndDateError(p, changedEnd)
           : undefined;
-    if (error || !displayName || !mobile) return page(c, personPage(p.frame, p.view, { error, values }), 400);
+    if (error || !displayName || !mobile) return page(c, personPage(p.frame, p.view, { links: p.links, error, values }), 400);
     const mobileChanged = mobile !== p.person.mobile;
     await correctPerson(c.get('db'), {
       spaceId: p.spaceId, userId: p.person.id, roles: p.roles, displayName, mobile, mobileChanged, validUntil: changedEnd, now: now(),
@@ -1028,7 +1085,7 @@ function personRoutes(path: string, place: (c: C) => Promise<PersonPlace | null>
     if (!p.view.ended) return c.redirect(p.frame.base, 303);
     const end = field(await c.req.parseBody(), 'valid_until');
     const error = typedEndDateError(p, end);
-    if (error) return page(c, personPage(p.frame, p.view, { error, values: { valid_until: end } }), 400);
+    if (error) return page(c, personPage(p.frame, p.view, { links: p.links, error, values: { valid_until: end } }), 400);
     await restoreAccess(c.get('db'), { spaceId: p.spaceId, userId: p.person.id, roles: p.roles, validUntil: end });
     return c.redirect(`${p.frame.base}?done=restored`, 303);
   });
@@ -1037,7 +1094,7 @@ function personRoutes(path: string, place: (c: C) => Promise<PersonPlace | null>
   // (AT-6 follow-up): the appointer restores access first. The page says so
   // plainly and nothing is stored.
   const endedRefusal = (c: C, p: PersonPlace) =>
-    page(c, personPage(p.frame, p.view, { error: p.frame.t('endedNoReset', { name: p.person.display_name }) }), 400);
+    page(c, personPage(p.frame, p.view, { links: p.links, error: p.frame.t('endedNoReset', { name: p.person.display_name }) }), 400);
 
   app.get(`${path}/link`, async (c) => {
     const p = await place(c);
@@ -1069,14 +1126,56 @@ function personRoutes(path: string, place: (c: C) => Promise<PersonPlace | null>
     if (p.view.ended) return endedRefusal(c, p);
     const body = await c.req.parseBody();
     const password = typeof body.new_password === 'string' ? body.new_password : '';
-    if (password.length < MIN_PASSWORD) return page(c, personPage(p.frame, p.view, { error: p.frame.t('passwordTooShort') }), 400);
+    if (password.length < MIN_PASSWORD) return page(c, personPage(p.frame, p.view, { links: p.links, error: p.frame.t('passwordTooShort') }), 400);
     await setPassword(c.get('db'), p.person.id, await hashPassword(password, c.get('iterations')));
-    return page(c, personPage(p.frame, p.view, { notice: 'setPasswordDone' }));
+    return page(c, personPage(p.frame, p.view, { links: p.links, notice: 'setPasswordDone' }));
   });
 }
 
 personRoutes('/s/:spaceId/admin/people/:userId', adminPlace);
 personRoutes('/owner/spaces/:id/people/:userId', ownerPlace);
+
+// The links of a guardian (release 2, R2-a, AT-9b and 9e), on the person page
+// of the guardian, behind the admin gate. Linking (or restoring a removed link) takes a
+// learner of this space who is not the guardian themselves; anything else is
+// refused on the same page and changes nothing. Removing a link is two steps:
+// a page that names both people (a GET changes nothing), then the confirming
+// tap. The guardian's next request no longer shows the learner.
+app.post('/s/:spaceId/admin/people/:userId/links', async (c) => {
+  const p = await adminPlace(c);
+  if (!p || !p.links) return refuse(c, 403, 'noAccess');
+  const body = await c.req.parseBody();
+  const learnerId = field(body, 'learner');
+  const db = c.get('db');
+  const error = learnerId === p.person.id ? p.frame.t('linkSelfRefused')
+    : !(await isLearnerHere(db, p.spaceId, learnerId)) ? p.frame.t('linkRefused')
+      : undefined;
+  if (error || !(await link(db, { spaceId: p.spaceId, guardianId: p.person.id, learnerId, by: c.get('user')!.id, now: now() }))) {
+    return page(c, personPage(p.frame, p.view, { links: p.links, error: error ?? p.frame.t('linkRefused') }), 400);
+  }
+  return c.redirect(`${p.frame.base}?done=${field(body, 'restore') === '1' ? 'relinked' : 'linked'}#links-title`, 303);
+});
+
+/** The guardian's place and the learner of an active link of theirs, or null. */
+async function activeLink(c: C): Promise<{ p: PersonPlace; learner: { id: string; display_name: string } } | null> {
+  const p = await adminPlace(c);
+  const learner = p?.links?.active.find((l) => l.id === c.req.param('learnerId'));
+  return p && learner ? { p, learner } : null;
+}
+
+app.get('/s/:spaceId/admin/people/:userId/links/:learnerId/remove', async (c) => {
+  const found = await activeLink(c);
+  if (!found) return refuse(c, 403, 'noAccess');
+  return page(c, unlinkConfirmPage(found.p.frame, found.p.view, found.learner));
+});
+
+app.post('/s/:spaceId/admin/people/:userId/links/:learnerId/remove', async (c) => {
+  const found = await activeLink(c);
+  if (!found) return refuse(c, 403, 'noAccess');
+  const { p, learner } = found;
+  await unlink(c.get('db'), { spaceId: p.spaceId, guardianId: p.person.id, learnerId: learner.id, now: now() });
+  return c.redirect(`${p.frame.base}?done=unlinked#links-title`, 303);
+});
 
 // Groups: a name and the learners in it.
 async function renderSets(c: C, extra: { error?: string; name?: string } = {}, status: 200 | 400 = 200) {

@@ -4,17 +4,25 @@
 //   dictionary, and any {concept} inside it is again read from the kit.
 // Templates never write a concept word themselves; a test enforces that.
 import { UI, type UiKey } from './i18n/ui.ts';
+import { SEED_KIT_WORDS } from './kits/seed.ts';
 
 export type Lang = 'ar' | 'en';
 export const LANGS: readonly Lang[] = ['ar', 'en'];
 export const CONCEPTS = ['space', 'admin', 'publisher', 'learner', 'group', 'subject', 'chapter', 'lesson', 'material'] as const;
 export type Concept = (typeof CONCEPTS)[number];
 
+/** Kit words added in release 2 (Guardian: Parent at the School kit,
+ * Supervisor at the Company kit). Like a concept, each is read from the
+ * space's kit; a kit made before release 2 has none, so its seed kit's word is
+ * used (SEED_KIT_WORDS). The owner's names form edits the nine concepts only. */
+export const KIT_WORDS = ['guardian'] as const;
+export type KitWord = (typeof KIT_WORDS)[number];
+
 export interface KitJson {
   seed: string;
   name: Record<Lang, string>;
   languages: Lang[];
-  labels: Record<Lang, Record<Concept, string>>;
+  labels: Record<Lang, Record<Concept, string> & Partial<Record<KitWord, string>>>;
   theme: {
     logoKey: string | null;
     logoType: string | null;
@@ -25,15 +33,19 @@ export interface KitJson {
   gamification: { enabled: boolean; pack: string | null };
 }
 
-export type LabelKey = Concept | UiKey;
+export type LabelKey = Concept | KitWord | UiKey;
 export type Label = (key: LabelKey, vars?: Record<string, string>) => string;
 
-const isConcept = (key: string): key is Concept => (CONCEPTS as readonly string[]).includes(key);
+const isConcept = (key: string): key is Concept | KitWord =>
+  (CONCEPTS as readonly string[]).includes(key) || (KIT_WORDS as readonly string[]).includes(key);
 
 export function makeLabel(lang: Lang, kit?: KitJson): Label {
-  const concept = (key: Concept): string => {
+  const concept = (key: Concept | KitWord): string => {
     if (!kit) throw new Error(`label "${key}" needs a space's kit`);
-    return kit.labels[lang][key];
+    const own = kit.labels[lang][key];
+    if (own !== undefined) return own;
+    const words = SEED_KIT_WORDS[kit.seed] ?? SEED_KIT_WORDS.school;
+    return words[lang][key as KitWord];
   };
   return (key, vars = {}) => {
     if (isConcept(key)) return concept(key);
