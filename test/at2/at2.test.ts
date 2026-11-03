@@ -234,7 +234,7 @@ describe('AT-2 the admin staffs the space and assigns a subject', { concurrency:
 
   it('AT-2.1b the admin cannot appoint another admin, and cannot set an end date later than their own', async () => {
     const roles = await admin.locator('form#appoint select[name=role] option').evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value));
-    assert.deepEqual(roles, ['publisher', 'learner'], 'only a publisher or a learner can be chosen');
+    assert.deepEqual(roles, ['publisher', 'learner', 'guardian'], 'only a publisher, a learner or (release 2) a guardian can be chosen');
 
     // Even a page altered to offer "admin" is refused.
     await fillAppoint(admin, { ...HADEER, display_name: 'Second Admin', username: 'second.admin' }, peopleEnd);

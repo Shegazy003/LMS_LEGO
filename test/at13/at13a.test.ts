@@ -104,7 +104,12 @@ describe('AT-13a the running product: guardian pages carry no activity, and open
     const tables = (await w.p.sql("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND name NOT IN ('d1_migrations', 'usage_day', 'session')"))
       .map((r) => String(r.name));
     assert.ok(!tables.some((t) => /view|open|activity/i.test(t)), `no lesson-view table: ${tables.join(', ')}`);
-    const rows = async () => Object.fromEntries(await Promise.all(tables.map(async (t) => [t, (await w.p.sql(`SELECT * FROM "${t}"`)).map((r) => JSON.stringify(r)).sort()] as const)));
+    // One table at a time: parallel `wrangler d1 execute` calls on one local database fail at random.
+    const rows = async () => {
+      const all: Record<string, string[]> = {};
+      for (const t of tables) all[t] = (await w.p.sql(`SELECT * FROM "${t}"`)).map((r) => JSON.stringify(r)).sort();
+      return all;
+    };
     const people = { a: await as(w, A), g1: await as(w, G1), hadeer: await as(w, HADEER) };
     const before = await rows();
     for (let i = 0; i < 2; i++) {
