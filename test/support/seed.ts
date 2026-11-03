@@ -11,7 +11,7 @@ export interface SeedPerson {
   password: string;
   display_name: string;
   mobile: string;
-  role: 'admin' | 'publisher' | 'learner';
+  role: 'admin' | 'publisher' | 'learner' | 'guardian';
   valid_until: string;
 }
 
@@ -37,6 +37,10 @@ export interface SeedRequest {
   spaceId: string;
   grantedBy: string;
   people?: SeedPerson[];
+  /** A further role for a person already seeded (release 2: a person who is a guardian and a publisher or a learner). */
+  memberships?: { username: string; role: 'publisher' | 'learner' | 'guardian'; valid_until: string }[];
+  /** Guardian links (release 2), as the admin's link form writes them. */
+  links?: { guardian: string; learner: string }[];
   groups?: { name: string; members: string[] }[];
   subjects?: SeedSubject[];
 }

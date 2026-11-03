@@ -65,6 +65,10 @@ interface SeedBody {
   spaceId: string;
   grantedBy: string;
   people?: { username: string; password: string; display_name: string; mobile: string; role: string; valid_until: string }[];
+  /** A further role for a person already seeded (release 2: a guardian who is also a publisher or a learner). */
+  memberships?: { username: string; role: string; valid_until: string }[];
+  /** Guardian links (release 2), as the admin's link form writes them. */
+  links?: { guardian: string; learner: string }[];
   groups?: { name: string; members: string[] }[];
   subjects?: {
     title: string;
@@ -123,7 +127,7 @@ async function seed(db: Db, files: R2Bucket, body: SeedBody, iterations: number)
     const mobile = normaliseMobile(p.mobile, space.default_country_code);
     if (!mobile) refused(`mobile of ${p.username} cannot be read`);
     if (!isIsoDate(p.valid_until)) refused(`valid_until of ${p.username} is not a date`);
-    if (!['admin', 'publisher', 'learner'].includes(p.role)) refused(`role of ${p.username}`);
+    if (!['admin', 'publisher', 'learner', 'guardian'].includes(p.role)) refused(`role of ${p.username}`);
     const id = crypto.randomUUID();
     out.users[p.username] = id;
     statements.push(
@@ -144,6 +148,22 @@ async function seed(db: Db, files: R2Bucket, body: SeedBody, iterations: number)
     if (!row) refused(`no user ${username}`);
     return (out.users[username] = row.id);
   };
+
+  for (const m of body.memberships ?? []) {
+    if (!isIsoDate(m.valid_until)) refused(`valid_until of ${m.username}'s ${m.role} role is not a date`);
+    if (!['admin', 'publisher', 'learner', 'guardian'].includes(m.role)) refused(`role ${m.role} of ${m.username}`);
+    statements.push([
+      'INSERT INTO membership (id, space_id, user_id, role, valid_from, valid_until, granted_by) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      crypto.randomUUID(), space.id, await userId(m.username), m.role, today, m.valid_until, granter.id,
+    ]);
+  }
+
+  for (const l of body.links ?? []) {
+    statements.push([
+      'INSERT INTO guardian_link (id, space_id, guardian_user_id, learner_user_id, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      crypto.randomUUID(), space.id, await userId(l.guardian), await userId(l.learner), granter.id, now(),
+    ]);
+  }
 
   for (const g of body.groups ?? []) {
     const id = crypto.randomUUID();

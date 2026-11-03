@@ -21,7 +21,8 @@ import { appointAdmin, b64, createSpace, seed, setUpOwner, signedIn, tinyPdf, ty
 const root = fileURLToPath(new URL('../..', import.meta.url));
 
 // Tables whose rows belong to one space. A query on any of them must say which.
-const SPACE_TABLES = ['membership', 'group', 'group_member', 'subject', 'subject_access', 'chapter', 'lesson', 'material'];
+// From release 2 (R2-a): guardian_link, the admin's links between a guardian and a learner.
+const SPACE_TABLES = ['membership', 'group', 'group_member', 'subject', 'subject_access', 'chapter', 'lesson', 'material', 'guardian_link'];
 // Product-level tables (docs/02-LEGO-MODEL.md and migrations/0001_init.sql),
 // and from task 4: reset_link (keyed by the person, like session; it records
 // the space whose name and language its page shows) and attempt_limit (failed

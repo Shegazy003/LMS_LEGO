@@ -1,5 +1,6 @@
 // Product sentences in English and Arabic. A {concept} placeholder (space,
-// admin, publisher, learner, group, subject, chapter, lesson, material) is
+// admin, publisher, learner, group, subject, chapter, lesson, material, and
+// from release 2 guardian) is
 // filled from the space's kit by the label function; other {names} are values
 // passed in. Words that name a concept never appear here directly.
 
@@ -139,10 +140,10 @@ const en = {
   people: 'People',
   appointPerson: 'Appoint a person',
   roleField: 'Role',
-  mobileParentHint: 'The local way (for example 010…). For a {learner}, a parent’s number. It is used only to send a password link.',
+  mobileParentHint: 'The local way (for example 010…). For a {learner}, the number of their {guardian}. It is used only to send a password link.',
   endDateOwnHint: 'At the latest your own end date, {date}.',
   endDateBeyondOwn: 'The end date cannot be later than your own end date, {date}.',
-  roleInvalid: 'You can appoint a {publisher} or a {learner} only.',
+  roleInvalid: 'You can appoint a {publisher}, a {learner} or a {guardian} only.',
   sendResetLink: 'Send reset link by WhatsApp',
   resetLinkNote: 'A one-time link to set a new password, valid 30 minutes. It goes from your own WhatsApp to the registered number.',
   confirmDigits: 'The link will go to the number ending in',
@@ -266,6 +267,26 @@ const en = {
   replaceNote: 'The title and place stay the same. Every {learner} gets the new file at once; the old one is no longer served.',
   replaceKind: 'Choose a file of the same kind: a PDF in place of a PDF, an image in place of an image. Nothing was changed.',
   replacedDone: 'Saved. The new file shows at once.',
+  // Release 2, R2-a: guardians and their links.
+  linksTitle: 'Linked accounts: {learner}',
+  linksNote: 'This {guardian} sees only the accounts linked here: the titles of what is assigned to each, and the {publisher} of each. No content, no files, nobody else.',
+  linksNone: 'Nobody is linked yet.',
+  linkAdd: 'Add a link ({learner})',
+  linkButton: 'Link',
+  linkRefused: 'Only a {learner} of this space can be linked. Nothing was changed.',
+  linkSelfRefused: 'A person cannot be linked to themselves. Nothing was changed.',
+  linkDone: 'Linked. It shows on their next page.',
+  unlink: 'Remove the link',
+  unlinkConfirmTitle: 'Remove the link between {name} and {other}?',
+  unlinkConfirmNote: 'From the next page {name} no longer sees {other}, also in a sign-in already open. Nothing is deleted, and the link can be restored.',
+  unlinkYes: 'Yes, remove the link',
+  unlinkDone: 'The link is removed. Nothing was deleted; you can restore it below.',
+  linksEnded: 'Removed links',
+  linkRestore: 'Restore the link',
+  linkRestored: 'The link is restored.',
+  guardianHome: '{guardian} home',
+  guardianNote: 'Only the accounts linked to you appear here. You can see what is assigned; nothing here can be changed.',
+  guardianNone: 'No account is linked to you yet. Contact the {admin}.',
 };
 
 export type UiKey = keyof typeof en;
@@ -406,10 +427,10 @@ const ar: Record<UiKey, string> = {
   people: 'الأشخاص',
   appointPerson: 'تعيين شخص',
   roleField: 'الدور',
-  mobileParentHint: 'بالطريقة المحلية (مثل 010…). رقم ولي الأمر إن كان الشخص {learner}. يُستخدم فقط لإرسال رابط كلمة المرور.',
+  mobileParentHint: 'بالطريقة المحلية (مثل 010…). إن كان الشخص {learner} فرقم {guardian}. يُستخدم فقط لإرسال رابط كلمة المرور.',
   endDateOwnHint: 'لا يتجاوز تاريخ انتهائك أنت، {date}.',
   endDateBeyondOwn: 'لا يمكن أن يتجاوز تاريخ الانتهاء تاريخ انتهائك أنت، {date}.',
-  roleInvalid: 'يمكنك تعيين {publisher} أو {learner} فقط.',
+  roleInvalid: 'يمكنك تعيين {publisher} أو {learner} أو {guardian} فقط.',
   sendResetLink: 'إرسال رابط إعادة التعيين عبر واتساب',
   resetLinkNote: 'رابط لمرة واحدة لتعيين كلمة مرور جديدة، صالح لمدة 30 دقيقة. يُرسل من واتساب الخاص بك إلى رقم الهاتف المحمول المحفوظ لهذا الشخص.',
   confirmDigits: 'سيُرسل الرابط إلى الرقم المنتهي بـ',
@@ -529,6 +550,25 @@ const ar: Record<UiKey, string> = {
   replaceNote: 'يبقى العنوان والمكان كما هما. يحصل كل {learner} على الملف الجديد فوراً، ولا يُعرض الملف القديم بعد ذلك.',
   replaceKind: 'اختر ملفاً من النوع نفسه: ملف PDF مكان ملف PDF، وصورة مكان صورة. لم يتغيّر شيء.',
   replacedDone: 'تم الحفظ. يظهر الملف الجديد فوراً.',
+  linksTitle: 'الحسابات المرتبطة: {learner}',
+  linksNote: 'لا يرى هذا الحساب ({guardian}) إلا الحسابات المرتبطة هنا: عناوين ما خُصّص لكل منها، واسم {publisher} لكل عنوان. لا محتوى ولا ملفات ولا أحد غيرهم.',
+  linksNone: 'لم يُربط أحد بعد.',
+  linkAdd: 'ربط {learner}',
+  linkButton: 'ربط',
+  linkRefused: 'لا يمكن الربط إلا بحساب {learner} في هذه المساحة. لم يتغيّر شيء.',
+  linkSelfRefused: 'لا يمكن ربط الشخص بنفسه. لم يتغيّر شيء.',
+  linkDone: 'تم الربط. يظهر في الصفحة التالية.',
+  unlink: 'إزالة الربط',
+  unlinkConfirmTitle: 'إزالة الربط بين {name} و {other}؟',
+  unlinkConfirmNote: 'من الصفحة التالية لن يرى {name} الحساب {other}، حتى في تسجيل دخول مفتوح. لا يُحذف شيء، ويمكن استعادة الربط.',
+  unlinkYes: 'نعم، أزِل الربط',
+  unlinkDone: 'أُزيل الربط. لم يُحذف شيء؛ ويمكنك استعادته أدناه.',
+  linksEnded: 'روابط أُزيلت',
+  linkRestore: 'استعادة الربط',
+  linkRestored: 'تمت استعادة الربط.',
+  guardianHome: 'صفحة {guardian}',
+  guardianNote: 'تظهر هنا الحسابات المرتبطة بك فقط. يمكنك أن ترى ما خُصّص لها؛ ولا يمكن تغيير شيء هنا.',
+  guardianNone: 'لم يُربط بك أي حساب بعد. للتواصل: {admin}.',
 };
 
 export const UI: Record<'ar' | 'en', Record<UiKey, string>> = { en, ar };

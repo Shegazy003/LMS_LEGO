@@ -183,7 +183,8 @@ async function learnerRoutes(): Promise<string[]> {
   (globalThis as { __TEST_HOOKS__?: boolean }).__TEST_HOOKS__ = true;
   const { app, MIDDLEWARE } = await import('../../src/app.ts');
   const routes = (app.routes as RouteEntry[]).filter((r) => !(r.method === 'ALL' && MIDDLEWARE.has(r.handler)));
-  const gated = (p: string) => /^\/s\/:spaceId\/(admin|publish)(\/|$)/.test(p);
+  // The guardian pages (release 2) are role-gated like admin and publish, and show no lesson content.
+  const gated = (p: string) => /^\/s\/:spaceId\/(admin|publish|linked)(\/|$)/.test(p);
   return [...new Set(routes.filter((r) => r.method === 'GET' && (r.path === '/s/:spaceId' || r.path.startsWith('/s/:spaceId/')) && !gated(r.path)).map((r) => r.path))];
 }
 

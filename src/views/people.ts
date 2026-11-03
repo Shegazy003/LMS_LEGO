@@ -41,7 +41,16 @@ export interface CorrectionValues {
   valid_until?: string;
 }
 
-export type PersonNotice = 'setPasswordDone' | 'saved' | 'mobileChanged' | 'accessEndedDone' | 'accessRestored';
+export type PersonNotice = 'setPasswordDone' | 'saved' | 'mobileChanged' | 'accessEndedDone' | 'accessRestored' | 'linkDone' | 'unlinkDone' | 'linkRestored';
+
+/** A guardian's links, on their person page (release 2, R2-a): the learners
+ * linked now, the removed links (each can be restored), and the learners of
+ * the space who can still be linked. */
+export interface LinksView {
+  active: { id: string; display_name: string }[];
+  ended: { id: string; display_name: string }[];
+  choices: { id: string; display_name: string }[];
+}
 
 function backLink(f: PersonFrame): Html {
   return html`<p><a id="back" href="${f.back.href}">${f.back.label}</a></p>`;
@@ -59,7 +68,7 @@ function endDateField(f: PersonFrame, value: string): Html {
 export function personPage(
   f: PersonFrame,
   p: PersonView,
-  v: { error?: string; notice?: PersonNotice; values?: CorrectionValues } = {},
+  v: { error?: string; notice?: PersonNotice; values?: CorrectionValues; links?: LinksView } = {},
 ): Html {
   const { t } = f;
   const typed = v.values ?? {};
@@ -87,9 +96,55 @@ export function personPage(
 </div>
 ${v.notice ? html`<p id="done" class="done" role="status">${t(v.notice)}</p>` : ''}
 ${errorBox(v.error)}
+${v.links ? linksSection(f, v.links) : ''}
 ${correct}
 ${p.ended ? ended : activeActions(f, p)}`;
   return f.frame(p.display_name, body);
+}
+
+/** A guardian's links: who they see now (each with Remove the link, a step
+ * that names both people), the removed links with Restore, and a form to link
+ * another learner of the space. */
+function linksSection(f: PersonFrame, v: LinksView): Html {
+  const { t } = f;
+  const active = v.active.length
+    ? html`<ul id="links" class="list">${v.active.map((l) => html`<li data-linked="${l.id}" class="row"><bdi>${l.display_name}</bdi>
+  <a class="unlink" href="${f.base}/links/${l.id}/remove">${t('unlink')}</a></li>`)}</ul>`
+    : html`<p id="links" class="muted">${t('linksNone')}</p>`;
+  const ended = v.ended.length
+    ? html`<details id="links-ended" class="card"><summary>${t('linksEnded')}</summary><ul class="list">${v.ended.map((l) => html`<li data-unlinked="${l.id}" class="row"><bdi>${l.display_name}</bdi>
+  <form method="post" action="${f.base}/links"><input type="hidden" name="learner" value="${l.id}"><input type="hidden" name="restore" value="1"><button type="submit">${t('linkRestore')}</button></form></li>`)}</ul></details>`
+    : '';
+  const add = v.choices.length
+    ? html`<form id="link-learner" class="inline-add" method="post" action="${f.base}/links">
+  <label>${t('linkAdd')}<select name="learner">${v.choices.map((c) => html`<option value="${c.id}">${c.display_name}</option>`)}</select></label>
+  <button type="submit">${t('linkButton')}</button>
+</form>`
+    : '';
+  return html`<h2 id="links-title">${t('linksTitle')}</h2>
+<div class="card">
+  <p class="muted">${t('linksNote')}</p>
+  ${active}
+  ${add}
+</div>
+${ended}`;
+}
+
+/** Remove the link, step one: a page that names both people. Cancel goes back
+ * (a plain link, which changes nothing); the confirming tap posts. */
+export function unlinkConfirmPage(f: PersonFrame, p: PersonView, learner: { id: string; display_name: string }): Html {
+  const { t } = f;
+  const names = { name: p.display_name, other: learner.display_name };
+  const body = html`${backLink(f)}
+<h1 id="unlink-title">${sentence(t, 'unlinkConfirmTitle', names)}</h1>
+<div id="unlink-confirm" class="card">
+  <p class="muted">${sentence(t, 'unlinkConfirmNote', names)}</p>
+  <div class="share">
+    <form id="confirm-unlink" method="post" action="${f.base}/links/${learner.id}/remove"><button type="submit" class="secondary">${t('unlinkYes')}</button></form>
+    <a id="cancel-unlink" class="button" href="${f.base}">${t('cancel')}</a>
+  </div>
+</div>`;
+  return f.frame(t('unlinkConfirmTitle', names), body);
 }
 
 function activeActions(f: PersonFrame, p: PersonView): Html {

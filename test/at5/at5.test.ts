@@ -49,8 +49,8 @@ const RED_LOGO = solidPng(138, 28, 18);
 
 // The words people see. School kit before; Company kit with Coach after.
 const SCHOOL_AR = { publisher: 'معلّم', learner: 'طالب', group: 'فصل', subject: 'مادّة', chapter: 'وحدة', lesson: 'درس', admin: 'مدير' };
-const AFTER_AR = { publisher: 'مرشد', learner: 'موظّف', group: 'فريق', subject: 'دورة', chapter: 'وحدة', lesson: 'جلسة' };
-const AFTER_EN = { publisher: 'Coach', learner: 'Employee', group: 'Team', subject: 'Course', chapter: 'Module', lesson: 'Session' };
+const AFTER_AR = { publisher: 'مرشد', learner: 'موظّف', group: 'فريق', subject: 'دورة', chapter: 'وحدة', lesson: 'جلسة', guardian: 'مشرف' };
+const AFTER_EN = { publisher: 'Coach', learner: 'Employee', group: 'Team', subject: 'Course', chapter: 'Module', lesson: 'Session', guardian: 'Supervisor' };
 /** Words that must be gone from every Mesk page after the change (the old kit's, and the Company word that was renamed). */
 const GONE = ['معلّم', 'طالب', 'فصل', 'مادّة', 'درس', 'مدير', 'مدرّب'];
 
@@ -380,7 +380,7 @@ describe('AT-5 the kit changes every word, and no code changes', { concurrency: 
     await shot(a, '09-after-admin-home-coach');
     await wordsOn(a, `/s/${mesk}/admin/people`, 'people page', [AFTER_AR.publisher, AFTER_AR.learner]);
     const roles = await a.locator('form#appoint select[name=role] option').allInnerTexts();
-    assert.deepEqual(roles.map((r) => r.trim()), [AFTER_AR.publisher, AFTER_AR.learner], 'the role choices');
+    assert.deepEqual(roles.map((r) => r.trim()), [AFTER_AR.publisher, AFTER_AR.learner, AFTER_AR.guardian], 'the role choices');
     await shot(a, '10-after-admin-people');
     await wordsOn(a, `/s/${mesk}/admin/people/${ids[HADEER.username]}`, 'Hadeer\'s page', [AFTER_AR.publisher]);
     await wordsOn(a, `/s/${mesk}/admin/sets`, 'groups page', [AFTER_AR.group]);

@@ -58,6 +58,15 @@ export const SEED_KITS: readonly KitJson[] = [
   },
 ];
 
+/** Release 2 kit words of each seed kit (src/labels.ts KIT_WORDS). They are
+ * read from here for every space of that seed, including spaces made before
+ * release 2, whose kit rows do not carry them. */
+export const SEED_KIT_WORDS: Record<string, Record<'ar' | 'en', Record<'guardian', string>>> = {
+  school: { en: { guardian: 'Parent' }, ar: { guardian: 'ولي أمر' } },
+  company: { en: { guardian: 'Supervisor' }, ar: { guardian: 'مشرف' } },
+  university: { en: { guardian: 'Guardian' }, ar: { guardian: 'ولي أمر' } },
+};
+
 export function seedKit(id: string): KitJson {
   const kit = SEED_KITS.find((k) => k.seed === id);
   if (!kit) throw new Error(`no seed kit "${id}"`);

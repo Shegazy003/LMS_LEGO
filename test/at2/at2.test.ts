@@ -32,7 +32,8 @@ const MIN = 60_000;
 
 // Plain messages, in the space's first language (Arabic).
 const MOBILE_REFUSED = 'تعذّرت قراءة رقم الهاتف المحمول هذا. اكتبه بالطريقة المحلية (مثل 010…) أو بعلامة + ورمز الدولة.';
-const ROLE_REFUSED = 'يمكنك تعيين معلّم أو طالب فقط.';
+// Release 2 (R2-a) adds the guardian to the roles an admin may appoint.
+const ROLE_REFUSED = 'يمكنك تعيين معلّم أو طالب أو ولي أمر فقط.';
 const WRONG_USER = 'اسم المستخدم هذا لا يطابق الرابط. تحقّق منه وحاول مرة أخرى.';
 const LINK_DEAD = 'هذا الرابط لم يعد يعمل. اطلب رابطاً جديداً ممّن أرسله.';
 const RESET_DONE = 'تم تعيين كلمة المرور الجديدة. سجّل الدخول بها الآن.';
@@ -233,7 +234,7 @@ describe('AT-2 the admin staffs the space and assigns a subject', { concurrency:
 
   it('AT-2.1b the admin cannot appoint another admin, and cannot set an end date later than their own', async () => {
     const roles = await admin.locator('form#appoint select[name=role] option').evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value));
-    assert.deepEqual(roles, ['publisher', 'learner'], 'only a publisher or a learner can be chosen');
+    assert.deepEqual(roles, ['publisher', 'learner', 'guardian'], 'only a publisher, a learner or (release 2) a guardian can be chosen');
 
     // Even a page altered to offer "admin" is refused.
     await fillAppoint(admin, { ...HADEER, display_name: 'Second Admin', username: 'second.admin' }, peopleEnd);

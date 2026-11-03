@@ -33,7 +33,7 @@ function personRow(t: Label, space: SpaceView, p: ListedPerson): Html {
     ? sentence(t, 'endedOn', { date: endedDate(p.valid_until, p.ended_on) })
     : sentence(t, 'validUntil', { date: p.valid_until });
   return html`<li data-user="${p.id}"><a class="person" href="${base(space)}/people/${p.id}"><bdi>${p.display_name}</bdi></a>
-  <div class="muted">${t(p.role === 'publisher' ? 'publisher' : 'learner')} · ${when} · ${sentence(t, 'mobileEnding', { digits: lastDigits(p.mobile) })}</div></li>`;
+  <div class="muted">${t(p.role === 'publisher' ? 'publisher' : p.role === 'guardian' ? 'guardian' : 'learner')} · ${when} · ${sentence(t, 'mobileEnding', { digits: lastDigits(p.mobile) })}</div></li>`;
 }
 
 /** The people of the space (publishers and learners), found by the search box
@@ -68,6 +68,7 @@ ${errorBox(v.error)}
   <label>${t('roleField')}<select name="role">
     <option value="publisher" ${role === 'publisher' ? 'selected' : ''}>${t('publisher')}</option>
     <option value="learner" ${role === 'learner' ? 'selected' : ''}>${t('learner')}</option>
+    <option value="guardian" ${role === 'guardian' ? 'selected' : ''}>${t('guardian')}</option>
   </select></label>
   <label>${t('mobile')}<input name="mobile" type="tel" required dir="ltr" value="${v.values.mobile ?? ''}"><span class="hint">${t('mobileParentHint')}</span></label>
   <label>${t('endDate')}<input name="valid_until" type="date" required min="${v.today}" max="${v.ownEnd}" value="${v.values.valid_until ?? ''}"><span class="hint">${sentence(t, 'endDateOwnHint', { date: v.ownEnd })}</span></label>
