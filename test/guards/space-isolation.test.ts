@@ -22,7 +22,15 @@ const root = fileURLToPath(new URL('../..', import.meta.url));
 
 // Tables whose rows belong to one space. A query on any of them must say which.
 // From release 2 (R2-a): guardian_link, the admin's links between a guardian and a learner.
-const SPACE_TABLES = ['membership', 'group', 'group_member', 'subject', 'subject_access', 'chapter', 'lesson', 'material', 'guardian_link'];
+// From R2-b: exam and exam_result (a learner's mark or Absent for one exam).
+const SPACE_TABLES = [
+  'membership', 'group', 'group_member', 'subject', 'subject_access', 'chapter', 'lesson', 'material', 'guardian_link', 'exam', 'exam_result',
+];
+// Tables whose rows belong to a row of a space table and carry no space_id of
+// their own (R2-b: exam_result_history, per contract section 5). A statement
+// on one of them must reach it through its parent, scoped by the parent's
+// space_id, in the same statement.
+const CHILD_TABLES: Record<string, string> = { exam_result_history: 'exam_result' };
 // Product-level tables (docs/02-LEGO-MODEL.md and migrations/0001_init.sql),
 // and from task 4: reset_link (keyed by the person, like session; it records
 // the space whose name and language its page shows) and attempt_limit (failed
@@ -67,6 +75,16 @@ export function unscoped(sql: string): string[] {
     const needle = alias ? new RegExp(`\\b${alias}\\.space_id\\b`) : /\bspace_id\b/;
     if (!needle.test(sql)) problems.push(`${table}${alias ? ` ${alias}` : ''} is used without ${alias ? `${alias}.` : ''}space_id`);
   }
+  for (const [child, parent] of Object.entries(CHILD_TABLES)) {
+    if (!new RegExp(`\\b(FROM|JOIN|INTO|UPDATE)\\s+"?${child}"?(?![\\w"])`, 'i').test(sql)) continue;
+    // The parent, by itself (not the child's longer name), scoped by its space_id.
+    const parentRef = new RegExp(`\\b(FROM|JOIN)\\s+"?${parent}"?(?![\\w"])(?:\\s+(?:AS\\s+)?([a-z_][a-z0-9_]*))?`, 'gi');
+    const scoped = [...sql.matchAll(parentRef)].some((m) => {
+      const alias = m[2] && !KEYWORDS.has(m[2].toLowerCase()) ? m[2] : null;
+      return (alias ? new RegExp(`\\b${alias}\\.space_id\\b`) : /\bspace_id\b/).test(sql);
+    });
+    if (!scoped) problems.push(`${child} is used without reaching it through ${parent} and its space_id`);
+  }
   return problems;
 }
 
@@ -84,6 +102,15 @@ test('space guard: the scanner catches a query that forgets the space (self-chec
   assert.deepEqual(unscoped('SELECT id FROM session WHERE id = ?'), [], 'product tables are not space tables');
   assert.deepEqual(unscoped('SELECT 1 FROM subject_access a WHERE a.space_id = ? AND a.subject_id = ?'), []);
   assert.deepEqual(sqlStatements("db.first('SELECT 1 AS one FROM user WHERE is_owner = 1'); const x = 'Select a file';"), ['SELECT 1 AS one FROM user WHERE is_owner = 1']);
+  // R2-b: a history row is reached only through its result, scoped by the result's space_id.
+  assert.deepEqual(unscoped('SELECT h.new_mark FROM exam_result_history h WHERE h.result_id = ?'), ['exam_result_history is used without reaching it through exam_result and its space_id']);
+  assert.deepEqual(unscoped('INSERT INTO exam_result_history (id, result_id, new_status) VALUES (?, ?, ?)'), ['exam_result_history is used without reaching it through exam_result and its space_id']);
+  assert.deepEqual(unscoped('SELECT h.new_mark FROM exam_result_history h JOIN exam_result r ON r.id = h.result_id WHERE h.result_id = ?'), [
+    'exam_result r is used without r.space_id',
+    'exam_result_history is used without reaching it through exam_result and its space_id',
+  ]);
+  assert.deepEqual(unscoped('SELECT h.new_mark FROM exam_result_history h JOIN exam_result r ON r.id = h.result_id WHERE r.space_id = ? AND h.result_id = ?'), []);
+  assert.deepEqual(unscoped('SELECT r.mark FROM exam_result r WHERE r.id = ?'), ['exam_result r is used without r.space_id']);
 });
 
 test('space guard: every query under src/ that touches a space table names its space_id', () => {
@@ -161,8 +188,8 @@ describe('space guard: the database and the running product keep spaces apart', 
   it('every space table carries space_id and every child refers to its parent together with space_id', async () => {
     const tables = (await worker.sql("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND name <> 'd1_migrations'")).map((r) => String(r.name));
     for (const t of SPACE_TABLES) assert.ok(tables.includes(t), `table ${t} exists`);
-    const unknown = tables.filter((t) => !SPACE_TABLES.includes(t) && !PRODUCT_TABLES.includes(t));
-    assert.deepEqual(unknown, [], 'every table is listed here as a space table or a product table');
+    const unknown = tables.filter((t) => !SPACE_TABLES.includes(t) && !PRODUCT_TABLES.includes(t) && !Object.hasOwn(CHILD_TABLES, t));
+    assert.deepEqual(unknown, [], 'every table is listed here as a space table, a product table or the child of a space table');
     // D1 allows the pragma functions with a table name (not joined to
     // sqlite_master) and only a few terms per compound SELECT: ask in fours.
     const union = async (each: (t: string) => string) => {
@@ -181,8 +208,13 @@ describe('space guard: the database and the running product keep spaces apart', 
         assert.ok(cols.includes('space_id'), `${t} → ${fk.parent} includes space_id (has ${cols.join(', ')})`);
       }
     }
-    for (const t of ['group_member', 'subject_access', 'chapter', 'lesson', 'material']) {
+    for (const t of ['group_member', 'subject_access', 'chapter', 'lesson', 'material', 'exam', 'exam_result']) {
       assert.ok(keys.some((k) => k.tbl === t && SPACE_TABLES.includes(String(k.parent))), `${t} refers to its parent (the check above is meaningful)`);
+    }
+    // A child table without space_id refers to its parent, which carries it.
+    for (const [child, parent] of Object.entries(CHILD_TABLES)) {
+      const fks = await worker.sql(`SELECT "table" AS parent, "from" AS col FROM pragma_foreign_key_list('${child}')`);
+      assert.ok(fks.some((f) => f.parent === parent), `${child} refers to ${parent}`);
     }
   });
 

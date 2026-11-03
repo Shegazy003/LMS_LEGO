@@ -232,13 +232,13 @@ jobs:
       - name: AT-13a no lesson-activity phrase, date, count or time on guardian pages, and no lesson open is stored
         if: success() || failure()
         run: npm run test:at13a
-      - name: AT-13b the forbidden-string scan finds nothing a guardian or learner can reach, in Arabic and English
+      - name: AT-13b the forbidden-string scan finds nothing a guardian or learner can reach, results pages included, in Arabic and English
         if: success() || failure()
         run: npm run test:at13b
-      - name: AT-13c the H-1 no-secrets guard passes with the guardian pages, and numbers stay masked
+      - name: AT-13c the H-1 no-secrets guard passes with the guardian and marks pages and logs, and numbers stay masked
         if: success() || failure()
         run: npm run test:at13c
-      - name: AT-13d new labels in Arabic and English through the dictionary, and no-store on every guardian page
+      - name: AT-13d new labels in Arabic and English through the dictionary, and no-store on every guardian, results and marks page
         if: success() || failure()
         run: npm run test:at13d
       - name: AT-14b the README states what stays on a rollback
@@ -249,6 +249,78 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: evidence-release-2
+          path: evidence/
+  # Release 2, task R2-b: exams, publishing, My results, and the reset-form
+  # retry. One named step per acceptance sub-check (AT-10a to AT-10g, AT-11a
+  # to AT-11c; the results pages of AT-13 are in "release-2", the 0008
+  # migration of AT-14a in "rollback"). A job of its own, beside the others.
+  release-2-results:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      WRANGLER_SEND_METRICS: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install (lockfile only, when present)
+        run: if [ -f package-lock.json ]; then npm ci; fi
+      - name: Read the Playwright version
+        id: playwright
+        run: |
+          echo "version=$(node -p "require('playwright/package.json').version")" >> "$GITHUB_OUTPUT"
+          echo "image=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
+      - name: Cache Chromium for the browser test
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.image }}-${{ steps.playwright.outputs.version }}-chromium
+      - name: Install Chromium for the browser test
+        timeout-minutes: 10
+        run: |
+          npx playwright install-deps chromium
+          for attempt in 1 2 3; do
+            timeout 180 npx playwright install chromium && exit 0
+            echo "::warning::Chromium install attempt $attempt did not finish; retrying"
+            sleep 10
+          done
+          exit 1
+      - name: AT-10a the publisher creates an exam in their subject; another publisher, an admin and a learner cannot create, save or publish
+        if: success() || failure()
+        run: npm run test:at10a
+      - name: AT-10b the marks page lists every learner of the subject by name then username, each told apart, 40 rows at phone width
+        if: success() || failure()
+        run: npm run test:at10b
+      - name: AT-10c accepted mark forms are stored as one number; refused forms are named beside the row and nothing is published
+        if: success() || failure()
+        run: npm run test:at10c
+      - name: AT-10d a draft comes back in the same order, and a draft row answers a learner or guardian exactly as a missing row
+        if: success() || failure()
+        run: npm run test:at10d
+      - name: AT-10e Publish lists every row first, Cancel changes nothing, and a changed list is named and must be completed
+        if: success() || failure()
+        run: npm run test:at10e
+      - name: AT-10f Publish is atomic with a history row per result; a link never publishes; a second tab changes nothing; a late joiner alone
+        if: success() || failure()
+        run: npm run test:at10f
+      - name: AT-10g the retry of a cut-off reset form says the password is already changed, in Arabic and English, not link gone
+        if: success() || failure()
+        run: npm run test:at10g
+      - name: AT-11a each learner sees exactly their own published results, with no average, rank, grade, other person or draft
+        if: success() || failure()
+        run: npm run test:at11a
+      - name: AT-11b another learner's list or result is refused identically, existing or not
+        if: success() || failure()
+        run: npm run test:at11b
+      - name: AT-11c a learner who leaves keeps their published results and gets no row for later exams
+        if: success() || failure()
+        run: npm run test:at11c
+      - name: Upload evidence (release 2 results screenshots)
+        if: always() && hashFiles('evidence/**') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-release-2-results
           path: evidence/
   # AT-14a: rollback holds. The code live before release 2 (main at f3b1fa7,
   # the H-1 version 528786a4, the rollback target) is checked out beside this
@@ -304,7 +376,7 @@ jobs:
           mkdir -p release-1.1/test/rollback
           cp test/rollback/*.test.ts release-1.1/test/rollback/
           ls release-1.1/migrations
-      - name: AT-14a release 1.1 code on the release 2 database shows a guardian nothing, exposes nothing, writes and deletes nothing
+      - name: AT-14a release 1.1 code on the release 2 database shows a guardian nothing, shows nobody a mark, exposes nothing, writes and deletes nothing
         working-directory: release-1.1
         run: node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./test/support/github-reporter.mjs --test-reporter-destination=stdout test/rollback/old-code.test.ts
       - name: AT-14a release 1.1 suite on the release 2 database - AT-1

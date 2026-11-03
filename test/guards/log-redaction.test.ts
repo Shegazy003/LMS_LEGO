@@ -24,7 +24,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Client, utcDatePlusDays } from '../support/http.ts';
-import { OWNER, appointAdmin, createSpace, signedIn } from '../support/seed.ts';
+import { OWNER, appointAdmin, createSpace, seed, signedIn } from '../support/seed.ts';
 import { issueLink } from '../support/admin.ts';
 import { startInProcess, type InProcessWorker } from '../support/in-process.ts';
 import { logLine, redact } from '../../src/log.ts';
@@ -94,6 +94,7 @@ describe('no-secrets guard, part 2: an error message that carries a value is scr
     ['a mobile number with spaces', '010 5555 6666'],
     ['a reset token that happens to hold no digit', 'qJx_Lm-ZtRvYkWcPqsNdHbFeUoAiGyTrEabcdefghij'],
     ['a recovery code', 'ABCD-EFGH-JKLM-NPQR'],
+    ['the values a statement was given: a learner name and a mark (R2-b)', '["marked",17.5,"Omar Test"]'],
   ] as const) {
     it(`${what} is removed`, () => {
       const line = logLine('request failed', new Error(`D1_ERROR: failed with ${value} here`));
@@ -121,6 +122,9 @@ const SALMA = { display_name: 'Salma', username: 'salma', password: 'salma-secre
 const OMAR_CORRECTED_MOBILE = '01077778888';
 // Release 2 (R2-a, AT-13c): a guardian, appointed with her own mobile number.
 const MONA = { display_name: 'Mona', username: 'mona.guardian', password: 'mona-secret-pass-1', role: 'guardian', mobile: '0104 141 4141' };
+// Release 2 (R2-b, AT-13c): a publisher, and the marks she enters (section 3: no mark and no learner name in a log line).
+const HODA = { display_name: 'Hoda', username: 'hoda.teacher', password: 'hoda-secret-pass-1', role: 'publisher' as const, mobile: '01020202020' };
+const MARKS = ['13.5', '16.5'];
 
 /** Every written form of a full mobile number (typed with or without spaces, national, international, digits only). */
 function mobileForms(typed: string, countryCode = '+20'): string[] {
@@ -155,8 +159,9 @@ describe('no-secrets guard, part 3: no line the running product writes holds a s
   before(async () => {
     w = await startInProcess({ PASSWORD_ITERATIONS: '10000' });
     for (const [n, v] of [['owner password', OWNER.password], ['admin password', ADMIN.password], ['Omar password', OMAR.password],
-      ['Omar new password', OMAR_NEW], ['Omar latest password', OMAR_LATEST], ['Salma password', SALMA.password], ['Mona password', MONA.password]]) secrets.set(n, v);
-    for (const [n, m] of [['owner mobile', OWNER.mobile], ['admin mobile', ADMIN.mobile], ['Omar mobile', OMAR.mobile], ['Salma mobile', SALMA.mobile], ['Omar corrected mobile', OMAR_CORRECTED_MOBILE], ['Mona mobile', MONA.mobile]]) {
+      ['Omar new password', OMAR_NEW], ['Omar latest password', OMAR_LATEST], ['Salma password', SALMA.password], ['Mona password', MONA.password],
+      ['Hoda password', HODA.password], ['a mark', MARKS[0]], ['another mark', MARKS[1]], ['a learner name', OMAR.display_name], ['another learner name', SALMA.display_name]]) secrets.set(n, v);
+    for (const [n, m] of [['owner mobile', OWNER.mobile], ['admin mobile', ADMIN.mobile], ['Omar mobile', OMAR.mobile], ['Salma mobile', SALMA.mobile], ['Omar corrected mobile', OMAR_CORRECTED_MOBILE], ['Mona mobile', MONA.mobile], ['Hoda mobile', HODA.mobile]]) {
       mobileForms(m).forEach((f, i) => secrets.set(`${n} (form ${i})`, f));
     }
     // A database failure whose message repeats the statement's values (and the reset link's address).
@@ -205,6 +210,51 @@ describe('no-secrets guard, part 3: no line the running product writes holds a s
     fail(/FROM guardian_link gl\s+JOIN membership/);
     assert.equal((await mona.get(`/s/${spaceId}/linked/${omarId}`)).status, 500, 'forced failure on the guardian page');
     assert.equal((await mona.get(`/s/${spaceId}/linked/${omarId}`)).status, 200, 'the learner page');
+
+    // Release 2 (R2-b, AT-13c): marks. A publisher makes an exam of a subject Omar and Salma read, saves
+    // a draft and publishes it, and Omar opens his results. The draft save fails once on the row that
+    // carries a mark (its values and the learner's name in the message), the publish batch fails once on
+    // a history row, and My results fails once on its read. No mark and no learner name may reach a line.
+    const salmaId = String((w.sqlite.prepare('SELECT id FROM user WHERE username = ?').get(SALMA.username) as { id: string }).id);
+    const seeded = await seed(w.url, {
+      spaceId, grantedBy: ADMIN.username,
+      people: [{ ...HODA, valid_until: utcDatePlusDays(30) }],
+      subjects: [{ title: 'Mathematics', publisher: HODA.username, published: true, users: [OMAR.username, SALMA.username] }],
+    });
+    const hoda = await signedIn(w.url, HODA.username, HODA.password);
+    await keep('Hoda session', cookieToken(hoda));
+    const made = await hoda.post(`/s/${spaceId}/publish/edit/${seeded.subjects.Mathematics.id}/marks`, { title: 'Mid-term', exam_date: '2026-11-12', max_mark: '20' });
+    assert.equal(made.status, 303, 'the exam is made');
+    const marks = (made.headers.get('location') ?? '').replace(/^https?:\/\/[^/]+/, '');
+    const form = (action: string) => {
+      const f = new FormData();
+      for (const [id, mark] of [[omarId, MARKS[0]], [salmaId, MARKS[1]]]) {
+        f.append('learner', id);
+        f.set(`mark:${id}`, mark);
+      }
+      f.set('action', action);
+      return f;
+    };
+    fail(/^\s*INSERT INTO exam_result \(/, ` for ${OMAR.display_name} ${SALMA.display_name} marks ${MARKS.join(' ')}`);
+    assert.equal((await hoda.post(marks, form('draft'))).status, 500, 'forced failure on the draft row with a mark');
+    assert.equal((await hoda.post(marks, form('draft'))).status, 303, 'the draft is saved');
+    const step = await hoda.post(marks, form('publish'));
+    assert.equal(step.status, 200, 'the confirmation');
+    const confirm = new FormData();
+    const page = await step.text();
+    for (const m of page.matchAll(/<form id="confirm"[\s\S]*?<\/form>/g)) {
+      for (const l of m[0].matchAll(/name="learner" value="([^"]+)"/g)) confirm.append('learner', l[1]);
+      confirm.set('version', m[0].match(/name="version" value="([^"]+)"/)?.[1] ?? '');
+    }
+    fail(/^\s*INSERT INTO exam_result_history/, ` for ${OMAR.display_name} new mark ${MARKS[0]}`);
+    assert.equal((await hoda.post(`${marks}/publish`, confirm)).status, 500, 'forced failure in the publish batch');
+    assert.equal((await hoda.post(`${marks}/publish`, confirm)).status, 303, 'published');
+    const omarReads = await signedIn(w.url, OMAR.username, OMAR.password);
+    fail(/FROM exam_result r JOIN exam e/, ` for ${OMAR.display_name} ${MARKS[0]}`);
+    assert.equal((await omarReads.get(`/s/${spaceId}/results`)).status, 500, 'forced failure on My results');
+    const results = await omarReads.get(`/s/${spaceId}/results`);
+    assert.equal(results.status, 200, 'My results');
+    assert.ok((await results.text()).includes(`${MARKS[0]} / 20`), 'Omar reads his own mark');
 
     // Forced failure: correcting Omar's mobile number fails on the row that carries the new number.
     fail(/^\s*UPDATE user SET display_name = \?, mobile = \?/);
@@ -267,7 +317,7 @@ describe('no-secrets guard, part 3: no line the running product writes holds a s
 
   it('the run made the product log (each forced failure wrote its line)', () => {
     const parsed = lines.flatMap((l) => (l.startsWith('{') ? [JSON.parse(l) as { event: string }] : []));
-    assert.equal(parsed.filter((p) => p.event === 'request failed').length, 5, lines.join('\n'));
+    assert.equal(parsed.filter((p) => p.event === 'request failed').length, 8, lines.join('\n'));
     assert.equal(parsed.filter((p) => p.event === 'usage flush failed').length, 1, lines.join('\n'));
   });
 
