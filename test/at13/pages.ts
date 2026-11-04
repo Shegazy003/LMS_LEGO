@@ -30,13 +30,35 @@ export async function privacyWorld(): Promise<PrivacyWorld> {
   return w;
 }
 
-/** The results pages (R2-b) a curious person could type: My results, every result row (published and draft), and the marks pages. */
+/** The results pages a curious person could type: My results, every result row (published and draft), and the marks pages
+ * (R2-b); from R2-c, the publisher's history and correction pages and the admin's results pages. */
 export function resultPaths(w: PrivacyWorld): string[] {
   return [
     `/s/${w.spaceId}/results`,
     ...[...Object.values(w.published), ...Object.values(w.draft)].map((r) => `/s/${w.spaceId}/results/${r.id}`),
     `/s/${w.spaceId}/publish/marks/${w.exam}`, `/s/${w.spaceId}/publish/marks/${w.draftExam}`,
+    `/s/${w.spaceId}/publish/marks/${w.exam}/history`, `/s/${w.spaceId}/publish/marks/${w.exam}/correct?learner=${w.ids[A.username]}`,
+    `/s/${w.spaceId}/admin/results`, `/s/${w.spaceId}/admin/results/${w.exam}`, `/s/${w.spaceId}/admin/results/${w.draftExam}`,
   ];
+}
+
+/** R2-c: the results section of a guardian's learner page. Its digits are
+ * allowed only in these forms: each result's exam date (YYYY-MM-DD), its
+ * score ("mark / maximum", or none for Absent) and its "Corrected on <date>"
+ * line. Returns the page with the section taken out, and every piece of the
+ * section, outside those forms, that holds a digit (none expected). */
+export function resultsSection(html: string): { rest: string; strays: string[] } {
+  const strays: string[] = [];
+  const rest = html.replace(/<section id="results"[^>]*>([\s\S]*?)<\/section>/g, (_, section: string) => {
+    const left = section
+      .replace(/<span class="muted date" dir="ltr">\d{4}-\d{2}-\d{2}<\/span>/g, ' ')
+      .replace(/<span class="score" dir="auto">(\d{1,4}(\.\d)? \/ \d{1,4}(\.\d)?|[^<\d]*)<\/span>/g, ' ')
+      .replace(/<span class="corrected">[^<\d]*\d{4}-\d{2}-\d{2}[^<\d]*<\/span>/g, ' ')
+      .replace(/<[^>]+>/g, ' ');
+    for (const m of left.matchAll(/[^\s]*[0-9٠-٩][^\s]*/g)) strays.push(m[0]);
+    return ' ';
+  });
+  return { rest, strays };
 }
 
 export const VIEWERS = { G1, G2, B } as const;

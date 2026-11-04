@@ -290,6 +290,149 @@ export async function publishRows(
   await batch(db, statements);
 }
 
+// ------------------------------------------------- the exam's own fields ----
+export type ExamEdit = 'saved' | 'locked' | 'belowDraft';
+
+/** Changes an exam's title, date and maximum (R2-c, AT-12d). One statement,
+ * which repeats every rule: the exam is this publisher's, no row of it is
+ * published (once one is, the fields are locked), and no draft mark is above
+ * the new maximum. When nothing was changed, says which rule refused it
+ * ('locked' wins); the caller has already checked the exam is theirs. */
+export async function editExam(
+  db: Db,
+  v: { spaceId: string; publisherId: string; examId: string; title: string; date: string; max: number },
+): Promise<ExamEdit> {
+  const changed = await db.run(
+    `UPDATE exam SET title = ?, exam_date = ?, max_mark = ?
+      WHERE id = ? AND space_id = ?
+        AND EXISTS (SELECT 1 FROM subject s WHERE s.id = exam.subject_id AND s.space_id = exam.space_id AND s.publisher_user_id = ?)
+        AND NOT EXISTS (SELECT 1 FROM exam_result r WHERE r.exam_id = exam.id AND r.space_id = exam.space_id AND (r.published_at IS NOT NULL OR r.mark > ?))`,
+    v.title, v.date, v.max, v.examId, v.spaceId, v.publisherId, v.max,
+  );
+  if (changed === 1) return 'saved';
+  return (await isLocked(db, v.spaceId, v.examId)) ? 'locked' : 'belowDraft';
+}
+
+/** Whether any row of this exam is published: its title, date and maximum are then locked. */
+export async function isLocked(db: Db, spaceId: string, examId: string): Promise<boolean> {
+  const row = await db.first('SELECT 1 AS one FROM exam_result r WHERE r.space_id = ? AND r.exam_id = ? AND r.published_at IS NOT NULL', spaceId, examId);
+  return row !== null;
+}
+
+// ----------------------------------------------------- the corrections ----
+/** One published row of an exam, with its learner and how many history rows it has (the page's version). */
+export interface PublishedRow {
+  id: string;
+  learner_user_id: string;
+  display_name: string;
+  username: string;
+  status: 'marked' | 'absent';
+  mark: number | null;
+  versions: number;
+}
+
+/** Every published row of an exam of this space, by name then username.
+ * Drafts are never read here: they are their publisher's only. */
+export function publishedRows(db: Db, spaceId: string, examId: string): Promise<PublishedRow[]> {
+  return read(db.all<PublishedRow>(
+    `SELECT r.id, r.learner_user_id, u.display_name, u.username, r.status, r.mark,
+            (SELECT COUNT(*) FROM exam_result_history h WHERE h.result_id = r.id) AS versions
+       FROM exam_result r JOIN exam e ON e.id = r.exam_id AND e.space_id = r.space_id
+       JOIN user u ON u.id = r.learner_user_id
+      WHERE r.space_id = ? AND r.exam_id = ? AND r.published_at IS NOT NULL
+      ORDER BY u.display_name, u.username, r.id`,
+    spaceId, examId,
+  ));
+}
+
+export interface HistoryEntry {
+  result_id: string;
+  previous_status: 'marked' | 'absent' | null;
+  previous_mark: number | null;
+  new_status: 'marked' | 'absent';
+  new_mark: number | null;
+  reason: string | null;
+  who: string;
+  changed_at: number;
+}
+
+/** The history of every published row of an exam of this space, oldest first:
+ * the first publish (previous = none), then every correction. */
+export function historyOfExam(db: Db, spaceId: string, examId: string): Promise<HistoryEntry[]> {
+  return read(db.all<HistoryEntry>(
+    `SELECT h.result_id, h.previous_status, h.previous_mark, h.new_status, h.new_mark, h.reason, u.display_name AS who, h.changed_at
+       FROM exam_result_history h JOIN exam_result r ON r.id = h.result_id
+       JOIN user u ON u.id = h.changed_by
+      WHERE r.space_id = ? AND r.exam_id = ? AND r.published_at IS NOT NULL
+      ORDER BY h.changed_at, h.rowid`,
+    spaceId, examId,
+  ));
+}
+
+/** A correction of one published row (R2-c, AT-12), in one batch (one
+ * transaction): the row takes the new value, then its history row is written
+ * (previous value, new value, reason, who, when). Every statement repeats the
+ * rules: the exam belongs to a subject this publisher is responsible for now,
+ * the row is published, and it still holds exactly the value and the number
+ * of history rows (`versions`) the publisher's page showed. The history row
+ * reads its new value back from the row this batch has just changed; if that
+ * change did not happen (another tab corrected first), the value is missing,
+ * the database refuses the history row, and the whole batch changes nothing. */
+export async function correctRow(
+  db: Db,
+  v: {
+    spaceId: string; publisherId: string; examId: string; row: PublishedRow;
+    next: { status: 'marked' | 'absent'; mark: number | null }; reason: string; now: number;
+  },
+): Promise<void> {
+  const { row, next } = v;
+  await batch(db, [
+    [
+      `UPDATE exam_result SET status = ?, mark = ?, changed_by = ?, changed_at = ?
+        WHERE id = ? AND space_id = ? AND exam_id = ? AND published_at IS NOT NULL AND status = ? AND mark IS ?
+          AND EXISTS (SELECT 1 FROM exam e JOIN subject s ON s.id = e.subject_id AND s.space_id = e.space_id
+                       WHERE e.id = exam_result.exam_id AND e.space_id = exam_result.space_id AND s.publisher_user_id = ?)
+          AND (SELECT COUNT(*) FROM exam_result_history h JOIN exam_result p ON p.id = h.result_id AND p.space_id = exam_result.space_id
+                WHERE p.id = exam_result.id) = ?`,
+      next.status, next.mark, v.publisherId, v.now, row.id, v.spaceId, v.examId, row.status, row.mark, v.publisherId, row.versions,
+    ],
+    [
+      `INSERT INTO exam_result_history (id, result_id, previous_status, previous_mark, new_status, new_mark, reason, changed_by, changed_at)
+       VALUES (?, ?, ?, ?, (
+         SELECT p.status FROM exam_result p
+          WHERE p.id = ? AND p.space_id = ? AND p.changed_by = ? AND p.changed_at = ? AND p.status = ? AND p.mark IS ?
+            AND (SELECT COUNT(*) FROM exam_result_history h WHERE h.result_id = p.id) = ?
+       ), ?, ?, ?, ?)`,
+      crypto.randomUUID(), row.id, row.status, row.mark,
+      row.id, v.spaceId, v.publisherId, v.now, next.status, next.mark, row.versions,
+      next.mark, v.reason, v.publisherId, v.now,
+    ],
+  ]);
+}
+
+// ------------------------------------------------------------ the admin ----
+/** Every exam of this space with at least one published row, newest date first. */
+export function examsWithResults(db: Db, spaceId: string): Promise<ExamRow[]> {
+  return read(db.all<ExamRow>(
+    `SELECT e.id, e.subject_id, s.title AS subject_title, e.title, e.exam_date, e.max_mark
+       FROM exam e JOIN subject s ON s.id = e.subject_id AND s.space_id = e.space_id
+      WHERE e.space_id = ?
+        AND EXISTS (SELECT 1 FROM exam_result r WHERE r.exam_id = e.id AND r.space_id = e.space_id AND r.published_at IS NOT NULL)
+      ORDER BY e.exam_date DESC, s.title, e.title, e.id`,
+    spaceId,
+  ));
+}
+
+/** One exam of this space, whoever its publisher; null for another space's or no such exam. */
+export function examOfSpace(db: Db, spaceId: string, examId: string): Promise<ExamRow | null> {
+  return db.first<ExamRow>(
+    `SELECT e.id, e.subject_id, s.title AS subject_title, e.title, e.exam_date, e.max_mark
+       FROM exam e JOIN subject s ON s.id = e.subject_id AND s.space_id = e.space_id
+      WHERE e.id = ? AND e.space_id = ?`,
+    examId, spaceId,
+  );
+}
+
 // ----------------------------------------------------------- the learner ----
 export interface OwnResult {
   id: string;
@@ -299,14 +442,20 @@ export interface OwnResult {
   max_mark: number;
   status: 'marked' | 'absent';
   mark: number | null;
+  /** When the latest correction was made (milliseconds); null when never corrected. */
+  corrected_at: number | null;
 }
 
 /** My results: this learner's own published results in this space, newest
  * exam first. Published rows only: a draft is never read here. Kept after the
- * learner leaves the subject or the group: they are the learner's own record. */
+ * learner leaves the subject or the group: they are the learner's own record.
+ * From R2-c also what a guardian reads of a learner linked to them (the caller
+ * checks the link first), and when the value was last corrected; never the
+ * previous value or the reason. */
 export function ownResults(db: Db, spaceId: string, learnerId: string): Promise<OwnResult[]> {
   return read(db.all<OwnResult>(
-    `SELECT r.id, e.title AS exam_title, s.title AS subject_title, e.exam_date, e.max_mark, r.status, r.mark
+    `SELECT r.id, e.title AS exam_title, s.title AS subject_title, e.exam_date, e.max_mark, r.status, r.mark,
+            (SELECT MAX(h.changed_at) FROM exam_result_history h WHERE h.result_id = r.id AND h.previous_status IS NOT NULL) AS corrected_at
        FROM exam_result r JOIN exam e ON e.id = r.exam_id AND e.space_id = r.space_id
        JOIN subject s ON s.id = e.subject_id AND s.space_id = e.space_id
       WHERE r.space_id = ? AND r.learner_user_id = ? AND r.published_at IS NOT NULL
@@ -319,7 +468,8 @@ export function ownResults(db: Db, spaceId: string, learnerId: string): Promise<
  * (another person's, a draft, another space's, or no such row), alike. */
 export function ownResult(db: Db, spaceId: string, learnerId: string, resultId: string): Promise<OwnResult | null> {
   return read(db.first<OwnResult>(
-    `SELECT r.id, e.title AS exam_title, s.title AS subject_title, e.exam_date, e.max_mark, r.status, r.mark
+    `SELECT r.id, e.title AS exam_title, s.title AS subject_title, e.exam_date, e.max_mark, r.status, r.mark,
+            (SELECT MAX(h.changed_at) FROM exam_result_history h WHERE h.result_id = r.id AND h.previous_status IS NOT NULL) AS corrected_at
        FROM exam_result r JOIN exam e ON e.id = r.exam_id AND e.space_id = r.space_id
        JOIN subject s ON s.id = e.subject_id AND s.space_id = e.space_id
       WHERE r.id = ? AND r.space_id = ? AND r.learner_user_id = ? AND r.published_at IS NOT NULL`,

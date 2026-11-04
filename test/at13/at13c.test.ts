@@ -1,4 +1,4 @@
-// AT-13c (contract product-contract-r2, R2-a and R2-b pages): numbers stay masked as in
+// AT-13c (contract product-contract-r2, R2-a, R2-b and R2-c pages): numbers stay masked as in
 // release 1.1. The guardian's number appears on the admin's pages only as its
 // last four digits (in full only in the WhatsApp button's address, as for every
 // person since release 1), and no guardian page carries any number. The H-1
@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 import { A, B, G1, G2, as, crawl, guardianPaths, privacyWorld, resultPaths, useLanguage, visible, type PrivacyWorld } from './pages.ts';
 import { C, D, HADEER, personPath } from '../at9/world.ts';
 import { MATH_ORDER, marksForm, marksPath } from '../at10/marks.ts';
+import { adminResultsPath, correctPath, corrected, historyPath } from '../at12/corrections.ts';
 
 const full = (typed: string) => {
   const national = typed.replace(/\D/g, '').replace(/^0/, '');
@@ -71,6 +72,28 @@ describe('AT-13c numbers stay masked on the new pages', { concurrency: false }, 
       for (const lang of ['ar', 'en'] as const) {
         await useLanguage(c, lang);
         for (const p of await crawl(c, resultPaths(w))) if (p.contentType.startsWith('text/')) noNumber(`${person.username} ${lang} ${p.path}`, p.body);
+      }
+    }
+  });
+
+  it('R2-c: the publisher\'s history and correction pages and the admin\'s results pages carry no person\'s number, in Arabic or English', async () => {
+    const people = [A, B, C, D, G1, G2];
+    await corrected(w, w.hadeer, w.exam, w.ids[C.username], { mark: '13', reason: 'Re-marked' });
+    const hadeer = await as(w, HADEER);
+    for (const lang of ['ar', 'en'] as const) {
+      await useLanguage(hadeer, lang);
+      await useLanguage(w.admin, lang);
+      for (const [who, c, path] of [
+        ['hadeer', hadeer, historyPath(w, w.exam)], ['hadeer', hadeer, `${correctPath(w, w.exam)}?learner=${w.ids[C.username]}`],
+        ['admin', w.admin, adminResultsPath(w)], ['admin', w.admin, adminResultsPath(w, w.exam)],
+      ] as const) {
+        const res = await c.get(path);
+        assert.equal(res.status, 200, `${who} ${path}`);
+        const html = await res.text();
+        for (const other of people) {
+          for (const form of full(other.mobile)) assert.ok(!html.includes(form), `${who} ${lang} ${path}: no number of ${other.username}`);
+          assert.ok(!visible(html).includes(other.mobile.slice(-4)), `${who} ${lang} ${path}: not even the last digits of ${other.username}`);
+        }
       }
     }
   });

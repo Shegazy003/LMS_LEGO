@@ -322,6 +322,72 @@ jobs:
         with:
           name: evidence-release-2-results
           path: evidence/
+  # Release 2, task R2-c: results views (guardian, admin, publisher) and
+  # reasoned corrections with their history and the exam locks. One named step
+  # per acceptance sub-check (AT-11d to AT-11f, AT-12a to AT-12e; AT-13 on the
+  # new views is in "release-2"). No migration: "rollback" is unchanged.
+  release-2-corrections:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      WRANGLER_SEND_METRICS: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install (lockfile only, when present)
+        run: if [ -f package-lock.json ]; then npm ci; fi
+      - name: Read the Playwright version
+        id: playwright
+        run: |
+          echo "version=$(node -p "require('playwright/package.json').version")" >> "$GITHUB_OUTPUT"
+          echo "image=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
+      - name: Cache Chromium for the browser test
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.image }}-${{ steps.playwright.outputs.version }}-chromium
+      - name: Install Chromium for the browser test
+        timeout-minutes: 10
+        run: |
+          npx playwright install-deps chromium
+          for attempt in 1 2 3; do
+            timeout 180 npx playwright install chromium && exit 0
+            echo "::warning::Chromium install attempt $attempt did not finish; retrying"
+            sleep 10
+          done
+          exit 1
+      - name: AT-11d a guardian sees the results of exactly their linked learners, labelled with the name; a removed link or ended access hides at once
+        if: success() || failure()
+        run: npm run test:at11d
+      - name: AT-11e the admin sees all results of the space, a publisher only their own subjects, another space nothing
+        if: success() || failure()
+        run: npm run test:at11e
+      - name: AT-11f an ended learner, guardian or publisher sees access ended instead of results; an ended publisher cannot correct until restored
+        if: success() || failure()
+        run: npm run test:at11f
+      - name: AT-12a a published mark is corrected with a reason; learner and guardian see the new value with Corrected on date, never the old one
+        if: success() || failure()
+        run: npm run test:at12a
+      - name: AT-12b publisher and admin see each row's history, first publish then every correction, also for a late joiner
+        if: success() || failure()
+        run: npm run test:at12b
+      - name: AT-12c an empty reason, a mark outside 0 to maximum and anyone but the current publisher are refused, changing nothing
+        if: success() || failure()
+        run: npm run test:at12c
+      - name: AT-12d exam title, date and maximum are editable before publishing and locked once a mark is published
+        if: success() || failure()
+        run: npm run test:at12d
+      - name: AT-12e the history rejects UPDATE and DELETE at the database, and a correction whose history fails changes nothing
+        if: success() || failure()
+        run: npm run test:at12e
+      - name: Upload evidence (release 2 corrections screenshots)
+        if: always() && hashFiles('evidence/**') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-release-2-corrections
+          path: evidence/
   # AT-14a: rollback holds. The code live before release 2 (main at f3b1fa7,
   # the H-1 version 528786a4, the rollback target) is checked out beside this
   # commit and given this commit's migrations, so the old code runs on a
