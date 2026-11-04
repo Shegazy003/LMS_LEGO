@@ -32,7 +32,7 @@ import { tokenHash } from '../../src/auth/tokens.ts';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 const LOG_MODULE = 'src/log.ts';
-const EVENTS = ['usage flush failed', 'request failed'];
+const EVENTS = ['usage flush failed', 'request failed', 'activity write failed'];
 
 // ------------------------------------------------------------- 1. source ----
 function sourceFiles(dir = join(root, 'src')): string[] {

@@ -108,3 +108,56 @@ export function visible(html: string): string {
 }
 
 export { A, B, G1, G2, as };
+
+// ----------------------------------------------- lesson-activity scan ----
+// Section 3: the scan uses the exact phrases of the feature's dictionary keys,
+// in both languages, not word stems, so ordinary words such as "Open" are never
+// hit. From R2-d the phrases of the feature's own keys are added (R2D_KEYS),
+// and those keys are the exempt list.
+
+/** The dictionary keys added by R2-d (lesson activity). Each is shown only on an exempt page or piece. */
+export const R2D_KEYS = [
+  'activityStatusOn', 'activityStatusOff', 'activityWhatTitle', 'activityWhat', 'activityWhoTitle', 'activityWho', 'activityKeptTitle',
+  'activityKept', 'activityStartNote', 'activityNoticeTitle', 'activityTold', 'activityToldNote', 'activitySwitchOn', 'activityToldMissing',
+  'activityOffNote', 'activitySwitchOff', 'activityOffConfirmTitle', 'activityOffYes', 'activityOnDone', 'activityOffDone', 'activityNotice',
+  'activityOff', 'lastOpenedOn', 'noOpenRecorded', 'recordingSince', 'activityExplain', 'activityWhose',
+] as const;
+
+export const ACTIVITY_PHRASES = {
+  en: [
+    'Last opened on', 'No open recorded', 'Recording since', 'Lesson activity', 'which lessons you opened', 'Not opened', 'last opened', 'times opened',
+    'is not switched on in', 'you last opened them',
+  ],
+  ar: [
+    'نشاط الدروس', 'آخر فتح', 'تاريخ آخر فتح', 'لم يُسجَّل فتح', 'لم يسجل فتح', 'التسجيل منذ', 'الدروس التي فتحتها', 'لم يُفتح', 'لم يفتح',
+    'لا يوجد فتح مسجّل', 'أي الدروس فتحتها',
+  ],
+};
+
+/** Dictionary keys allowed to carry a phrase: the exempt places of section 3 (R2-d's own keys). */
+export const EXEMPT_KEYS: string[] = [...R2D_KEYS];
+
+const MONTHS = /\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}\b|(يناير|فبراير|مارس|أبريل|إبريل|مايو|يونيو|يوليو|أغسطس|سبتمبر|أكتوبر|نوفمبر|ديسمبر)/i;
+
+/** Every lesson-activity phrase, open date, count or time found in a text. */
+export function activityIn(text: string): string[] {
+  const hits: string[] = [];
+  for (const p of ACTIVITY_PHRASES.en) if (text.toLowerCase().includes(p.toLowerCase())) hits.push(p);
+  for (const p of ACTIVITY_PHRASES.ar) if (text.includes(p)) hits.push(p);
+  if (/\d{4}-\d{2}-\d{2}/.test(text)) hits.push('a date');
+  if (MONTHS.test(text)) hits.push('a month name');
+  if (/\b\d{1,2}:\d{2}\b/.test(text)) hits.push('a time of day');
+  if (/[0-9٠-٩]/.test(text)) hits.push('a number (a count, a date or a time)');
+  return hits;
+}
+
+/** The exempt pages (section 3, places 1 and 2): the guardian's lesson-activity page and the admin's switch page with its step. */
+export const isExemptPage = (path: string) => /^\/s\/[^/]+\/linked\/[^/]+\/activity(\?|$)/.test(path) || /^\/s\/[^/]+\/admin\/activity(\/off)?(\?|$)/.test(path);
+
+/** A page with its exempt pieces taken out: the learner's notice, the "not
+ * switched on" line and the links to the exempt pages, each marked
+ * data-activity (src/views/activity.ts). Each is one element holding no
+ * element of its own name. */
+export function exemptRemoved(html: string): string {
+  return html.replace(/<(p|a)\b[^>]*\bdata-activity\b[^>]*>[\s\S]*?<\/\1>/g, ' ');
+}
