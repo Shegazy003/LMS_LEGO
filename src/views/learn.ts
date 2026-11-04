@@ -6,6 +6,7 @@ import { html } from 'hono/html';
 import type { Label, Lang, LabelKey } from '../labels.ts';
 import type { LessonRow, MaterialKind, MaterialRow, OutlineChapter, SubjectItem } from '../learning.ts';
 import { externalUrl } from '../links.ts';
+import { activityNotice } from './activity.ts';
 import { layout, type Html } from './layout.ts';
 import { spaceHeader, spaceNav, type SpaceView } from './space.ts';
 
@@ -19,9 +20,11 @@ function subjectList(space: SpaceView, items: SubjectItem[]): Html {
   )}</ul>`;
 }
 
-/** A learner's home: exactly the published subjects assigned to them, and (release 2) the way to My results. */
-export function learnerHome(t: Label, lang: Lang, space: SpaceView, displayName: string, items: SubjectItem[], results = false): Html {
+/** A learner's home: exactly the published subjects assigned to them, and (release 2) the way to My results;
+ * from R2-d, while lesson activity is on, the learner's notice (AT-15f). */
+export function learnerHome(t: Label, lang: Lang, space: SpaceView, displayName: string, items: SubjectItem[], results = false, notice = false): Html {
   const body = html`<p>${t('welcome', { name: displayName })}</p>
+${notice ? activityNotice(t) : ''}
 <h2>${t('assignedToYou')} <span class="muted">· ${t('subject')}</span></h2>
 ${items.length ? subjectList(space, items) : html`<p id="nothing-yet" class="card message">${t('nothingAssigned')}</p>`}
 ${results ? html`<p><a id="my-results" href="/s/${space.id}/results">${t('myResults')}</a></p>` : ''}`;
@@ -78,12 +81,14 @@ export function materialItem(t: Label, space: SpaceView, m: MaterialRow, control
   return html`<li class="card" data-kind="${m.kind}" data-id="${m.id}">${head}${content}${controls}</li>`;
 }
 
-/** A lesson: where it sits, then its materials in order. */
+/** A lesson: where it sits, then its materials in order; from R2-d, while
+ * lesson activity is on and a learner opens it, the learner's notice, in the
+ * same response that is recorded (AT-15f). */
 export function lessonPage(
   t: Label,
   lang: Lang,
   space: SpaceView,
-  v: { subject: { id: string; title: string }; lesson: LessonRow; materials: MaterialRow[] },
+  v: { subject: { id: string; title: string }; lesson: LessonRow; materials: MaterialRow[]; notice?: boolean },
 ): Html {
   const { title, body_text: intro, chapter_title: part } = v.lesson;
   const top = { id: v.subject.id, title: v.subject.title };
@@ -98,6 +103,7 @@ export function lessonPage(
   <span>${t('lesson')}</span>
 </nav>
 <h1 id="lesson-title" dir="auto">${title}</h1>
+${v.notice ? activityNotice(t) : ''}
 ${introBlock}
 <h2>${t('material')}</h2>
 ${list}`;

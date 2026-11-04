@@ -2,7 +2,7 @@
 // creating a space copies the chosen kit into that space's own kit row, which
 // can later be edited without touching any other space. The Arabic labels are
 // first drafts for the owner to correct.
-import type { KitJson } from '../labels.ts';
+import type { KitJson, KitWord } from '../labels.ts';
 
 const base = { languages: ['ar', 'en'] as KitJson['languages'], gamification: { enabled: false, pack: null } };
 const theme = { logoKey: null, logoType: null, primaryColor: '#1f6feb', accentColor: null, fontFamily: null };
@@ -61,10 +61,24 @@ export const SEED_KITS: readonly KitJson[] = [
 /** Release 2 kit words of each seed kit (src/labels.ts KIT_WORDS). They are
  * read from here for every space of that seed, including spaces made before
  * release 2, whose kit rows do not carry them. */
-export const SEED_KIT_WORDS: Record<string, Record<'ar' | 'en', Record<'guardian' | 'exam', string>>> = {
-  school: { en: { guardian: 'Parent', exam: 'Exam' }, ar: { guardian: 'ولي أمر', exam: 'امتحان' } },
-  company: { en: { guardian: 'Supervisor', exam: 'Assessment' }, ar: { guardian: 'مشرف', exam: 'تقييم' } },
-  university: { en: { guardian: 'Guardian', exam: 'Exam' }, ar: { guardian: 'ولي أمر', exam: 'امتحان' } },
+// From R2-d, the lesson-activity words (contract product-contract-r2, section 3
+// and AT-15f). "yourGuardian" starts the learner's notice, so it is written
+// with a capital in English.
+const ACTIVITY = { en: { lessonActivity: 'Lesson activity', lessons: 'lessons' }, ar: { lessonActivity: 'نشاط الدروس', lessons: 'الدروس' } };
+
+export const SEED_KIT_WORDS: Record<string, Record<'ar' | 'en', Record<KitWord, string>>> = {
+  school: {
+    en: { guardian: 'Parent', exam: 'Exam', ...ACTIVITY.en, yourGuardian: 'Your parent', child: 'child' },
+    ar: { guardian: 'ولي أمر', exam: 'امتحان', ...ACTIVITY.ar, yourGuardian: 'ولي أمرك', child: 'الطفل' },
+  },
+  company: {
+    en: { guardian: 'Supervisor', exam: 'Assessment', ...ACTIVITY.en, yourGuardian: 'Your supervisor', child: 'employee' },
+    ar: { guardian: 'مشرف', exam: 'تقييم', ...ACTIVITY.ar, yourGuardian: 'مشرفك', child: 'الموظّف' },
+  },
+  university: {
+    en: { guardian: 'Guardian', exam: 'Exam', ...ACTIVITY.en, yourGuardian: 'Your guardian', child: 'student' },
+    ar: { guardian: 'ولي أمر', exam: 'امتحان', ...ACTIVITY.ar, yourGuardian: 'ولي أمرك', child: 'الطالب' },
+  },
 };
 
 export function seedKit(id: string): KitJson {
