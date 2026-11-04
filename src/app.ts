@@ -25,6 +25,8 @@ import {
   findFile, findLesson, lessonMaterials, outline, readableSubject, subjectsForLearner, subjectsForPublisher, type SubjectRow,
 } from './learning.ts';
 import { isGuardianHere, isLearnerHere, link, linkedLearner, linkedLearners, linksOf, subjectsSeenBy, unlink } from './guardians.ts';
+import { activityOf, activitySetting, linkedSince, recordOpen, recordingSince, switchOff, switchOn } from './activity.ts';
+import { adminActivityOffPage, adminActivityPage, guardianActivityPage, type AdminActivityView } from './views/activity.ts';
 import { externalUrl } from './links.ts';
 import { logError } from './log.ts';
 import { normaliseCountryCode, normaliseMobile } from './phone.ts';
@@ -760,13 +762,16 @@ async function renderLearnerHome(c: C) {
   const user = c.get('user')!;
   const learner = c.get('space').roles.includes('learner');
   const subjects = learner ? await subjectsForLearner(c.get('db'), view.id, user.id) : [];
-  return page(c, learnerHome(t, lang, view, user.display_name, subjects, learner));
+  // R2-d (AT-15f): every learner is told while lesson activity is on, whether or not a guardian is linked.
+  const notice = learner && (await activitySetting(c.get('db'), view.id)).enabled;
+  return page(c, learnerHome(t, lang, view, user.display_name, subjects, learner, notice));
 }
 
 // The guardian home (release 2, R2-a): every learner actively linked to this
 // person whose own access is active today, each with the subjects they see.
 // Found from the session's person on every request, so a removed link or an
-// ended learner is gone from the very next page.
+// ended learner is gone from the very next page. From R2-d, while lesson
+// activity is on, each learner's card leads to their lesson-activity page.
 async function renderGuardianHome(c: C) {
   const { t, lang, view } = spaceLabel(c);
   const db = c.get('db');
@@ -774,7 +779,7 @@ async function renderGuardianHome(c: C) {
   const learners = await linkedLearners(db, view.id, user.id, now());
   const cards: LearnerCard[] = [];
   for (const learner of learners) cards.push({ learner, subjects: await subjectsSeenBy(db, view.id, learner.id) });
-  return page(c, guardianHome(t, lang, view, user.display_name, cards));
+  return page(c, guardianHome(t, lang, view, user.display_name, cards, (await activitySetting(db, view.id)).enabled));
 }
 
 // The space home is the home of the person's main role: an admin gets the
@@ -802,7 +807,30 @@ app.get('/s/:spaceId/linked/:learnerId', async (c) => {
   if (!learner) return refuse(c, 403, 'noAccess');
   // R2-c (AT-11d): the learner's own published results, read only once the link is checked.
   const results = await ownResults(db, view.id, learner.id);
-  return page(c, guardianLearnerPage(t, lang, view, { learner, subjects: await subjectsSeenBy(db, view.id, learner.id) }, results));
+  const activity = (await activitySetting(db, view.id)).enabled;
+  return page(c, guardianLearnerPage(t, lang, view, { learner, subjects: await subjectsSeenBy(db, view.id, learner.id) }, results, activity));
+});
+
+// One linked learner's lesson activity (R2-d, AT-15c): read only once the link
+// is checked, exactly as the learner's page above (the same 403 page for
+// anyone the viewer may not see now). Dates on or after "Recording since",
+// the later of the switch-on day and this guardian's link day (AT-15c-2).
+// While the setting is off, the "not switched on" line only (AT-15a).
+app.get('/s/:spaceId/linked/:learnerId/activity', async (c) => {
+  const db = c.get('db');
+  const { t, lang, view } = spaceLabel(c);
+  const guardianId = c.get('user')!.id;
+  const learners = await linkedLearners(db, view.id, guardianId, now());
+  const learner = learners.find((l) => l.id === c.req.param('learnerId'));
+  if (!learner) return refuse(c, 403, 'noAccess');
+  const setting = await activitySetting(db, view.id);
+  const linked = await linkedSince(db, view.id, guardianId, learner.id);
+  let on = null;
+  if (setting.enabled && setting.since && linked) {
+    const since = recordingSince(setting.since, linked);
+    on = { since, blocks: await activityOf(db, view.id, learner.id, since) };
+  }
+  return page(c, guardianActivityPage(t, lang, view, { learners, learner, on }));
 });
 
 // My results (release 2, R2-b, AT-11a to 11c), behind the learner gate: the
@@ -853,7 +881,21 @@ app.get('/s/:spaceId/read/:lessonId', async (c) => {
   if (!subject) return refuse(c, 403, 'noAccess');
   const { t, lang, view } = spaceLabel(c);
   const materials = await lessonMaterials(db, space.id, lesson.id);
-  return page(c, lessonPage(t, lang, view, { subject, lesson, materials }));
+  // R2-d (AT-15d, 15f): a learner opening their own lesson is told while lesson
+  // activity is on, and the day is kept (one statement that checks the setting
+  // and the assignment again). Only a GET is an open: HEAD answers the same
+  // page and writes nothing. A failed write never stops the lesson (AT-15i);
+  // its log line is the fixed event alone, with no name, title or id.
+  const learner = space.roles.includes('learner');
+  const notice = learner && (await activitySetting(db, space.id)).enabled;
+  if (notice && c.req.method === 'GET') {
+    try {
+      await recordOpen(db, { spaceId: space.id, lessonId: lesson.id, learnerId: c.get('user')!.id, now: now() });
+    } catch {
+      logError('activity write failed');
+    }
+  }
+  return page(c, lessonPage(t, lang, view, { subject, lesson, materials, notice }));
 });
 
 app.get('/s/:spaceId/file/:materialId', async (c) => {
@@ -2127,6 +2169,40 @@ app.get('/s/:spaceId/admin/results/:examId', async (c) => {
   const { t, lang, view } = spaceLabel(c);
   const back = { href: `/s/${view.id}/admin/results`, label: t('resultsAll') };
   return page(c, historyPage(t, lang, view, { exam, rows: await historyRowsOf(c, exam), back, correctable: false }));
+});
+
+// ------------------------------------------------------- lesson activity ----
+// The admin's switch (R2-d, AT-15b), behind the admin gate: one page that
+// says what is recorded, who sees it and how long it is kept, with the
+// learner's notice. Switching on needs the "people were told" tick, or
+// nothing changes; switching off has its own step that names the effect, then
+// deletes every lesson-view row of the space. A plain link (GET) changes nothing.
+async function renderActivity(c: C, extra: Partial<AdminActivityView> = {}, status: 200 | 400 = 200) {
+  const { t, lang, view } = spaceLabel(c);
+  const setting = await activitySetting(c.get('db'), view.id);
+  const done = c.req.method === 'GET' ? c.req.query('done') : undefined;
+  return page(c, adminActivityPage(t, lang, view, {
+    ...setting, done: done === 'on' || done === 'off' ? done : undefined, ...extra,
+  }), status);
+}
+
+app.get('/s/:spaceId/admin/activity', (c) => renderActivity(c));
+
+app.post('/s/:spaceId/admin/activity', async (c) => {
+  const body = await c.req.parseBody();
+  if (field(body, 'told') !== '1') return renderActivity(c, { error: spaceLabel(c).t('activityToldMissing') }, 400);
+  await switchOn(c.get('db'), { spaceId: c.get('space').id, by: c.get('user')!.id, now: now() });
+  return c.redirect(`/s/${c.get('space').id}/admin/activity?done=on`, 303);
+});
+
+app.get('/s/:spaceId/admin/activity/off', (c) => {
+  const { t, lang, view } = spaceLabel(c);
+  return page(c, adminActivityOffPage(t, lang, view));
+});
+
+app.post('/s/:spaceId/admin/activity/off', async (c) => {
+  await switchOff(c.get('db'), { spaceId: c.get('space').id, by: c.get('user')!.id, now: now() });
+  return c.redirect(`/s/${c.get('space').id}/admin/activity?done=off`, 303);
 });
 
 // ------------------------------------------------------------ my account ----

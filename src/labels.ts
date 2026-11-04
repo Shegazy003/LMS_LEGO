@@ -13,10 +13,14 @@ export type Concept = (typeof CONCEPTS)[number];
 
 /** Kit words added in release 2 (Guardian: Parent at the School kit,
  * Supervisor at the Company kit; from R2-b Exam: Exam at the School kit,
- * Assessment at the Company kit). Like a concept, each is read from the
- * space's kit; a kit made before release 2 has none, so its seed kit's word is
- * used (SEED_KIT_WORDS). The owner's names form edits the nine concepts only. */
-export const KIT_WORDS = ['guardian', 'exam'] as const;
+ * Assessment at the Company kit; from R2-d the words of the lesson-activity
+ * feature: its name, the lessons, and the pair your-guardian / the-learner of
+ * its notice, at the School kit your parent / child, at the Company kit your
+ * supervisor / employee). Like a concept, each is
+ * read from the space's kit; a kit made before release 2 has none, so its seed
+ * kit's word is used (SEED_KIT_WORDS). The owner's names form edits the nine
+ * concepts only. */
+export const KIT_WORDS = ['guardian', 'exam', 'lessonActivity', 'lessons', 'yourGuardian', 'child'] as const;
 export type KitWord = (typeof KIT_WORDS)[number];
 
 export interface KitJson {

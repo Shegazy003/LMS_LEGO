@@ -97,6 +97,10 @@ describe('AT-14a old code on a release 2 database shows a guardian nothing, expo
     assert.ok(applied.includes('0007_guardians.sql'), `applied: ${applied.join(', ')}`);
     assert.ok(applied.includes('0008_exams.sql'), `applied: ${applied.join(', ')}`);
     for (const t of ['exam', 'exam_result', 'exam_result_history']) assert.ok(await tableExists(t), `${t} exists`);
+    // From R2-d: lesson views, with a row and the setting switched on (before above).
+    assert.ok(applied.includes('0010_lesson_views.sql'), `applied: ${applied.join(', ')}`);
+    assert.equal(await count('SELECT COUNT(*) AS n FROM lesson_view'), 1, 'a lesson-view row');
+    assert.equal(await count('SELECT COUNT(*) AS n FROM lesson_view_setting WHERE enabled = 1'), 1, 'the setting switched on');
     assert.ok(await tableExists('guardian_link'));
     assert.equal(await count("SELECT COUNT(*) AS n FROM membership WHERE role = 'guardian'"), 1, 'a guardian membership row');
   });
@@ -169,6 +173,7 @@ describe('AT-14a old code on a release 2 database shows a guardian nothing, expo
     assert.deepEqual(await release2Rows(), before, 'the same rows, nothing added, nothing deleted');
     assert.equal(before.guardian_link, 1);
     assert.equal(before.guardian_membership, 1);
+    assert.deepEqual([before.lesson_view, before.lesson_view_setting], [1, 1], 'Salma\'s opens wrote no lesson-view row, and the stored one stays');
     if (await tableExists('exam')) {
       assert.deepEqual([before.exam, before.exam_result, before.exam_result_history], [2, 2, 1], 'the exams, marks and history are all still there');
       const published = await worker.sql(`SELECT mark, published_at FROM exam_result WHERE id = 'result-1'`);

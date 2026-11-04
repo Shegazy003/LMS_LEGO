@@ -2,6 +2,7 @@
 // labels and its theme.
 import { html } from 'hono/html';
 import { dirFor, type Label, type Lang } from '../labels.ts';
+import { adminActivityLink } from './activity.ts';
 import { layout, sentence, type Html } from './layout.ts';
 
 export interface SpaceView {
@@ -39,7 +40,8 @@ export function adminHome(t: Label, lang: Lang, space: SpaceView, displayName: s
   );
   const body = html`${spaceNav(t, space)}<p>${t('welcome', { name: displayName })}</p>
 <ul id="concepts" class="tiles">${concepts}</ul>
-<p><a id="admin-results" class="button plain" href="/s/${space.id}/admin/results">${t('resultsAll')}</a></p>`;
+<p><a id="admin-results" class="button plain" href="/s/${space.id}/admin/results">${t('resultsAll')}</a></p>
+${adminActivityLink(t, space)}`;
   return layout({ t, lang, title: space.name, body, signedIn: true, header: spaceHeader(space) });
 }
 

@@ -15,13 +15,15 @@
 //   plain name such as PASSWORD_ITERATIONS stays readable;
 // - a failed read or write of results says only so, with a fixed message
 //   (src/exams.ts), so no mark or learner name reaches a line;
+// - a failed lesson-view write (R2-d, AT-15i) is the fixed event alone, with
+//   no error text at all: no name, no lesson title, no lesson or learner id;
 // - a line is at most a few hundred characters, so the free plan's allowance
 //   is counted in lines (README "Logs").
 // Request logs (one line per request, with its address) are off in
 // wrangler.jsonc: a reset link's token is part of its address.
 
 /** Every event the product logs. */
-export type LogEvent = 'usage flush failed' | 'request failed';
+export type LogEvent = 'usage flush failed' | 'request failed' | 'activity write failed';
 
 const MESSAGE_MAX = 200;
 const REDACTED = '[redacted]';

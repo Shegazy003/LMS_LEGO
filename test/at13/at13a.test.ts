@@ -1,45 +1,30 @@
-// AT-13a (contract product-contract-r2, R2-a): on every guardian page except
-// the lesson-activity page (all its states), there is no lesson-activity
-// phrase, open date, count or time (the scan of section 3). Before R2-d is
-// built, no code path stores a lesson open.
+// AT-13a (contract product-contract-r2, R2-a; R2-d): on every guardian page
+// except the lesson-activity page (all its states), there is no
+// lesson-activity phrase, open date, count or time (the scan of section 3).
+// After R2-d, the only write of a lesson open is the one of AT-15.
 //
 // The lesson-activity phrases are the exact phrases of the feature, in both
-// languages, not word stems: ordinary words such as "Open" are never hit. The
-// lesson-activity page and the other exempt places (section 3) do not exist
-// before R2-d, so the exempt list of dictionary keys is empty: any key that
-// carries a phrase fails. R2-d adds its keys to EXEMPT_KEYS.
+// languages, not word stems: ordinary words such as "Open" are never hit
+// (ACTIVITY_PHRASES, test/at13/pages.ts). From R2-d the exempt list of
+// dictionary keys is R2-d's own keys; any other key that carries a phrase
+// fails. On a guardian page the exempt pieces (the "not switched on" line and
+// the link to the lesson-activity page, marked data-activity) are taken out
+// before the scan; the lesson-activity page itself is exempt.
 import { describe, it, before, after, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { UI } from '../../src/i18n/ui.ts';
 import type { World } from '../at9/world.ts';
-import { A, B, G1, G2, as, crawl, guardianPaths, privacyWorld, resultsSection, useLanguage, visible } from './pages.ts';
+import {
+  A, B, G1, G2, EXEMPT_KEYS, activityIn, as, crawl, exemptRemoved, guardianPaths, isExemptPage, privacyWorld, resultsSection, useLanguage, visible,
+} from './pages.ts';
 import { HADEER } from '../at9/world.ts';
 
+export { ACTIVITY_PHRASES, EXEMPT_KEYS, activityIn } from './pages.ts';
+
 const root = fileURLToPath(new URL('../..', import.meta.url));
-
-export const ACTIVITY_PHRASES = {
-  en: ['Last opened on', 'No open recorded', 'Recording since', 'Lesson activity', 'which lessons you opened', 'Not opened', 'last opened', 'times opened'],
-  ar: ['نشاط الدروس', 'آخر فتح', 'تاريخ آخر فتح', 'لم يُسجَّل فتح', 'لم يسجل فتح', 'التسجيل منذ', 'الدروس التي فتحتها', 'لم يُفتح', 'لم يفتح'],
-};
-/** Dictionary keys allowed to carry a phrase (the exempt pages of section 3). None before R2-d. */
-export const EXEMPT_KEYS: string[] = [];
-
-const MONTHS = /\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}\b|(يناير|فبراير|مارس|أبريل|إبريل|مايو|يونيو|يوليو|أغسطس|سبتمبر|أكتوبر|نوفمبر|ديسمبر)/i;
-
-/** Every lesson-activity phrase, open date, count or time found in a text. */
-export function activityIn(text: string): string[] {
-  const hits: string[] = [];
-  for (const p of ACTIVITY_PHRASES.en) if (text.toLowerCase().includes(p.toLowerCase())) hits.push(p);
-  for (const p of ACTIVITY_PHRASES.ar) if (text.includes(p)) hits.push(p);
-  if (/\d{4}-\d{2}-\d{2}/.test(text)) hits.push('a date');
-  if (MONTHS.test(text)) hits.push('a month name');
-  if (/\b\d{1,2}:\d{2}\b/.test(text)) hits.push('a time of day');
-  if (/[0-9٠-٩]/.test(text)) hits.push('a number (a count, a date or a time)');
-  return hits;
-}
 
 test('AT-13a scan self-check: the phrases, dates, counts and times are found; ordinary words are not', () => {
   assert.ok(activityIn('Last opened on 3 Nov 2026').length >= 2);
@@ -68,11 +53,13 @@ function sourceFiles(dir: string): string[] {
   });
 }
 
-test('AT-13a before R2-d: no table, statement or migration for lesson views exists in the product', () => {
+test('AT-13a after R2-d: lesson views live only in their migration and src/activity.ts, and the only write is AT-15\'s', () => {
   const files = [...sourceFiles(join(root, 'src')), ...sourceFiles(join(root, 'migrations'))];
   assert.ok(files.length > 20);
-  const found = files.filter((f) => /lesson_view|lesson_open|opened_on/i.test(readFileSync(f, 'utf8')));
-  assert.deepEqual(found, [], 'R2-d adds the only write (AT-15); until then nothing names it');
+  const found = files.filter((f) => /lesson_view|lesson_open|opened_on|opened_at/i.test(readFileSync(f, 'utf8'))).map((f) => relative(root, f).replace(/\\/g, '/'));
+  assert.deepEqual(found.sort(), ['migrations/0010_lesson_views.sql', 'src/activity.ts'], 'nothing else names a lesson open');
+  const writes = [...readFileSync(join(root, 'src', 'activity.ts'), 'utf8').matchAll(/(INSERT\s+INTO|UPDATE)\s+lesson_view\b(?!_)/g)];
+  assert.equal(writes.length, 1, 'one statement writes a lesson view (recordOpen, AT-15d)');
 });
 
 describe('AT-13a the running product: guardian pages carry no activity, and opening lessons stores nothing', { concurrency: false }, () => {
@@ -97,12 +84,13 @@ describe('AT-13a the running product: guardian pages carry no activity, and open
       for (const lang of ['ar', 'en'] as const) {
         await useLanguage(c, lang);
         const pages = await crawl(c, guardianPaths(w));
-        for (const p of pages.filter((x) => x.contentType.startsWith('text/html') && x.path.includes('/linked'))) {
+        for (const p of pages.filter((x) => x.contentType.startsWith('text/html') && x.path.includes('/linked') && !isExemptPage(x.path))) {
           scanned++;
-          const phrases = activityIn(visible(p.body)).filter((h) => !h.startsWith('a '));
+          const body = exemptRemoved(p.body);
+          const phrases = activityIn(visible(body)).filter((h) => !h.startsWith('a '));
           assert.deepEqual(phrases, [], `${person.username} ${lang} ${p.path}: no lesson-activity phrase`);
-          const { rest, strays } = resultsSection(p.body);
-          if (rest !== p.body) sections++;
+          const { rest, strays } = resultsSection(body);
+          if (rest !== body) sections++;
           assert.deepEqual(strays, [], `${person.username} ${lang} ${p.path}: the results section holds digits only in its exam dates, scores and Corrected lines`);
           assert.deepEqual(activityIn(visible(rest)), [], `${person.username} ${lang} ${p.path}`);
         }
@@ -119,10 +107,10 @@ describe('AT-13a the running product: guardian pages carry no activity, and open
     assert.deepEqual(resultsSection(ok.replace('Corrected on 2026-11-03', 'Corrected at 10:15 on 2026-11-03')).strays, ['10:15', '2026-11-03']);
   });
 
-  it('a learner opening their subject, lesson and file (twice), and a guardian, admin and publisher looking, store nothing', async () => {
+  it('with lesson activity off (the state after deploy), a learner opening their subject, lesson and file (twice), and a guardian, admin and publisher looking, store nothing', async () => {
     const tables = (await w.p.sql("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND name NOT IN ('d1_migrations', 'usage_day', 'session')"))
       .map((r) => String(r.name));
-    assert.ok(!tables.some((t) => /view|open|activity/i.test(t)), `no lesson-view table: ${tables.join(', ')}`);
+    assert.deepEqual(tables.filter((t) => /view|open|activity/i.test(t)).sort(), ['lesson_view', 'lesson_view_setting'], `only R2-d's tables: ${tables.join(', ')}`);
     // One table at a time: parallel `wrangler d1 execute` calls on one local database fail at random.
     const rows = async () => {
       const all: Record<string, string[]> = {};

@@ -229,16 +229,16 @@ jobs:
       - name: AT-9h a person with two roles sees each view under its own role, and nobody is their own guardian
         if: success() || failure()
         run: npm run test:at9h
-      - name: AT-13a no lesson-activity phrase, date, count or time on guardian pages, and no lesson open is stored
+      - name: AT-13a no lesson-activity phrase, date, count or time on guardian pages outside the lesson-activity page, and the only lesson open stored is AT-15's
         if: success() || failure()
         run: npm run test:at13a
-      - name: AT-13b the forbidden-string scan finds nothing a guardian or learner can reach, results pages included, in Arabic and English
+      - name: AT-13b the forbidden-string scan finds nothing a guardian or learner can reach, results and lesson-activity pages included, in Arabic and English
         if: success() || failure()
         run: npm run test:at13b
-      - name: AT-13c the H-1 no-secrets guard passes with the guardian and marks pages and logs, and numbers stay masked
+      - name: AT-13c the H-1 no-secrets guard passes with the guardian, marks and lesson-activity pages and logs, and numbers stay masked
         if: success() || failure()
         run: npm run test:at13c
-      - name: AT-13d new labels in Arabic and English through the dictionary, and no-store on every guardian, results and marks page
+      - name: AT-13d new labels in Arabic and English through the dictionary, and no-store on every guardian, results, marks and lesson-activity page
         if: success() || failure()
         run: npm run test:at13d
       - name: AT-14b the README states what stays on a rollback
@@ -387,6 +387,82 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: evidence-release-2-corrections
+          path: evidence/
+  # Release 2, task R2-d: lesson activity (the admin's switch with its tick,
+  # the learner's last-opened date per lesson, the guardian's lesson-activity
+  # page, the learner's notice). One named step per acceptance sub-check
+  # (AT-15a to AT-15j with 15c-2; AT-13 on the new pages is in "release-2",
+  # the 0010 migration of AT-14a in "rollback").
+  release-2-activity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      WRANGLER_SEND_METRICS: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install (lockfile only, when present)
+        run: if [ -f package-lock.json ]; then npm ci; fi
+      - name: Read the Playwright version
+        id: playwright
+        run: |
+          echo "version=$(node -p "require('playwright/package.json').version")" >> "$GITHUB_OUTPUT"
+          echo "image=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
+      - name: Cache Chromium for the browser test
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.image }}-${{ steps.playwright.outputs.version }}-chromium
+      - name: Install Chromium for the browser test
+        timeout-minutes: 10
+        run: |
+          npx playwright install-deps chromium
+          for attempt in 1 2 3; do
+            timeout 180 npx playwright install chromium && exit 0
+            echo "::warning::Chromium install attempt $attempt did not finish; retrying"
+            sleep 10
+          done
+          exit 1
+      - name: AT-15a off by default, a learner's opens write no row, and the guardian's learner page says it is not switched on
+        if: success() || failure()
+        run: npm run test:at15a
+      - name: AT-15b the admin switches it on from one page with the required tick, only the admin, and switching off deletes the rows
+        if: success() || failure()
+        run: npm run test:at15b
+      - name: AT-15c the guardian's page shows each lesson with its last-opened date or No open recorded, titles and dates only, 40 lessons at phone width
+        if: success() || failure()
+        run: npm run test:at15c
+      - name: AT-15c-2 Recording since is the later of the switch-on day and the link day, and nothing earlier is shown
+        if: success() || failure()
+        run: npm run test:at15c2
+      - name: AT-15d only the learner's own successful open of an assigned lesson writes, and no endpoint writes a view
+        if: success() || failure()
+        run: npm run test:at15d
+      - name: AT-15e the lesson_view table holds a space, a lesson, a learner and a calendar day, nothing else
+        if: success() || failure()
+        run: npm run test:at15e
+      - name: AT-15f every learner sees the notice on the home page and on each lesson page while it is on, built from the kit
+        if: success() || failure()
+        run: npm run test:at15f
+      - name: AT-15g no automatic disposal - a 400-day-old open is still stored and shown, and only the switch-off deletes
+        if: success() || failure()
+        run: npm run test:at15g
+      - name: AT-15h a removed link, ended access and leaving the subject hide the activity at once, and restore brings it back
+        if: success() || failure()
+        run: npm run test:at15h
+      - name: AT-15i a failed view-row write still opens the lesson, and its log line names nobody and nothing
+        if: success() || failure()
+        run: npm run test:at15i
+      - name: AT-15j the phrase scan finds nothing outside the exempt pages or in logs, and nothing is ever sent about an open
+        if: success() || failure()
+        run: npm run test:at15j
+      - name: Upload evidence (release 2 lesson activity screenshots)
+        if: always() && hashFiles('evidence/**') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-release-2-activity
           path: evidence/
   # AT-14a: rollback holds. The code live before release 2 (main at f3b1fa7,
   # the H-1 version 528786a4, the rollback target) is checked out beside this

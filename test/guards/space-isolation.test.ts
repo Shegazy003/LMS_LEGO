@@ -23,8 +23,10 @@ const root = fileURLToPath(new URL('../..', import.meta.url));
 // Tables whose rows belong to one space. A query on any of them must say which.
 // From release 2 (R2-a): guardian_link, the admin's links between a guardian and a learner.
 // From R2-b: exam and exam_result (a learner's mark or Absent for one exam).
+// From R2-d: lesson_view_setting (the admin's switch) and lesson_view (a learner's last-opened day per lesson).
 const SPACE_TABLES = [
   'membership', 'group', 'group_member', 'subject', 'subject_access', 'chapter', 'lesson', 'material', 'guardian_link', 'exam', 'exam_result',
+  'lesson_view_setting', 'lesson_view',
 ];
 // Tables whose rows belong to a row of a space table and carry no space_id of
 // their own (R2-b: exam_result_history, per contract section 5). A statement
@@ -208,7 +210,7 @@ describe('space guard: the database and the running product keep spaces apart', 
         assert.ok(cols.includes('space_id'), `${t} → ${fk.parent} includes space_id (has ${cols.join(', ')})`);
       }
     }
-    for (const t of ['group_member', 'subject_access', 'chapter', 'lesson', 'material', 'exam', 'exam_result']) {
+    for (const t of ['group_member', 'subject_access', 'chapter', 'lesson', 'material', 'exam', 'exam_result', 'lesson_view']) {
       assert.ok(keys.some((k) => k.tbl === t && SPACE_TABLES.includes(String(k.parent))), `${t} refers to its parent (the check above is meaningful)`);
     }
     // A child table without space_id refers to its parent, which carries it.
