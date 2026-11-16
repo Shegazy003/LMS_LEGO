@@ -47,7 +47,11 @@ describe('AT-1.3 the empty subject card and the home with nothing assigned', { c
       await go(tab.page, w, home(w.school));
       assert.equal(await tab.page.locator('nav#top-nav').count(), 1, 'the top navigation');
       const parts = await tab.page.locator('main > *').evaluateAll((els) => els.map((e) => (e as HTMLElement).innerText.replace(/\s+/g, ' ').trim()));
-      assert.deepEqual(parts, [t('welcome', { name: YOUSSEF.display_name }), t('nothingAssigned')]);
+      // The heading stays as today (main cd393f09): it carries the kit's subject
+      // word, which release 1's AT-5.6 checks on an empty home and section 10
+      // keeps unchanged ("no assertion about a kit word changes"). Nothing else:
+      // no card, no list (AMBER, named for the Lead in CANDIDATE READY).
+      assert.deepEqual(parts, [t('welcome', { name: YOUSSEF.display_name }), `${t('assignedToYou')} · ${t('subject')}`, t('nothingAssigned')]);
       assert.equal(await tab.page.locator('#my-list').count(), 0, 'no card list');
       await tab.ctx.close();
     });

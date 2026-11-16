@@ -52,10 +52,13 @@ function subjectCard(t: Label, lang: Lang, space: SpaceView, card: LearnerCard):
  * My results is in the top navigation; from R2-d, while lesson activity is on,
  * the learner’s notice (AT-15f), in full once, then folded (wave 1, section 7). */
 export function learnerHome(t: Label, lang: Lang, space: SpaceView, displayName: string, cards: LearnerCard[], notice: NoticeForm | null = null): Html {
-  const list = cards.length
-    ? html`<h2>${t('assignedToYou')} <span class="muted">· ${t('subject')}</span></h2>
-<ul id="my-list" class="cards">${cards.map((card) => subjectCard(t, lang, space, card))}</ul>`
-    : html`<p id="nothing-yet" class="card message">${t('nothingAssigned')}</p>`;
+  // The heading shows also with nothing assigned, as today: it carries the
+  // kit's subject word (release 1 AT-5.6; contract section 10 keeps kit-word
+  // assertions unchanged).
+  const list = html`<h2>${t('assignedToYou')} <span class="muted">· ${t('subject')}</span></h2>
+${cards.length
+    ? html`<ul id="my-list" class="cards">${cards.map((card) => subjectCard(t, lang, space, card))}</ul>`
+    : html`<p id="nothing-yet" class="card message">${t('nothingAssigned')}</p>`}`;
   const body = html`<p id="greeting">${t('welcome', { name: displayName })}</p>
 ${notice ? activityNotice(t, notice, `/s/${space.id}`) : ''}
 ${list}`;
