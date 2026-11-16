@@ -174,7 +174,8 @@ describe('AT-4 a learner sees exactly what was assigned', { concurrency: false }
     assert.ok(salma.url().endsWith(`/s/${spaceId}`), `the learner lands in the space, got ${salma.url()}`);
     await assertArabicSpacePage(salma, 'learner home');
     assert.equal(await salma.locator('#concepts').count(), 0, 'not the admin home');
-    const titles = await salma.locator('#my-list a').allInnerTexts();
+    // Wave 1 (contract v2 section 10.1): each subject is a card; its title link is the card's heading.
+    const titles = await salma.locator('#my-list h2 a').allInnerTexts();
     assert.deepEqual(titles.map((s) => s.trim()), ['Geometry', 'Mathematics'], 'Mathematics (through Science) and Geometry (directly); not Algebra (unpublished) or Physics (not assigned)');
     await assertNoEditControls(salma, 'learner home');
     await shot(salma, '01-first-learner-home');

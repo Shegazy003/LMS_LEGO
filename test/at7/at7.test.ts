@@ -122,7 +122,8 @@ async function openTopic(subjectId: string): Promise<void> {
 /** The subjects a learner's home lists (their titles). */
 async function homeList(page: Page): Promise<string[]> {
   await page.goto(at(`/s/${spaceId}`));
-  return page.locator('#my-list li').evaluateAll((els) => els.map((e) => (e.textContent ?? '').trim()));
+  // Wave 1 (contract v2 section 10.1): each subject is a card; its title is the card's heading.
+  return page.locator('#my-list li h2').evaluateAll((els) => els.map((e) => (e.textContent ?? '').trim()));
 }
 
 /** Opens a direct link in the person's browser: a page is navigated to; a file

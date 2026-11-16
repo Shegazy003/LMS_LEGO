@@ -23,6 +23,8 @@ export interface ActivitySetting {
   enabled: boolean;
   /** The day of the last switch-on (YYYY-MM-DD); null if never switched on. */
   since: string | null;
+  /** While on, the tick of the latest switch-on (wave 1, the notice's "once" marker, src/notice.ts); null while off. */
+  switchedOnAt: string | null;
 }
 
 export interface ActivityLesson {
@@ -39,11 +41,13 @@ export interface ActivitySubject {
 
 /** The space's switch. A space without a row has never been switched on: off (AT-15a). */
 export async function activitySetting(db: Db, spaceId: string): Promise<ActivitySetting> {
-  const row = await db.first<{ enabled: number; enabled_since: string | null }>(
-    'SELECT v.enabled, v.enabled_since FROM lesson_view_setting v WHERE v.space_id = ?',
+  // changed_at is written only by switchOn (when it was off) and switchOff (when it was on), so while on it is the latest switch-on.
+  const row = await db.first<{ enabled: number; enabled_since: string | null; changed_at: number | null }>(
+    'SELECT v.enabled, v.enabled_since, v.changed_at FROM lesson_view_setting v WHERE v.space_id = ?',
     spaceId,
   );
-  return { enabled: row?.enabled === 1, since: row?.enabled === 1 ? row.enabled_since : null };
+  const on = row?.enabled === 1;
+  return { enabled: on, since: on ? row.enabled_since : null, switchedOnAt: on && row.changed_at !== null ? String(row.changed_at) : null };
 }
 
 /** Switches lesson activity on: records who, when, the tick and the day

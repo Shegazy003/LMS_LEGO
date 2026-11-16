@@ -164,7 +164,8 @@ async function useLink(page: Page, link: string, username: string, password: str
 }
 
 async function homeTitles(page: Page): Promise<string[]> {
-  const list = page.locator('#my-list li, #publisher-list li a.edit');
+  // Wave 1 (contract v2 section 10.1): a learner's subject is a card; its title is the card's heading.
+  const list = page.locator('#my-list li h2, #publisher-list li a.edit');
   return (await list.allInnerTexts()).map((s) => s.trim());
 }
 

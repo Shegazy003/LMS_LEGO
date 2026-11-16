@@ -39,6 +39,7 @@ export interface LessonRow {
   id: string;
   title: string;
   body_text: string;
+  chapter_id: string;
   chapter_title: string;
   subject_id: string;
 }
@@ -61,7 +62,7 @@ export interface FileRow {
   subject_id: string;
 }
 
-/** The learner's home: published subjects assigned to them, directly or
+/** The learner’s home: published subjects assigned to them, directly or
  * through a group of this space. */
 export function subjectsForLearner(db: Db, spaceId: string, userId: string): Promise<SubjectItem[]> {
   return db.all<SubjectItem>(
@@ -77,7 +78,67 @@ export function subjectsForLearner(db: Db, spaceId: string, userId: string): Pro
   );
 }
 
-/** The publisher's home: the subjects they are responsible for. */
+/** One card of the learner home (LMS wave 1, contract section 4): a subject
+ * with its publisher’s display name (never the username; null without a
+ * publisher), how many lessons it has (not removed, in a chapter that is not
+ * removed) and the first of them in the outline’s order (section 5.1). Built
+ * from the outline only: nothing about the learner is read. */
+export interface LearnerCard {
+  id: string;
+  title: string;
+  publisherName: string | null;
+  count: number;
+  first: { id: string; title: string } | null;
+}
+
+/** The learner home’s cards in one read, whatever the number of subjects
+ * (section 4.5): exactly the subjects of subjectsForLearner, in its order. */
+export async function learnerCards(db: Db, spaceId: string, userId: string): Promise<LearnerCard[]> {
+  const rows = await db.all<{ subject_id: string; subject_title: string; publisher_name: string | null; lesson_id: string | null; lesson_title: string | null }>(
+    `SELECT s.id AS subject_id, s.title AS subject_title, u.display_name AS publisher_name, l.id AS lesson_id, l.title AS lesson_title
+       FROM subject s
+       LEFT JOIN user u ON u.id = s.publisher_user_id
+       LEFT JOIN chapter c ON c.subject_id = s.id AND c.space_id = s.space_id AND c.removed_at IS NULL
+       LEFT JOIN lesson l ON l.chapter_id = c.id AND l.space_id = s.space_id AND l.removed_at IS NULL
+      WHERE s.space_id = ? AND s.is_published = 1
+        AND EXISTS (
+          SELECT 1 FROM subject_access a
+           WHERE a.space_id = s.space_id AND a.subject_id = s.id
+             AND (a.user_id = ? OR a.group_id IN (
+               SELECT gm.group_id FROM group_member gm WHERE gm.space_id = s.space_id AND gm.user_id = ?)))
+      ORDER BY s.title, s.id, c.position, c.title, c.id, l.position, l.title, l.id`,
+    spaceId, userId, userId,
+  );
+  const cards: LearnerCard[] = [];
+  for (const r of rows) {
+    let card = cards.at(-1);
+    if (!card || card.id !== r.subject_id) {
+      cards.push((card = { id: r.subject_id, title: r.subject_title, publisherName: r.publisher_name, count: 0, first: null }));
+    }
+    if (!r.lesson_id) continue;
+    card.count++;
+    card.first ??= { id: r.lesson_id, title: r.lesson_title ?? '' };
+  }
+  return cards;
+}
+
+/** One lesson in a subject’s reading order, with its chapter. */
+export interface SequenceStep {
+  id: string;
+  title: string;
+  chapterId: string;
+  chapterTitle: string;
+}
+
+/** A subject’s sequence (section 5.1): its lessons by chapter order, then
+ * lesson order, from the outline (which already skips removed chapters and
+ * lessons); a chapter without lessons adds nothing, so the last lesson of a
+ * chapter leads to the first lesson of the next chapter that has one. */
+export function lessonSequence(chapters: OutlineChapter[]): SequenceStep[] {
+  return chapters.flatMap((ch) => ch.lessons.map((l) => ({ id: l.id, title: l.title, chapterId: ch.id, chapterTitle: ch.title })));
+}
+
+/** The publisher’s home: the subjects they are responsible for. */
 export function subjectsForPublisher(db: Db, spaceId: string, userId: string): Promise<SubjectItem[]> {
   return db.all<SubjectItem>(
     'SELECT s.id, s.title, s.is_published FROM subject s WHERE s.space_id = ? AND s.publisher_user_id = ? ORDER BY s.title, s.id',
@@ -112,13 +173,15 @@ export async function readableSubject(db: Db, space: CurrentSpace, userId: strin
   return null;
 }
 
-/** Chapters in order, each with its lessons in order. */
+/** Chapters in order, each with its lessons in order. A tie in position
+ * (if any) is settled by title, then id, so the order is stable (wave 1,
+ * section 5.1; the learner home uses the same order). */
 export async function outline(db: Db, spaceId: string, subjectId: string): Promise<OutlineChapter[]> {
   const rows = await db.all<{ chapter_id: string; chapter_title: string; lesson_id: string | null; lesson_title: string | null }>(
     `SELECT c.id AS chapter_id, c.title AS chapter_title, l.id AS lesson_id, l.title AS lesson_title
        FROM chapter c LEFT JOIN lesson l ON l.chapter_id = c.id AND l.space_id = c.space_id AND l.removed_at IS NULL
       WHERE c.space_id = ? AND c.subject_id = ? AND c.removed_at IS NULL
-      ORDER BY c.position, c.id, l.position, l.id`,
+      ORDER BY c.position, c.title, c.id, l.position, l.title, l.id`,
     spaceId, subjectId,
   );
   const chapters: OutlineChapter[] = [];
@@ -132,14 +195,14 @@ export async function outline(db: Db, spaceId: string, subjectId: string): Promi
 
 export function findLesson(db: Db, spaceId: string, lessonId: string): Promise<LessonRow | null> {
   return db.first<LessonRow>(
-    `SELECT l.id, l.title, l.body_text, c.title AS chapter_title, c.subject_id
+    `SELECT l.id, l.title, l.body_text, l.chapter_id, c.title AS chapter_title, c.subject_id
        FROM lesson l JOIN chapter c ON c.id = l.chapter_id AND c.space_id = l.space_id AND c.removed_at IS NULL
       WHERE l.id = ? AND l.space_id = ? AND l.removed_at IS NULL`,
     lessonId, spaceId,
   );
 }
 
-/** A lesson's materials in order. */
+/** A lesson’s materials in order. */
 export function lessonMaterials(db: Db, spaceId: string, lessonId: string): Promise<MaterialRow[]> {
   return db.all<MaterialRow>(
     'SELECT m.id, m.kind, m.title, m.url, m.note_text FROM material m WHERE m.space_id = ? AND m.lesson_id = ? AND m.removed_at IS NULL ORDER BY m.position, m.id',

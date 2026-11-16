@@ -464,6 +464,139 @@ jobs:
         with:
           name: evidence-release-2-activity
           path: evidence/
+  # LMS wave 1, task L1 (product-contract v2 on PIL-210): the learner journey.
+  # One named step per labelled expectation (AT-1.1 to AT-3.5) and per UX floor
+  # item of the ux-plan (UX-1 to UX-8, UX-14a to UX-17a); each step starts the
+  # product with the made-up world of test/wave1/world.ts. Screenshots go to
+  # evidence/ux/ as the ux-plan names them. A job of its own, beside the others.
+  wave-1:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      WRANGLER_SEND_METRICS: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install (lockfile only, when present)
+        run: if [ -f package-lock.json ]; then npm ci; fi
+      - name: Read the Playwright version
+        id: playwright
+        run: |
+          echo "version=$(node -p "require('playwright/package.json').version")" >> "$GITHUB_OUTPUT"
+          echo "image=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
+      - name: Cache Chromium for the browser test
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.image }}-${{ steps.playwright.outputs.version }}-chromium
+      - name: Install Chromium for the browser test
+        timeout-minutes: 10
+        run: |
+          npx playwright install-deps chromium
+          for attempt in 1 2 3; do
+            timeout 180 npx playwright install chromium && exit 0
+            echo "::warning::Chromium install attempt $attempt did not finish; retrying"
+            sleep 10
+          done
+          exit 1
+      - name: AT-1.1 the home lists exactly the learner's published, assigned subjects, by title, in a fixed number of reads
+        if: success() || failure()
+        run: npm run test:wave1 -- test/wave1/at1-1.test.ts
+      - name: AT-1.2 each card shows the title link, the teacher line, the lesson count and Start to the first lesson only
+        if: success() || failure()
+        run: npm run test:wave1 -- test/wave1/at1-2.test.ts
+      - name: AT-1.3 the empty subject card says No lessons here yet with no Start, and a home with nothing assigned holds only today's sentence
+        if: success() || failure()
+        run: npm run test:wave1 -- test/wave1/at1-3.test.ts
+      - name: AT-1.4 My results is in the top navigation of every learner page, marked current on My results, and the bottom link is gone
+        if: success() || failure()
+        run: npm run test:wave1 -- test/wave1/at1-4.test.ts
+      - name: AT-1.5 Company and University cards say Trainer, Session, Lecturer, Lecture and no School word, and the label guard passes
+        if: success() || failure()
+        run: npm run test:wave1 -- test/wave1/at1-5.test.ts
+      - name: AT-1.6 the home shows no other learner's name, username or result
+        if: success() || failure()
+        run: npm run test:wave1 -- test/wave1/at1-6.test.ts
+      - name: AT-2.1 Next and Previous follow chapter order then lesson order, skipping empty and removed items
+        if: success() || failure()
+        run: npm run test:wave1 -- test/wave1/at2-1.test.ts
+      - name: AT-2.2 each lesson shows its place N / M, and Next and Previous with their titles and the chapter line when crossing
+        if: success() || failure()
+        run: npm run test:wave1 -- test/wave1/at2-2.test.ts
+      - name: AT-2.3 the first lesson has Back to the outline for Previous, the last says it is the last with the outline and Home
+        if: success() || failure()
+        run: npm run test:wave1 -- test/wave1/at2-3.test.ts
+      - name: AT-2.4 a long outline opens folded with counts, Expand all and Collapse all work, three chapters open in full
+        if: success() || failure()
+        run: npm run test:wave1 -- test/wave1/at2-4.test.ts
+      - name: AT-2.5 the way back from a lesson opens only its chapter, in view at 390 px, and a wrong chapter value is ignored
+        if: success() || failure()
+        run: npm run test:wave1 -- test/wave1/at2-5.test.ts
+      - name: AT-2.6 Next records an open exactly as the outline does, nothing else records, and nothing is prefetched
+        if: success() || failure()
+        run: npm run test:wave1 -- test/wave1/at2-6.test.ts
+      - name: AT-2.7 addresses outside the assignments are refused as today, and Next and Previous stay inside the subject
+        if: success() || failure()
+        run: npm run test:wave1 -- test/wave1/at2-7.test.ts
+      - name: AT-3.1 the notice shows in full on the first page, then folded with the same sentence and What is recorded
+        if: success() || failure()
+        run: npm run test:wave1 -- test/wave1/at3-1.test.ts
+      - name: AT-3.2 told once per account, space, browser and switch-on, and every time without cookies
+        if: success() || failure()
+        run: npm run test:wave1 -- test/wave1/at3-2.test.ts
+      - name: AT-3.3 while activity is off, no notice in either form appears
+        if: success() || failure()
+        run: npm run test:wave1 -- test/wave1/at3-3.test.ts
+      - name: AT-3.4 schema and migrations are the base commit's, the only new storage is the notice cookie, activity records untouched
+        if: success() || failure()
+        run: npm run test:wave1 -- test/wave1/at3-4.test.ts
+      - name: AT-3.5 every existing step of contract section 9 is still in the workflow under its own name
+        if: success() || failure()
+        run: npm run test:wave1 -- test/wave1/at3-5.test.ts
+      - name: UX-1 learner home cards
+        if: success() || failure()
+        run: npm run test:wave1 -- test/wave1/ux1.test.ts
+      - name: UX-2 learner home empty states
+        if: success() || failure()
+        run: npm run test:wave1 -- test/wave1/ux2.test.ts
+      - name: UX-3 learner top navigation
+        if: success() || failure()
+        run: npm run test:wave1 -- test/wave1/ux3.test.ts
+      - name: UX-4 next and previous at the end of the lesson
+        if: success() || failure()
+        run: npm run test:wave1 -- test/wave1/ux4.test.ts
+      - name: UX-5 first and last lesson
+        if: success() || failure()
+        run: npm run test:wave1 -- test/wave1/ux5.test.ts
+      - name: UX-6 outline folds and opens the right chapter
+        if: success() || failure()
+        run: npm run test:wave1 -- test/wave1/ux6.test.ts
+      - name: UX-7 keyboard walk of home, outline and lesson
+        if: success() || failure()
+        run: npm run test:wave1 -- test/wave1/ux7.test.ts
+      - name: UX-8 notice full once then folded
+        if: success() || failure()
+        run: npm run test:wave1 -- test/wave1/ux8.test.ts
+      - name: UX-14a no sideways scroll on learner pages
+        if: success() || failure()
+        run: npm run test:wave1 -- test/wave1/ux14a.test.ts
+      - name: UX-15a sizes and contrast on learner pages
+        if: success() || failure()
+        run: npm run test:wave1 -- test/wave1/ux15a.test.ts
+      - name: UX-16a Arabic and mixed text on learner pages
+        if: success() || failure()
+        run: npm run test:wave1 -- test/wave1/ux16a.test.ts
+      - name: UX-17a kit words on learner pages (three kits)
+        if: success() || failure()
+        run: npm run test:wave1 -- test/wave1/ux17a.test.ts
+      - name: Upload evidence (wave 1 screenshots and the home's read count)
+        if: always() && hashFiles('evidence/**') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-wave-1
+          path: evidence/
   # AT-14a: rollback holds. The code live before release 2 (main at f3b1fa7,
   # the H-1 version 528786a4, the rollback target) is checked out beside this
   # commit and given this commit's migrations, so the old code runs on a
