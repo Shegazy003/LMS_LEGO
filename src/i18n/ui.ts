@@ -26,7 +26,7 @@ const en = {
   recoveryAfterReset: 'Your new password is set. The code you used no longer works; this is your new code.',
   continue: 'Continue',
   signInFailed: 'The username or password is not correct.',
-  forgotPassword: 'Forgot the password? Use the recovery code',
+  forgotPassword: 'Forgot your password? Ask the person who gave you your account to send you a reset link.',
   recoverTitle: 'Set a new password with the recovery code',
   recoveryCode: 'Recovery code',
   setNewPassword: 'Set the new password',
@@ -401,6 +401,21 @@ const en = {
   collapseAll: 'Collapse all',
   activityDetail: 'Only the date you last opened each {lesson} is kept: no time, no count, no duration. Your {admin} switched this on and can tell you more.',
   activityGotIt: 'Got it',
+  // LMS wave 1, task L2 (product-contract v2 on PIL-210, section 8). The switch names the other language in that language.
+  switchLanguage: 'العربية',
+  ownerRecovery: 'Product owner: use your recovery code',
+  recoverOnlyOwner: 'Only the product owner has a recovery code. Everyone else: ask the person who gave you your account.',
+  backToSignIn: 'Back to sign in',
+  latestResultLine: 'Latest result: {exam} · {subject} · {date} · {score}',
+  correctedTag: 'Corrected',
+  lastOpenedLine: 'Last opened: {title} · {date}',
+  lastOpenedNone: 'Last opened: No open recorded',
+  addMaterial: 'Add {material}',
+  choiceFile: 'File (PDF or image)',
+  choiceVideo: 'Video link',
+  choiceLink: 'Web link',
+  choiceNote: 'Note',
+  materialAdded: 'Added: {title}',
 };
 
 export type UiKey = keyof typeof en;
@@ -427,7 +442,7 @@ const ar: Record<UiKey, string> = {
   recoveryAfterReset: 'تم تعيين كلمة المرور الجديدة. الرمز الذي استخدمته لم يعد يعمل؛ وهذا رمزك الجديد.',
   continue: 'متابعة',
   signInFailed: 'اسم المستخدم أو كلمة المرور غير صحيحة.',
-  forgotPassword: 'نسيت كلمة المرور؟ استخدم رمز الاسترداد',
+  forgotPassword: 'نسيت كلمة المرور؟ اطلب من الشخص الذي أعطاك حسابك أن يرسل إليك رابط إعادة تعيين كلمة المرور.',
   recoverTitle: 'تعيين كلمة مرور جديدة برمز الاسترداد',
   recoveryCode: 'رمز الاسترداد',
   setNewPassword: 'تعيين كلمة المرور الجديدة',
@@ -794,6 +809,21 @@ const ar: Record<UiKey, string> = {
   collapseAll: 'طيّ الكل',
   activityDetail: 'يُحفظ فقط تاريخ آخر فتح لكل {lesson}: لا الوقت ولا العدد ولا المدة. فعّل {admin} هذه الخاصية ويمكنه أن يخبرك بالمزيد.',
   activityGotIt: 'فهمت',
+  // LMS wave 1, L2 (section 8). The switch names the other language in that language.
+  switchLanguage: 'English',
+  ownerRecovery: 'مالك المنتج: استخدم رمز الاسترداد',
+  recoverOnlyOwner: 'رمز الاسترداد لدى مالك المنتج وحده. أي شخص آخر: اطلب المساعدة من الشخص الذي أعطاك حسابك.',
+  backToSignIn: 'العودة إلى تسجيل الدخول',
+  latestResultLine: 'آخر نتيجة: {exam} · {subject} · {date} · {score}',
+  correctedTag: 'صُحّحت',
+  lastOpenedLine: 'آخر فتح: {title} · {date}',
+  lastOpenedNone: 'آخر فتح: لم يُسجَّل فتح',
+  addMaterial: 'إضافة {material}',
+  choiceFile: 'ملف (PDF أو صورة)',
+  choiceVideo: 'رابط فيديو',
+  choiceLink: 'رابط ويب',
+  choiceNote: 'ملاحظة',
+  materialAdded: 'تمت الإضافة: {title}',
 };
 
 export const UI: Record<'ar' | 'en', Record<UiKey, string>> = { en, ar };

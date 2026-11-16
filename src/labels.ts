@@ -69,17 +69,17 @@ export function dirFor(lang: Lang): 'rtl' | 'ltr' {
   return lang === 'ar' ? 'rtl' : 'ltr';
 }
 
-/** Language for pages outside any space (sign-in, setup, owner): Arabic when
- * the browser prefers it over English, otherwise English. */
-export function productLang(acceptLanguage: string | undefined): Lang {
-  const prefs = (acceptLanguage ?? '')
-    .split(',')
-    .map((part) => {
-      const [tag, ...params] = part.trim().toLowerCase().split(';');
-      const q = params.map((p) => p.trim()).find((p) => p.startsWith('q='));
-      return { lang: tag.split('-')[0], q: q ? Number(q.slice(2)) : 1 };
-    })
-    .filter((p) => p.lang === 'ar' || p.lang === 'en')
-    .sort((a, b) => b.q - a.q);
-  return (prefs[0]?.lang as Lang | undefined) ?? 'en';
+/** The language cookie of the pages outside any space (LMS wave 1, L2,
+ * section 8.3): the choice made with the language switch on this device. */
+export const LANG_COOKIE = 'lms_lang';
+
+/** A language value as the switch and the cookie carry it: only "ar" or "en", anything else is no choice. */
+export const langChoice = (value: string | undefined | null): Lang | null => (value === 'ar' || value === 'en' ? value : null);
+
+/** Language for pages outside any space (sign-in, recovery, setup, the owner's
+ * pages, the space list): the choice made on this device with the language
+ * switch (the lms_lang cookie), and Arabic when there is none. The browser's
+ * own language is not read (L2, section 8.3). */
+export function deviceLang(cookie: string | undefined): Lang {
+  return langChoice(cookie) ?? 'ar';
 }

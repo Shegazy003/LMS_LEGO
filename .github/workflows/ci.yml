@@ -471,7 +471,7 @@ jobs:
   # evidence/ux/ as the ux-plan names them. A job of its own, beside the others.
   wave-1:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 50
     env:
       WRANGLER_SEND_METRICS: "false"
     steps:
@@ -591,6 +591,71 @@ jobs:
       - name: UX-17a kit words on learner pages (three kits)
         if: success() || failure()
         run: npm run test:wave1 -- test/wave1/ux17a.test.ts
+      # LMS wave 1, task L2 (product-contract v2 section 8 on PIL-210): the
+      # guardian home at a glance, the one add-material chooser, the Arabic-first
+      # sign-in and the recovery route. One named step per labelled expectation
+      # (AT-4.1 to AT-5.5) and per UX floor item (UX-9 to UX-13, UX-14b to
+      # UX-17b), each with the made-up world of test/l2/world.ts.
+      - name: AT-4.1 the guardian home shows each linked learner's latest published result, equal to the learner page's first row
+        if: success() || failure()
+        run: npm run test:wave1 -- test/l2/at4-1.test.ts
+      - name: AT-4.2 Last opened on the guardian home is the activity page's newest row, only while activity is on
+        if: success() || failure()
+        run: npm run test:wave1 -- test/l2/at4-2.test.ts
+      - name: AT-4.3 the privacy scans hold on the guardian home in both languages, nothing of Omar C and no draft
+        if: success() || failure()
+        run: npm run test:wave1 -- test/l2/at4-3.test.ts
+      - name: AT-4.4 the lesson editor has one add chooser with four choices, one form at a time, focus with script on
+        if: success() || failure()
+        run: npm run test:wave1 -- test/l2/at4-4.test.ts
+      - name: AT-4.5 five additions through the existing add route, three refusals keep the same form open with today's message
+        if: success() || failure()
+        run: npm run test:wave1 -- test/l2/at4-5.test.ts
+      - name: AT-4.6 with script off each choice opens only its form, additions work and a refusal keeps the form open
+        if: success() || failure()
+        run: npm run test:wave1 -- test/l2/at4-6.test.ts
+      - name: AT-5.1 every page outside a space shows first in Arabic, and the switch keeps English on this browser only
+        if: success() || failure()
+        run: npm run test:wave1 -- test/l2/at5-1.test.ts
+      - name: AT-5.2 inside a space, reset links, access ended and a person's own language follow today's rules
+        if: success() || failure()
+        run: npm run test:wave1 -- test/l2/at5-2.test.ts
+      - name: AT-5.3 the sign-in page sends each person the right way, and its two failures are one answer
+        if: success() || failure()
+        run: npm run test:wave1 -- test/l2/at5-3.test.ts
+      - name: AT-5.4 the recovery page says who it is for, non-owner and unknown usernames get one answer, the owner's recovery is today's
+        if: success() || failure()
+        run: npm run test:wave1 -- test/l2/at5-4.test.ts
+      - name: AT-5.5 schema and migrations are the base commit's, the only new storage is the language cookie, every section 9 step still runs
+        if: success() || failure()
+        run: npm run test:wave1 -- test/l2/at5-5.test.ts
+      - name: UX-9 guardian card at a glance
+        if: success() || failure()
+        run: npm run test:wave1 -- test/l2/ux9.test.ts
+      - name: UX-10 guardian empty and off states
+        if: success() || failure()
+        run: npm run test:wave1 -- test/l2/ux10.test.ts
+      - name: UX-11 add-material chooser, one form, keyboard
+        if: success() || failure()
+        run: npm run test:wave1 -- test/l2/ux11.test.ts
+      - name: UX-12 Arabic-first sign-in and switch
+        if: success() || failure()
+        run: npm run test:wave1 -- test/l2/ux12.test.ts
+      - name: UX-13 recovery wording and owner link
+        if: success() || failure()
+        run: npm run test:wave1 -- test/l2/ux13.test.ts
+      - name: UX-14b no sideways scroll on guardian, editor and sign-in pages
+        if: success() || failure()
+        run: npm run test:wave1 -- test/l2/ux14b.test.ts
+      - name: UX-15b sizes and contrast on guardian, editor and sign-in pages
+        if: success() || failure()
+        run: npm run test:wave1 -- test/l2/ux15b.test.ts
+      - name: UX-16b Arabic and mixed text on guardian, editor and sign-in pages
+        if: success() || failure()
+        run: npm run test:wave1 -- test/l2/ux16b.test.ts
+      - name: UX-17b kit words on guardian and editor pages (three kits)
+        if: success() || failure()
+        run: npm run test:wave1 -- test/l2/ux17b.test.ts
       - name: Upload evidence (wave 1 screenshots and the home's read count)
         if: always() && hashFiles('evidence/**') != ''
         uses: actions/upload-artifact@v4

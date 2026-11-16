@@ -115,6 +115,36 @@ export async function linkedLearner(db: Db, spaceId: string, guardianId: string,
   return (await linkedLearners(db, spaceId, guardianId, nowMs)).find((l) => l.id === learnerId) ?? null;
 }
 
+/** subjectsSeenBy for every learner actively linked to this guardian, in one
+ * read whatever their number (LMS wave 1, L2, section 8.1: the guardian
+ * home's reads do not grow with its cards). The same rule, row for row: the
+ * published subjects assigned to the learner directly or through a group of
+ * this space, by title. The caller keeps only the learners linkedLearners
+ * found (active links of learners whose access is active today). */
+export async function subjectsSeenByLinked(db: Db, spaceId: string, guardianId: string): Promise<Map<string, GuardianSubject[]>> {
+  const rows = await db.all<GuardianSubject & { learner_id: string }>(
+    `SELECT gl.learner_user_id AS learner_id, s.title, u.display_name AS publisher_name
+       FROM guardian_link gl
+       JOIN subject s ON s.space_id = gl.space_id AND s.is_published = 1
+       LEFT JOIN user u ON u.id = s.publisher_user_id
+      WHERE gl.space_id = ? AND gl.guardian_user_id = ? AND gl.ended_at IS NULL
+        AND EXISTS (
+          SELECT 1 FROM subject_access a
+           WHERE a.space_id = s.space_id AND a.subject_id = s.id
+             AND (a.user_id = gl.learner_user_id OR a.group_id IN (
+               SELECT gm.group_id FROM group_member gm WHERE gm.space_id = s.space_id AND gm.user_id = gl.learner_user_id)))
+      ORDER BY gl.learner_user_id, s.title, s.id`,
+    spaceId, guardianId,
+  );
+  const out = new Map<string, GuardianSubject[]>();
+  for (const { learner_id, title, publisher_name } of rows) {
+    const list = out.get(learner_id) ?? [];
+    list.push({ title, publisher_name });
+    out.set(learner_id, list);
+  }
+  return out;
+}
+
 /** What a guardian sees of one linked learner: exactly the subjects that
  * learner sees on their own home (published, assigned to them directly or
  * through a group of this space), each with its title and its publisher's

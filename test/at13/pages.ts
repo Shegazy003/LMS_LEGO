@@ -49,7 +49,10 @@ export function resultPaths(w: PrivacyWorld): string[] {
  * section, outside those forms, that holds a digit (none expected). */
 export function resultsSection(html: string): { rest: string; strays: string[] } {
   const strays: string[] = [];
-  const rest = html.replace(/<section id="results"[^>]*>([\s\S]*?)<\/section>/g, (_, section: string) => {
+  // LMS wave 1, L2 (product-contract v2 on PIL-210, sections 8.1 and 10.5): the guardian home's "Latest result"
+  // line of each own linked learner is that learner page's first result row, held to the same allowed forms.
+  const rest = html.replace(/<section id="results"[^>]*>([\s\S]*?)<\/section>|<a class="latest-result[^"]*"[^>]*>([\s\S]*?)<\/a>/g, (_, inPage: string | undefined, onHome: string | undefined) => {
+    const section = inPage ?? onHome ?? '';
     const left = section
       .replace(/<span class="muted date" dir="ltr">\d{4}-\d{2}-\d{2}<\/span>/g, ' ')
       .replace(/<span class="score" dir="auto">(\d{1,4}(\.\d)? \/ \d{1,4}(\.\d)?|[^<\d]*)<\/span>/g, ' ')
@@ -138,7 +141,9 @@ export const ACTIVITY_PHRASES = {
  * (product-contract v2 on PIL-210, sections 7.1 and 10.4), the detail of the learner's notice, which the notice
  * (exempt place 3) shows in full once and then behind "What is recorded"; like the notice line it is marked
  * data-activity and taken out before every page scan. */
-export const EXEMPT_KEYS: string[] = [...R2D_KEYS, 'activityDetail'];
+// LMS wave 1, L2 (sections 8.1 and 10.5): also the guardian home's "Last opened" piece, shown only while activity is
+// on and marked data-activity like every activity piece (taken out before every page scan).
+export const EXEMPT_KEYS: string[] = [...R2D_KEYS, 'activityDetail', 'lastOpenedLine', 'lastOpenedNone'];
 
 const MONTHS = /\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}\b|(يناير|فبراير|مارس|أبريل|إبريل|مايو|يونيو|يوليو|أغسطس|سبتمبر|أكتوبر|نوفمبر|ديسمبر)/i;
 

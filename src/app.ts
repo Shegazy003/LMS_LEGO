@@ -18,14 +18,14 @@ import { Db } from './db.ts';
 import {
   LOGO_MAX_BYTES, MATERIAL_MAX_BYTES, fileHeaders, materialBodyTooLarge, materialFileHeaders, sniffLogo, sniffMaterial,
 } from './files.ts';
-import { LANGS, makeLabel, productLang, type Concept, type KitJson, type Label, type Lang, type LabelKey } from './labels.ts';
+import { LANGS, LANG_COOKIE, deviceLang, langChoice, makeLabel, type Concept, type KitJson, type Label, type Lang, type LabelKey } from './labels.ts';
 import { cleanDisplayName, cleanItemName, isUsername, typedUsername } from './names.ts';
 import { readLabels, switchedKit } from './kits/edit.ts';
 import {
   findFile, findLesson, learnerCards, lessonMaterials, lessonSequence, outline, readableSubject, subjectsForPublisher, type SubjectRow,
 } from './learning.ts';
-import { isGuardianHere, isLearnerHere, link, linkedLearner, linkedLearners, linksOf, subjectsSeenBy, unlink } from './guardians.ts';
-import { activityOf, activitySetting, linkedSince, recordOpen, recordingSince, switchOff, switchOn, type ActivitySetting } from './activity.ts';
+import { isGuardianHere, isLearnerHere, link, linkedLearner, linkedLearners, linksOf, subjectsSeenBy, subjectsSeenByLinked, unlink } from './guardians.ts';
+import { activityOf, activitySetting, lastOpenedOfLinked, linkedSince, recordOpen, recordingSince, switchOff, switchOn, type ActivitySetting } from './activity.ts';
 import { noticeCookieName, noticeCookieOptions, noticeFormFor, type NoticeForm } from './notice.ts';
 import { adminActivityOffPage, adminActivityPage, guardianActivityPage, type AdminActivityView } from './views/activity.ts';
 import { externalUrl } from './links.ts';
@@ -59,9 +59,10 @@ import {
   confirmLinkPage, endConfirmPage, linkReadyPage, personPage, unlinkConfirmPage, type CorrectionValues, type LinksView, type PersonFrame,
   type PersonNotice, type PersonView,
 } from './views/people.ts';
-import { guardianHome, guardianLearnerPage, type LearnerCard } from './views/guardian.ts';
+import { guardianHome, guardianLearnerPage, type GlanceCard } from './views/guardian.ts';
 import {
-  SEGMENT, chapterPage, lessonEditor, materialPage, publisherHome, removeConfirmPage, removedPage, subjectEditor, type EditorNotice,
+  ADD_KINDS, SEGMENT, chapterPage, lessonEditor, materialPage, publisherHome, removeConfirmPage, removedPage, subjectEditor,
+  type AddField, type AddKind, type AddState, type EditorNotice,
 } from './views/publish.ts';
 import { resetAlreadyChangedPage, resetDeadPage, resetDonePage, resetPage, type ResetSpace } from './views/reset.ts';
 import {
@@ -69,7 +70,7 @@ import {
   type ConfirmRowView, type HistoryRowView, type MarkCorrectionValues, type MarkRowView, type MarksNotice, type NewExamValues,
 } from './views/exams.ts';
 import {
-  correctRow, createExam, editExam, editableExam, examOfSpace, examsOfSubject, examsWithResults, historyOfExam, isLocked, markText, ownResult,
+  correctRow, createExam, editExam, editableExam, examOfSpace, examsOfSubject, examsWithResults, historyOfExam, isLocked, latestResultsOfLinked, markText, ownResult,
   ownResults, publishRows, publishedRows, readMaxMark, readRow, resultsOfExam, rosterOf, saveDraft, secondIds,
   type DraftValue, type ExamRow, type ResultRow, type RosterRow,
 } from './exams.ts';
@@ -198,7 +199,8 @@ use('*', async (c, next) => {
   const m = getMeter();
   m.recordRequest(now());
   c.set('db', new Db(c.env.DB, (rows) => m.recordWrites(rows, now())));
-  c.set('lang', productLang(c.req.header('accept-language')));
+  // Pages outside any space: the language chosen on this device (LMS wave 1, L2, section 8.3), else Arabic.
+  c.set('lang', deviceLang(getCookie(c, LANG_COOKIE)));
   c.set('user', null);
   c.set('endedSignIn', null);
   await next();
@@ -253,6 +255,19 @@ use('*', async (c, next) => {
 if (__TEST_HOOKS__) registerTestHooks(app);
 
 // ------------------------------------------------------- setup and auth ----
+// The language switch of /setup, /signin and /recover (LMS wave 1, L2, section
+// 8.3): a link to the same page with ?lang=ar or ?lang=en. Only those two
+// values are taken; the choice is kept on this device in the lms_lang cookie
+// for a year (nothing is stored on the server) and applies to this page at
+// once. A person's own language (My account) still wins on their pages.
+const LANG_MAX_AGE = 365 * 24 * 60 * 60;
+function switchLanguage(c: C): void {
+  const chosen = langChoice(c.req.query('lang'));
+  if (!chosen) return;
+  setCookie(c, LANG_COOKIE, chosen, { path: '/', httpOnly: true, secure: new URL(c.req.url).protocol === 'https:', sameSite: 'Lax', maxAge: LANG_MAX_AGE });
+  if (!c.get('user')?.lang) c.set('lang', chosen);
+}
+
 app.get('/', async (c) => {
   const user = c.get('user');
   if (user) return c.redirect(user.is_owner ? '/owner' : '/home');
@@ -260,6 +275,7 @@ app.get('/', async (c) => {
 });
 
 app.get('/setup', async (c) => {
+  switchLanguage(c);
   if (await ownerExists(c.get('db'))) return c.redirect('/signin');
   return page(c, setupPage(label(c), c.get('lang'), {}));
 });
@@ -297,6 +313,7 @@ app.post('/setup', async (c) => {
 });
 
 app.get('/signin', (c) => {
+  switchLanguage(c);
   if (c.get('user')) return c.redirect('/');
   return page(c, signInPage(label(c), c.get('lang'), {}));
 });
@@ -340,7 +357,10 @@ app.post('/signout', async (c) => {
   return c.redirect('/signin');
 });
 
-app.get('/recover', (c) => page(c, recoverPage(label(c), c.get('lang'), {})));
+app.get('/recover', (c) => {
+  switchLanguage(c);
+  return page(c, recoverPage(label(c), c.get('lang'), {}));
+});
 
 app.post('/recover', async (c) => {
   const db = c.get('db');
@@ -788,14 +808,28 @@ async function renderLearnerHome(c: C) {
 // Found from the session's person on every request, so a removed link or an
 // ended learner is gone from the very next page. From R2-d, while lesson
 // activity is on, each learner's card leads to their lesson-activity page.
+// LMS wave 1, L2 (section 8.1): each card also shows the learner's first
+// result row and, while activity is on, the newest row of their activity page.
+// A fixed number of reads, whatever the number of cards: one per kind of
+// thing, for all of this guardian's links at once, kept only for the learners
+// linkedLearners found (the same rules as the learner and activity pages).
 async function renderGuardianHome(c: C) {
   const { t, lang, view } = spaceLabel(c);
   const db = c.get('db');
   const user = c.get('user')!;
   const learners = await linkedLearners(db, view.id, user.id, now());
-  const cards: LearnerCard[] = [];
-  for (const learner of learners) cards.push({ learner, subjects: await subjectsSeenBy(db, view.id, learner.id) });
-  return page(c, guardianHome(t, lang, view, user.display_name, cards, (await activitySetting(db, view.id)).enabled));
+  const setting = await activitySetting(db, view.id);
+  const on = setting.enabled && setting.since !== null;
+  const cards: GlanceCard[] = [];
+  if (learners.length) {
+    const subjects = await subjectsSeenByLinked(db, view.id, user.id);
+    const latest = await latestResultsOfLinked(db, view.id, user.id);
+    const opened = on ? await lastOpenedOfLinked(db, view.id, user.id, setting.since!) : new Map<string, { title: string; date: string }>();
+    for (const learner of learners) {
+      cards.push({ learner, subjects: subjects.get(learner.id) ?? [], latest: latest.get(learner.id) ?? null, lastOpened: opened.get(learner.id) ?? null });
+    }
+  }
+  return page(c, guardianHome(t, lang, view, user.display_name, cards, setting.enabled));
 }
 
 // The space home is the home of the person's main role: an admin gets the
@@ -1545,20 +1579,40 @@ async function renderSubjectEditor(c: C, subject: SubjectRow, error?: LabelKey, 
   return page(c, subjectEditor(t, lang, view, subject, parts, error && t(error), notice), error ? 400 : 200);
 }
 
+/** The add-material chooser's state as the editor is asked for it (LMS wave 1, L2, section 8.2). */
+interface AddAsked {
+  /** The one form to show open (?add=<kind>, or the form a refusal came from). */
+  open?: AddKind;
+  /** A refusal: today's message, beside this field of the open form, with the typed title kept. */
+  refused?: { field: AddField; key: LabelKey; title: string };
+  /** A material just added (?added=<id>): its title is announced, the chooser closed. */
+  addedId?: string;
+}
+
 async function renderLessonEditor(
   c: C,
   lesson: EditableLesson,
   error?: LabelKey,
   status: 200 | 400 | 413 = 200,
-  extra: { notice?: EditorNotice; typedName?: string } = {},
+  extra: { notice?: EditorNotice; typedName?: string; add?: AddAsked } = {},
 ) {
   const db = c.get('db');
   const { t, lang, view } = spaceLabel(c);
   const subject = await editableSubject(db, view.id, c.get('user')!.id, lesson.subject_id);
   if (!subject) return refuse(c, 403, 'noAccess');
   const materials = await lessonMaterials(db, view.id, lesson.id);
-  return page(c, lessonEditor(t, lang, view, { subject, lesson, materials, error: error && t(error), ...extra }), status);
+  const { add: asked, ...rest } = extra;
+  const add: AddState = {
+    open: asked?.open,
+    error: asked?.refused && { field: asked.refused.field, message: t(asked.refused.key) },
+    title: asked?.refused?.title,
+    added: asked?.addedId ? materials.find((m) => m.id === asked.addedId)?.title : undefined,
+  };
+  return page(c, lessonEditor(t, lang, view, { subject, lesson, materials, error: error && t(error), add, ...rest }), status);
 }
+
+/** ?add=<kind>: one of the chooser's four kinds, anything else none. */
+const addKind = (value: string | undefined): AddKind | undefined => ADD_KINDS.find((k) => k === value);
 
 app.get('/s/:spaceId/publish/edit/:subjectId', async (c) => {
   const subject = await editableSubject(c.get('db'), c.get('space').id, c.get('user')!.id, c.req.param('subjectId'));
@@ -1613,7 +1667,8 @@ app.post('/s/:spaceId/publish/part/:chapterId/move', async (c) => {
 app.get('/s/:spaceId/publish/compose/:lessonId', async (c) => {
   const lesson = await editableLesson(c.get('db'), c.get('space').id, c.get('user')!.id, c.req.param('lessonId'));
   if (!lesson) return missingItem(c, 'lesson', c.req.param('lessonId'));
-  return renderLessonEditor(c, lesson, undefined, 200, { notice: editorNotice(c) });
+  const added = c.req.query('added');
+  return renderLessonEditor(c, lesson, undefined, 200, { notice: editorNotice(c), add: { open: added ? undefined : addKind(c.req.query('add')), addedId: added } });
 });
 
 app.post('/s/:spaceId/publish/compose/:lessonId/move', async (c) => {
@@ -1636,33 +1691,42 @@ app.post('/s/:spaceId/publish/compose/:lessonId/add', async (c) => {
   const userId = c.get('user')!.id;
   const lesson = await editableLesson(db, spaceId, userId, c.req.param('lessonId'));
   if (!lesson) return refuse(c, 403, 'noAccess');
-  if (materialBodyTooLarge(c.req.header('content-length'))) return renderLessonEditor(c, lesson, 'uploadTooLarge', 413);
+  // LMS wave 1, L2 (section 8.2): a refusal returns the editor with the same
+  // form open, today's message beside its field and the typed title kept.
+  // Only the file form posts multipart: a body too large to read is its own.
+  const refused = (open: AddKind | undefined, fieldName: AddField, key: LabelKey, status: 400 | 413, title = '') =>
+    open ? renderLessonEditor(c, lesson, undefined, status, { add: { open, refused: { field: fieldName, key, title } } }) : renderLessonEditor(c, lesson, key, status);
+  if (materialBodyTooLarge(c.req.header('content-length'))) {
+    return refused((c.req.header('content-type') ?? '').startsWith('multipart/form-data') ? 'file' : undefined, 'file', 'uploadTooLarge', 413);
+  }
   const body = await c.req.parseBody();
-  const title = titleFrom(body);
-  if (!title) return renderLessonEditor(c, lesson, 'titleInvalid', 400);
   const kind = field(body, 'kind');
+  const open = addKind(kind);
+  const typed = (typeof body.title === 'string' ? body.title : '').slice(0, TITLE_MAX);
+  const title = titleFrom(body);
+  if (!title) return refused(open, 'title', 'titleInvalid', 400, typed);
   const item: NewMaterial = { id: crypto.randomUUID(), kind: 'note', title, storageKey: null, url: null, noteText: null };
   let upload: { bytes: Uint8Array; type: string } | null = null;
 
   if (kind === 'file') {
     const file = body.file;
-    if (!(file instanceof File) || file.size === 0) return renderLessonEditor(c, lesson, 'uploadMissing', 400);
-    if (file.size > MATERIAL_MAX_BYTES) return renderLessonEditor(c, lesson, 'uploadTooLarge', 413);
+    if (!(file instanceof File) || file.size === 0) return refused(open, 'file', 'uploadMissing', 400, typed);
+    if (file.size > MATERIAL_MAX_BYTES) return refused(open, 'file', 'uploadTooLarge', 413, typed);
     const bytes = new Uint8Array(await file.arrayBuffer());
     const found = sniffMaterial(bytes);
-    if (!found) return renderLessonEditor(c, lesson, 'uploadType', 400);
+    if (!found) return refused(open, 'file', 'uploadType', 400, typed);
     item.kind = found.kind;
     item.storageKey = materialKey(spaceId, item.id);
     upload = { bytes, type: found.type };
   } else if (kind === 'video_link' || kind === 'link') {
     const url = externalUrl(field(body, 'url'));
-    if (!url) return renderLessonEditor(c, lesson, 'linkInvalid', 400);
+    if (!url) return refused(open, 'url', 'linkInvalid', 400, typed);
     item.kind = kind;
     item.url = url;
   } else if (kind === 'note') {
     // Browsers send a text box's line breaks as CR LF; keep them as LF.
     const text = (typeof body.text === 'string' ? body.text : '').replace(/\r\n?/g, '\n').trim();
-    if (!text || text.length > NOTE_MAX) return renderLessonEditor(c, lesson, 'noteInvalid', 400);
+    if (!text || text.length > NOTE_MAX) return refused(open, 'text', 'noteInvalid', 400, typed);
     item.noteText = text;
   } else {
     return renderLessonEditor(c, lesson, 'kindInvalid', 400);
@@ -1676,7 +1740,8 @@ app.post('/s/:spaceId/publish/compose/:lessonId/add', async (c) => {
     if (!written && item.storageKey) await c.env.FILES.delete(item.storageKey);
   }
   if (!written) return refuse(c, 403, 'noAccess');
-  return c.redirect(lessonEditorPath(spaceId, lesson.id) + '#items', 303);
+  // LMS wave 1, L2: back to the editor with the chooser closed and "Added: <title>" in its status line.
+  return c.redirect(`${lessonEditorPath(spaceId, lesson.id)}?added=${item.id}#added`, 303);
 });
 
 app.post('/s/:spaceId/publish/item/:materialId/move', async (c) => {

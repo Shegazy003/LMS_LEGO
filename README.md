@@ -217,6 +217,17 @@ Contract `product-contract` v2 and `ux-plan` v2 (PIL-210). No migration, no new 
 
 **Rollback:** redeploying the earlier version brings back the old home list and the one-line notice; the notice cookies are then ignored. No data to undo.
 
+### Guardian at a glance, one add chooser, Arabic-first sign-in (LMS wave 1, task L2)
+
+Contract `product-contract` v2 section 8 and `ux-plan` v2 (PIL-210). No migration, no new table: the only new storage is the language cookie (item 3). `src/views/guardian.ts`, `src/guardians.ts`, `src/exams.ts`, `src/activity.ts`, `src/views/publish.ts`, `src/views/auth.ts`, `src/views/layout.ts`, `src/labels.ts`, `src/app.ts`.
+
+1. **Guardian home:** each linked learner's card adds "Latest result: <exam> · <subject> · <date> · <mark> / <maximum>" (or "Absent"), with a "Corrected" tag when corrected; it is always the first row of that learner's page (exam date newest first, then exam title), and "No results yet." when there is none. While lesson activity is on, the card also says "Last opened: <lesson> · <date>" (the newest row of the activity page, by that page's own rules) or "Last opened: No open recorded". The home reads the database a fixed number of times (7 in the test), whatever the number of linked learners.
+2. **One add chooser in the lesson editor:** the materials are listed in order, then one "Add <material>" control with four choices (File: PDF or image, Video link, Web link, Note). Choosing one opens only that form (`?add=file|video|link|note`, so it works without script too); Cancel closes it. A refusal keeps the same form open with today's message beside the field; a success closes the chooser and says "Added: <title>". The add route and its rules are unchanged.
+3. **Arabic first outside a space:** sign-in, recovery, setup, the owner's pages and the not-found page show in Arabic, right to left, whatever the browser's language. Sign-in, recovery and setup carry a switch ("English" / "العربية", a link with `?lang=en` or `?lang=ar`). The choice is kept on that browser only, in one cookie `lms_lang` (`ar` or `en`, path `/`, HTTP-only, SameSite=Lax, one year); nothing is stored on the server. Inside a space, on reset-link and access-ended pages, and for a person with their own language in My account, the rules are today's and the cookie changes nothing.
+4. **The right recovery route:** under the sign-in form, "Forgot your password? Ask the person who gave you your account to send you a reset link."; under it, smaller, "Product owner: use your recovery code" links to `/recover`, which now opens with "Only the product owner has a recovery code. Everyone else: ask the person who gave you your account." Failed sign-ins and failed recoveries give one answer whatever the username, as before.
+
+**Rollback:** redeploying the earlier version brings back the old guardian cards, the four add forms and the old sign-in page; the `lms_lang` cookie is then ignored. No data to undo.
+
 ### Reset links (AT-2, contract section 8)
 
 1. The appointer (the admin for publishers and learners, the owner for admins) opens the person's page and presses **Send reset link by WhatsApp**.
@@ -393,6 +404,7 @@ npm run test:at11d                # R2-c: the guardian's results (also test:at11
 npm run test:at12a                # R2-c: a correction with a reason (also test:at12b … test:at12e, one per sub-check)
 npm run test:at15a                # R2-d: lesson activity off by default (also test:at15b … test:at15j and test:at15c2, one per sub-check)
 npm run test:wave1 -- test/wave1/at1-1.test.ts   # wave 1 (L1): one file per CI step, AT-1.1 … AT-3.5 and UX-1 … UX-17a (job "wave-1")
+npm run test:wave1 -- test/l2/at4-1.test.ts      # wave 1 (L2): one file per CI step, AT-4.1 … AT-5.5, UX-9 … UX-13 and UX-14b … UX-17b (same job)
 npm run measure:password-cost     # prints what one hash and one check cost locally (not a test)
 npm run typecheck
 ```

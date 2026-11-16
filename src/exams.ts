@@ -464,6 +464,30 @@ export function ownResults(db: Db, spaceId: string, learnerId: string): Promise<
   ));
 }
 
+/** The first row of ownResults for every learner actively linked to this
+ * guardian, in one read whatever their number (LMS wave 1, L2, section 8.1:
+ * the guardian home's "Latest result"). The same rows and the same order as
+ * ownResults (published only, exam date newest first, then exam title, then
+ * id), so each is exactly the first result row of the guardian's learner page.
+ * Nothing of a learner who is not linked is read; the caller keeps only the
+ * learners linkedLearners found. */
+export async function latestResultsOfLinked(db: Db, spaceId: string, guardianId: string): Promise<Map<string, OwnResult>> {
+  const rows = await read(db.all<OwnResult & { learner_id: string }>(
+    `SELECT learner_id, id, exam_title, subject_title, exam_date, max_mark, status, mark, corrected_at FROM (
+       SELECT r.learner_user_id AS learner_id, r.id, e.title AS exam_title, s.title AS subject_title, e.exam_date, e.max_mark, r.status, r.mark,
+              (SELECT MAX(h.changed_at) FROM exam_result_history h WHERE h.result_id = r.id AND h.previous_status IS NOT NULL) AS corrected_at,
+              ROW_NUMBER() OVER (PARTITION BY r.learner_user_id ORDER BY e.exam_date DESC, e.title, r.id) AS place
+         FROM guardian_link gl
+         JOIN exam_result r ON r.space_id = gl.space_id AND r.learner_user_id = gl.learner_user_id
+         JOIN exam e ON e.id = r.exam_id AND e.space_id = r.space_id
+         JOIN subject s ON s.id = e.subject_id AND s.space_id = e.space_id
+        WHERE gl.space_id = ? AND gl.guardian_user_id = ? AND gl.ended_at IS NULL AND r.published_at IS NOT NULL)
+      WHERE place = 1`,
+    spaceId, guardianId,
+  ));
+  return new Map(rows.map(({ learner_id, ...r }) => [learner_id, r]));
+}
+
 /** One of this learner's own published results; null for anything else
  * (another person's, a draft, another space's, or no such row), alike. */
 export function ownResult(db: Db, spaceId: string, learnerId: string, resultId: string): Promise<OwnResult | null> {
