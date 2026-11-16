@@ -22,10 +22,11 @@ import { LANGS, makeLabel, productLang, type Concept, type KitJson, type Label, 
 import { cleanDisplayName, cleanItemName, isUsername, typedUsername } from './names.ts';
 import { readLabels, switchedKit } from './kits/edit.ts';
 import {
-  findFile, findLesson, lessonMaterials, outline, readableSubject, subjectsForLearner, subjectsForPublisher, type SubjectRow,
+  findFile, findLesson, learnerCards, lessonMaterials, lessonSequence, outline, readableSubject, subjectsForPublisher, type SubjectRow,
 } from './learning.ts';
 import { isGuardianHere, isLearnerHere, link, linkedLearner, linkedLearners, linksOf, subjectsSeenBy, unlink } from './guardians.ts';
-import { activityOf, activitySetting, linkedSince, recordOpen, recordingSince, switchOff, switchOn } from './activity.ts';
+import { activityOf, activitySetting, linkedSince, recordOpen, recordingSince, switchOff, switchOn, type ActivitySetting } from './activity.ts';
+import { noticeCookieName, noticeCookieOptions, noticeFormFor, type NoticeForm } from './notice.ts';
 import { adminActivityOffPage, adminActivityPage, guardianActivityPage, type AdminActivityView } from './views/activity.ts';
 import { externalUrl } from './links.ts';
 import { logError } from './log.ts';
@@ -734,7 +735,7 @@ use('/s/:spaceId/results/*', requireSpaceRole('learner'));
 function spaceView(space: CurrentSpace): SpaceView {
   return {
     id: space.id, name: space.name, primaryColor: space.kit.theme.primaryColor, hasLogo: Boolean(space.kit.theme.logoKey),
-    guardian: space.roles.includes('guardian'),
+    guardian: space.roles.includes('guardian'), learner: space.roles.includes('learner'),
   };
 }
 
@@ -757,14 +758,29 @@ async function renderPublisherHome(c: C) {
   return page(c, publisherHome(t, lang, view, user.display_name, subjects));
 }
 
+// The notice of the learner while lesson activity is on (R2-d, AT-15f), told in full
+// once per account, space, browser and switch-on, then folded (wave 1, section
+// 7.2, src/notice.ts). The full form sets the cookie that holds the tick of
+// the current switch-on; nothing is stored on the server. Off: no notice.
+function noticeFor(c: C, setting: ActivitySetting): NoticeForm | null {
+  if (!setting.enabled) return null;
+  if (!setting.switchedOnAt) return 'full';
+  const spaceId = c.get('space').id;
+  const name = noticeCookieName(spaceId, c.get('user')!.id);
+  const form = noticeFormFor(getCookie(c, name), setting.switchedOnAt);
+  if (form === 'full' && c.req.method === 'GET') setCookie(c, name, setting.switchedOnAt, noticeCookieOptions(spaceId, new URL(c.req.url).protocol === 'https:'));
+  return form;
+}
+
 async function renderLearnerHome(c: C) {
   const { t, lang, view } = spaceLabel(c);
   const user = c.get('user')!;
   const learner = c.get('space').roles.includes('learner');
-  const subjects = learner ? await subjectsForLearner(c.get('db'), view.id, user.id) : [];
+  // Wave 1 (section 4): one card per subject, from one read whatever their number.
+  const cards = learner ? await learnerCards(c.get('db'), view.id, user.id) : [];
   // R2-d (AT-15f): every learner is told while lesson activity is on, whether or not a guardian is linked.
-  const notice = learner && (await activitySetting(c.get('db'), view.id)).enabled;
-  return page(c, learnerHome(t, lang, view, user.display_name, subjects, learner, notice));
+  const notice = learner ? noticeFor(c, await activitySetting(c.get('db'), view.id)) : null;
+  return page(c, learnerHome(t, lang, view, user.display_name, cards, notice));
 }
 
 // The guardian home (release 2, R2-a): every learner actively linked to this
@@ -869,7 +885,8 @@ app.get('/s/:spaceId/learn/:subjectId', async (c) => {
   const subject = await readableSubject(db, space, c.get('user')!.id, c.req.param('subjectId'));
   if (!subject) return refuse(c, 403, 'noAccess');
   const { t, lang, view } = spaceLabel(c);
-  return page(c, subjectPage(t, lang, view, subject, await outline(db, space.id, subject.id)));
+  // Wave 1 (section 6): ?open=all, ?open=none or one chapter of this subject; any other value is ignored.
+  return page(c, subjectPage(t, lang, view, subject, await outline(db, space.id, subject.id), c.req.query('open')));
 });
 
 app.get('/s/:spaceId/read/:lessonId', async (c) => {
@@ -881,13 +898,16 @@ app.get('/s/:spaceId/read/:lessonId', async (c) => {
   if (!subject) return refuse(c, 403, 'noAccess');
   const { t, lang, view } = spaceLabel(c);
   const materials = await lessonMaterials(db, space.id, lesson.id);
+  // Wave 1 (section 5.1): where the lesson sits in the sequence of its subject, from the outline the subject page shows.
+  const steps = lessonSequence(await outline(db, space.id, subject.id));
+  const place = { steps, index: Math.max(0, steps.findIndex((s) => s.id === lesson.id)) };
   // R2-d (AT-15d, 15f): a learner opening their own lesson is told while lesson
   // activity is on, and the day is kept (one statement that checks the setting
   // and the assignment again). Only a GET is an open: HEAD answers the same
   // page and writes nothing. A failed write never stops the lesson (AT-15i);
   // its log line is the fixed event alone, with no name, title or id.
   const learner = space.roles.includes('learner');
-  const notice = learner && (await activitySetting(db, space.id)).enabled;
+  const notice = learner ? noticeFor(c, await activitySetting(db, space.id)) : null;
   if (notice && c.req.method === 'GET') {
     try {
       await recordOpen(db, { spaceId: space.id, lessonId: lesson.id, learnerId: c.get('user')!.id, now: now() });
@@ -895,7 +915,7 @@ app.get('/s/:spaceId/read/:lessonId', async (c) => {
       logError('activity write failed');
     }
   }
-  return page(c, lessonPage(t, lang, view, { subject, lesson, materials, notice }));
+  return page(c, lessonPage(t, lang, view, { subject, lesson, materials, place, notice }));
 });
 
 app.get('/s/:spaceId/file/:materialId', async (c) => {

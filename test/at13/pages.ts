@@ -134,8 +134,11 @@ export const ACTIVITY_PHRASES = {
   ],
 };
 
-/** Dictionary keys allowed to carry a phrase: the exempt places of section 3 (R2-d's own keys). */
-export const EXEMPT_KEYS: string[] = [...R2D_KEYS];
+/** Dictionary keys allowed to carry a phrase: the exempt places of section 3 (R2-d's own keys). From LMS wave 1
+ * (product-contract v2 on PIL-210, sections 7.1 and 10.4), the detail of the learner's notice, which the notice
+ * (exempt place 3) shows in full once and then behind "What is recorded"; like the notice line it is marked
+ * data-activity and taken out before every page scan. */
+export const EXEMPT_KEYS: string[] = [...R2D_KEYS, 'activityDetail'];
 
 const MONTHS = /\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{4}\b|(يناير|فبراير|مارس|أبريل|إبريل|مايو|يونيو|يوليو|أغسطس|سبتمبر|أكتوبر|نوفمبر|ديسمبر)/i;
 

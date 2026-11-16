@@ -36,7 +36,9 @@ button{background:#1f6feb;color:#fff;border:0;font-weight:600;cursor:pointer}
 .meter{height:8px;background:#eef0f3;border-radius:4px;overflow:hidden}
 .meter span{display:block;height:100%;background:#2da44e}
 main{overflow-wrap:anywhere}
-.nav{display:flex;gap:16px;margin:0 0 8px}
+.nav{display:flex;flex-wrap:wrap;gap:0 4px;margin:0;padding:0 8px;background:#fff;border-bottom:1px solid #e3e6ea}
+.nav a{display:inline-flex;align-items:center;min-height:44px;min-width:44px;padding:0 8px;color:#1b1f24;text-decoration:none}
+.nav a[aria-current=page]{font-weight:700;color:#0b3d91;text-decoration:underline;text-decoration-thickness:3px;text-underline-offset:6px}
 .trail{display:flex;flex-wrap:wrap;gap:4px 8px}
 .items{list-style:none;padding:0;margin:0}
 .items .title{font-weight:700;margin:2px 0 8px}
@@ -79,6 +81,49 @@ details.card>summary{cursor:pointer;font-weight:600}
 .marks .value{font-weight:700}
 .result .score{font-weight:700;font-size:1.15rem}
 button.plain,a.button.plain{background:#fff;color:#1f6feb;border:1px solid #c9ced6}
+a:focus-visible,button:focus-visible,summary:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid #1b1f24;outline-offset:2px}
+main.wide{max-width:1040px}
+.cards{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:minmax(0,1fr);gap:12px}
+.cards>li.card{margin:0;display:flex;flex-direction:column;gap:4px}
+.cards h2{margin:0;font-size:1.25rem}
+.cards h2 a{display:inline-flex;align-items:center;min-height:44px}
+.cards p{margin:0}
+a.button.start{margin-top:auto;display:flex;align-items:center;justify-content:center;min-height:48px;text-align:center;background:#1a5fd0}
+.cards .count{margin-bottom:8px}
+@media (min-width:700px){.cards{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (min-width:1024px){.cards{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.fold-all{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+.fold-all a.button{display:inline-flex;align-items:center;min-height:44px}
+details.fold{padding:0}
+details.fold>summary{list-style:none;display:flex;align-items:center;gap:8px;min-height:48px;padding:8px 16px}
+details.fold>summary::-webkit-details-marker{display:none}
+details.fold .head{flex:1 1 auto;min-width:0}
+details.fold .count{flex:0 0 auto;font-weight:400}
+details.fold>ol,details.fold>p{margin:0;padding:0 16px 12px}
+details.fold .list li{padding:0}
+details.fold .list a{display:flex;align-items:center;min-height:44px}
+.mark::before{content:"\\25B8";display:inline-block}
+[dir=rtl] .mark::before{content:"\\25C2"}
+details[open]>summary .mark::before{content:"\\25BE"}
+.title-block h1{margin-bottom:4px}
+.title-block p{margin:0}
+.way-on{display:flex;flex-direction:column;gap:12px;margin:24px 0 8px}
+.pager{display:flex;flex-direction:column;gap:12px}
+.pager:empty{display:none}
+a.go{position:relative;display:flex;flex-direction:column;justify-content:center;gap:2px;min-height:48px;padding:12px 16px;border:1px solid #c9ced6;border-radius:12px;background:#fff;color:#1a5fd0;font-weight:600;text-decoration:none}
+a.go.next{min-height:64px;padding-inline-end:48px;background:#1a5fd0;border-color:#1a5fd0;color:#fff;font-size:1.05rem}
+a.go.prev{padding-inline-start:48px}
+a.go .line2{font-weight:400;font-size:.9rem}
+a.go .arrow{position:absolute;top:50%;transform:translateY(-50%);font-size:1.25rem;inset-inline-end:16px}
+a.go.prev .arrow{inset-inline-end:auto;inset-inline-start:16px}
+@media (min-width:700px){.pager{flex-direction:row-reverse}.pager.ends{flex-direction:row}.pager>a.go{flex:1 1 0;min-width:0}}
+.notice-card p{margin:0 0 8px}
+.notice-card form{margin:0}
+.notice-card button{min-height:44px;min-width:88px}
+.notice-line{display:flex;flex-wrap:wrap;align-items:baseline;gap:0 12px;margin:12px 0}
+.notice-line p{margin:0}
+.notice-line details[open]{flex-basis:100%}
+.notice-line summary{display:inline-flex;align-items:center;min-height:44px;cursor:pointer;color:#1a5fd0;text-decoration:underline}
 `;
 
 export interface LayoutOptions {
@@ -88,13 +133,15 @@ export interface LayoutOptions {
   body: Html;
   signedIn?: boolean;
   header?: Html;
+  /** A wider reading column for a page of cards (wave 1, the learner home: up to three columns on a desktop). */
+  wide?: boolean;
 }
 
 export function signOutForm(t: Label): Html {
   return html`<form id="signout" method="post" action="/signout"><button type="submit">${t('signOut')}</button></form>`;
 }
 
-export function layout({ t, lang, title, body, signedIn = false, header }: LayoutOptions): Html {
+export function layout({ t, lang, title, body, signedIn = false, header, wide = false }: LayoutOptions): Html {
   return html`<!doctype html>
 <html lang="${lang}" dir="${dirFor(lang)}">
 <head>
@@ -106,7 +153,7 @@ export function layout({ t, lang, title, body, signedIn = false, header }: Layou
 <body>
 <div class="bar"><a class="brand" href="/">${t('appName')}</a>${signedIn ? signOutForm(t) : ''}</div>
 ${header ?? ''}
-<main>${body}</main>
+<main${wide ? html` class="wide"` : ''}>${body}</main>
 </body>
 </html>`;
 }

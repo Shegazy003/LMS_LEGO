@@ -71,7 +71,7 @@ describe('AT-11a each learner sees exactly their own published results', { concu
   it('in a real browser at phone width: from the home to My results and one result, Arabic then English; the address holds only her own result', async () => {
     const ph = await phone(browser);
     await signIn(w.p.url, ph.page, A.username, A.password);
-    await follow(ph.page, '#my-results');
+    await follow(ph.page, '#nav-results'); // wave 1 (contract v2 section 10.1): My results is in the top navigation
     await assertPage(ph.page, 'My results (Arabic)', 'ar');
     const ar = await readable(ph.page);
     assert.ok(ar.includes('نتائجي') && ar.includes('17 / 20') && ar.includes('Mathematics'), 'the title and the row');

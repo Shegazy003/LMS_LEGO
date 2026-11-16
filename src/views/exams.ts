@@ -318,12 +318,13 @@ export function myResultsPage(t: Label, lang: Lang, space: SpaceView, results: O
 ${results.length
     ? html`<ol id="results" class="items">${results.map((r) => resultCard(t, space, r, 'link'))}</ol>`
     : html`<p id="results-none" class="card message">${t('resultsNone')}</p>`}`;
-  return spacePage(t, lang, space, t('myResults'), body);
+  return spacePage(t, lang, space, t('myResults'), body, { current: 'results' });
 }
 
 /** One result of the learner's own. */
 export function resultPage(t: Label, lang: Lang, space: SpaceView, r: OwnResult): Html {
   const body = html`<p><a id="back" href="/s/${space.id}/results">${t('myResults')}</a></p>
 <ol id="results" class="items">${resultCard(t, space, r, 'plain')}</ol>`;
-  return spacePage(t, lang, space, r.exam_title, body);
+  // Wave 1 (section 4.4): one result marks My results as the current page of the top navigation.
+  return spacePage(t, lang, space, r.exam_title, body, { current: 'results' });
 }

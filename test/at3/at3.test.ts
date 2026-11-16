@@ -371,7 +371,8 @@ describe('AT-3 the publisher builds the subject', { concurrency: false }, () => 
     await shot(hadeer, '07-subject-published');
 
     await salma.goto(at(`/s/${spaceA}`));
-    assert.deepEqual(await titles(salma, '#my-list a'), ['Mathematics'], 'listed after publishing');
+    // Wave 1 (contract v2 section 10.1): the card's title link (the card also holds its Start link).
+    assert.deepEqual(await titles(salma, '#my-list h2 a'), ['Mathematics'], 'listed after publishing');
     await Promise.all([salma.waitForEvent('load'), salma.locator('#my-list a', { hasText: 'Mathematics' }).click()]);
     assert.deepEqual(await titles(salma, '#outline [data-chapter] .title'), ['Fractions']);
     await Promise.all([salma.waitForEvent('load'), salma.locator('a[data-lesson]', { hasText: 'Adding fractions' }).click()]);
@@ -435,7 +436,7 @@ describe('AT-3 the publisher builds the subject', { concurrency: false }, () => 
     await hadeer.goto(at(editorPath()));
     assert.equal(await submit(hadeer, 'form#publish'), 303, 'published again');
     await salma.goto(at(`/s/${spaceA}`));
-    assert.deepEqual(await titles(salma, '#my-list a'), ['Mathematics']);
+    assert.deepEqual(await titles(salma, '#my-list h2 a'), ['Mathematics']); // wave 1 section 10.1: the card's title link
   });
 
   it('AT-3.7 new items go last, and Hadeer can move a chapter and a material up and down', async () => {

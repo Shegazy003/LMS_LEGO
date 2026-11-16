@@ -383,6 +383,24 @@ const en = {
   recordingSince: 'Recording since {date}',
   activityExplain: 'Only the date a {lesson} was last opened, since the day shown above: not the time, not how long, not the content. "No open recorded" means only that nothing was recorded since that day.',
   activityWhose: 'Whose page',
+  // LMS wave 1, task L1 (product-contract v2 on PIL-210, sections 4 to 7). Kit words come in through {placeholders}.
+  mainNav: 'Main',
+  teacherLine: '{publisher}: {name}',
+  lessonCount: '{n} {lessons}',
+  lessonCountOne: '1 {lesson}',
+  noLessonsYet: 'No {lessons} here yet.',
+  startLesson: 'Start: {title}',
+  lessonPlace: '{lesson} {place}',
+  lessonNav: '{lesson} navigation',
+  nextLesson: 'Next: {title}',
+  previousLesson: 'Previous: {title}',
+  chapterLine: '{chapter}: {title}',
+  backToOutline: 'Back to the outline',
+  lastLesson: 'This is the last {lesson} of {title}.',
+  expandAll: 'Expand all',
+  collapseAll: 'Collapse all',
+  activityDetail: 'Only the date you last opened each {lesson} is kept: no time, no count, no duration. Your {admin} switched this on and can tell you more.',
+  activityGotIt: 'Got it',
 };
 
 export type UiKey = keyof typeof en;
@@ -758,6 +776,24 @@ const ar: Record<UiKey, string> = {
   recordingSince: 'التسجيل منذ {date}',
   activityExplain: 'يعرض تاريخ آخر فتح لكل {lesson} فقط، منذ اليوم المذكور أعلاه: لا الوقت ولا المدة ولا المحتوى. و«لم يُسجَّل فتح» يعني فقط أنه لم يُسجَّل شيء منذ ذلك اليوم.',
   activityWhose: 'صفحة من',
+  // LMS wave 1, L1: written so that no word agrees in gender with a kit word (درس، جلسة، محاضرة).
+  mainNav: 'التنقّل الرئيسي',
+  teacherLine: '{publisher}: {name}',
+  lessonCount: 'عدد {lessons}: {n}',
+  lessonCountOne: 'عدد {lessons}: 1',
+  noLessonsYet: 'لم تُضَف {lessons} بعد.',
+  startLesson: 'ابدأ: {title}',
+  lessonPlace: '{lesson} {place}',
+  lessonNav: 'التنقّل بين {lessons}',
+  nextLesson: 'التالي: {title}',
+  previousLesson: 'السابق: {title}',
+  chapterLine: '{chapter}: {title}',
+  backToOutline: 'العودة إلى الفهرس',
+  lastLesson: 'وصلتَ إلى آخر {lesson} في {title}.',
+  expandAll: 'فتح الكل',
+  collapseAll: 'طيّ الكل',
+  activityDetail: 'يُحفظ فقط تاريخ آخر فتح لكل {lesson}: لا الوقت ولا العدد ولا المدة. فعّل {admin} هذه الخاصية ويمكنه أن يخبرك بالمزيد.',
+  activityGotIt: 'فهمت',
 };
 
 export const UI: Record<'ar' | 'en', Record<UiKey, string>> = { en, ar };
