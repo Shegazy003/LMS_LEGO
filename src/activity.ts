@@ -117,6 +117,43 @@ export async function linkedSince(db: Db, spaceId: string, guardianId: string, l
 /** "Recording since" for one guardian and learner (AT-15c-2): the later of the switch-on day and the link's day. */
 export const recordingSince = (switchedOn: string, linked: string): string => (linked > switchedOn ? linked : switchedOn);
 
+/** The newest row of the guardian's activity page for every learner actively
+ * linked to this guardian, in one read whatever their number (LMS wave 1, L2,
+ * section 8.1: the guardian home's "Last opened"). The page's own rules: only
+ * while the switch is on (the caller asks only then), dates on or after
+ * "Recording since" (the later of the switch-on day and this guardian's link
+ * day), published subjects assigned to the learner, removed chapters and
+ * lessons never; the newest date wins, and on a tie the first in the page's
+ * order (subject title, chapter, lesson). A learner with nothing shown has no
+ * entry ("No open recorded"). The caller keeps only the learners
+ * linkedLearners found. */
+export async function lastOpenedOfLinked(db: Db, spaceId: string, guardianId: string, switchedOn: string): Promise<Map<string, { title: string; date: string }>> {
+  const rows = await db.all<{ learner_id: string; linked_at: number; title: string; last_opened_on: string }>(
+    `SELECT gl.learner_user_id AS learner_id, gl.created_at AS linked_at, l.title, v.last_opened_on
+       FROM guardian_link gl
+       JOIN lesson_view v ON v.space_id = gl.space_id AND v.learner_user_id = gl.learner_user_id AND v.last_opened_on >= ?
+       JOIN lesson l ON l.id = v.lesson_id AND l.space_id = v.space_id AND l.removed_at IS NULL
+       JOIN chapter c ON c.id = l.chapter_id AND c.space_id = l.space_id AND c.removed_at IS NULL
+       JOIN subject s ON s.id = c.subject_id AND s.space_id = l.space_id AND s.is_published = 1
+      WHERE gl.space_id = ? AND gl.guardian_user_id = ? AND gl.ended_at IS NULL
+        AND EXISTS (
+          SELECT 1 FROM subject_access a
+           WHERE a.space_id = s.space_id AND a.subject_id = s.id
+             AND (a.user_id = gl.learner_user_id OR a.group_id IN (
+               SELECT gm.group_id FROM group_member gm WHERE gm.space_id = s.space_id AND gm.user_id = gl.learner_user_id)))
+      ORDER BY gl.learner_user_id, s.title, s.id, c.position, c.id, l.position, l.id`,
+    switchedOn, spaceId, guardianId,
+  );
+  const out = new Map<string, { title: string; date: string }>();
+  for (const r of rows) {
+    // Shown only on or after "Recording since" (the page's own filter, as its SQL `>= ?`).
+    const shown = r.last_opened_on >= recordingSince(switchedOn, utcDate(Number(r.linked_at)));
+    const best = out.get(r.learner_id);
+    if (shown && (!best || r.last_opened_on > best.date)) out.set(r.learner_id, { title: r.title, date: r.last_opened_on });
+  }
+  return out;
+}
+
 /** What a guardian sees of one learner's activity: every published subject
  * assigned to the learner (as on the learner's own home), each with its
  * lessons in order (removed ones never), and per lesson the last-opened date

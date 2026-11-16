@@ -124,6 +124,29 @@ a.go.prev .arrow{inset-inline-end:auto;inset-inline-start:16px}
 .notice-line p{margin:0}
 .notice-line details[open]{flex-basis:100%}
 .notice-line summary{display:inline-flex;align-items:center;min-height:44px;cursor:pointer;color:#1a5fd0;text-decoration:underline}
+.lang-switch{display:inline-flex;align-items:center;justify-content:center;min-height:44px;min-width:44px;padding:0 12px;color:#0b3d91;font-weight:600}
+.forgot{margin:20px 0 0;font-size:1rem}
+.owner-recovery{margin:16px 0 0;padding-top:8px;border-top:1px solid #e3e6ea;font-size:.875rem}
+.owner-recovery a,.recover-who a{display:inline-flex;align-items:center;min-height:44px;color:#0b3d91}
+.recover-who{margin:0 0 8px}
+a.latest-result{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 6px;min-height:44px;margin:4px 0 8px;padding:10px 12px;border:1px solid #c9ced6;border-radius:10px;background:#fff;color:#1b1f24;text-decoration:none}
+a.latest-result .what{font-weight:600}
+a.latest-result .score{font-size:1.35rem;font-weight:700;color:#0b3d91;line-height:1.2}
+a.latest-result .tag{display:inline-block;padding:0 8px;border-radius:999px;background:#e8f5ec;color:#0f5132;font-size:.875rem;font-weight:600}
+a.latest-result.none{color:#3d444d}
+.activity-row{display:flex;flex-wrap:wrap;align-items:center;gap:0 16px;margin:0 0 8px}
+.activity-row p{margin:0}
+.activity-row a.activity-link{display:inline-flex;align-items:center;min-height:44px}
+.add-new>h2{margin:0 0 12px}
+.choices{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.choices a.choice{display:flex;align-items:center;justify-content:center;min-height:48px;height:100%;padding:8px 12px;border:1px solid #c9ced6;border-radius:10px;background:#fff;color:#0b3d91;font-weight:600;text-align:center;text-decoration:none}
+.choices a.choice[aria-expanded=true]{background:#0b3d91;border-color:#0b3d91;color:#fff}
+@media (min-width:700px){.choices{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.add-new form{margin:16px 0 0;padding:0;border:0}
+.add-new form[hidden]{display:none}
+.form-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px}
+.form-actions a.cancel{display:inline-flex;align-items:center;justify-content:center;min-height:44px;min-width:44px;padding:0 12px;color:#0b3d91}
+.field-error{margin:0}
 `;
 
 export interface LayoutOptions {
@@ -135,13 +158,21 @@ export interface LayoutOptions {
   header?: Html;
   /** A wider reading column for a page of cards (wave 1, the learner home: up to three columns on a desktop). */
   wide?: boolean;
+  /** The language switch of a page outside any space (wave 1, L2, section 8.3): this page's own address. */
+  switchFrom?: string;
+}
+
+/** The language switch: a link to the same page in the other language, named in that language (UX-12). */
+function languageSwitch(t: Label, lang: Lang, path: string): Html {
+  const other: Lang = lang === 'ar' ? 'en' : 'ar';
+  return html`<a id="lang-switch" class="lang-switch" href="${path}?lang=${other}" lang="${other}" dir="${dirFor(other)}">${t('switchLanguage')}</a>`;
 }
 
 export function signOutForm(t: Label): Html {
   return html`<form id="signout" method="post" action="/signout"><button type="submit">${t('signOut')}</button></form>`;
 }
 
-export function layout({ t, lang, title, body, signedIn = false, header, wide = false }: LayoutOptions): Html {
+export function layout({ t, lang, title, body, signedIn = false, header, wide = false, switchFrom }: LayoutOptions): Html {
   return html`<!doctype html>
 <html lang="${lang}" dir="${dirFor(lang)}">
 <head>
@@ -151,7 +182,7 @@ export function layout({ t, lang, title, body, signedIn = false, header, wide = 
 <style>${raw(CSS)}</style>
 </head>
 <body>
-<div class="bar"><a class="brand" href="/">${t('appName')}</a>${signedIn ? signOutForm(t) : ''}</div>
+<div class="bar"><a class="brand" href="/">${t('appName')}</a>${signedIn ? signOutForm(t) : ''}${switchFrom ? languageSwitch(t, lang, switchFrom) : ''}</div>
 ${header ?? ''}
 <main${wide ? html` class="wide"` : ''}>${body}</main>
 </body>
@@ -171,6 +202,17 @@ export function sentence(t: Label, key: LabelKey, vars: Record<string, string>):
  * sentence around it reads cleanly right-to-left. */
 export function ltrSentence(t: Label, key: LabelKey, vars: Record<string, string>): Html[] | string[] {
   return isolated(t, key, vars, (value) => html`<bdi dir="ltr">${value}</bdi>`);
+}
+
+/** A product sentence whose inserted values are given as ready markup (each
+ * already isolated by the caller), and whose words before the first value are
+ * wrapped in <span class="what"> (the line's label, as "Latest result:"). */
+export function marked(t: Label, key: LabelKey, values: Record<string, Html>): (Html | string)[] {
+  const names = Object.keys(values);
+  const markers = Object.fromEntries(names.map((n, i) => [n, `\u0001${i}\u0002`]));
+  return t(key, markers)
+    .split(/\u0001(\d+)\u0002/)
+    .map((part, i) => (i % 2 === 1 ? values[names[Number(part)]] : i === 0 && part.trim() ? html`<span class="what">${part.trimEnd()}</span> ` : part));
 }
 
 function isolated(t: Label, key: LabelKey, vars: Record<string, string>, wrap: (value: string) => Html): Html[] | string[] {

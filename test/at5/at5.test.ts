@@ -76,6 +76,11 @@ const plus = (days: number) => new Date(Date.parse(today + 'T00:00:00Z') + days 
 const shot = (page: Page, name: string) => shotIn(page, EVIDENCE, name);
 const signIn = (page: Page, username: string, password: string) => signInAt(worker.url, page, username, password);
 
+/** LMS wave 1, L2 (contract section 10, item 6): the lesson editor shows one chooser; a form is opened from it first. */
+async function choose(page: Page, kind: 'file' | 'video_link' | 'link' | 'note'): Promise<void> {
+  await page.locator(`#add-new a.choice[data-kind="${kind}"]`).click();
+}
+
 /** The running Worker instance's identity (test builds only); checked in AT-5.5. */
 async function bootId(): Promise<unknown> {
   const res = await fetch(at('/__test/clock'));
@@ -250,18 +255,23 @@ describe('AT-5 the kit changes every word, and no code changes', { concurrency: 
     await follow(hadeer.page, '#outline a[data-lesson]');
     lessonId = hadeer.page.url().split('/').pop()!.split('#')[0];
     const lp = hadeer.page;
+    await choose(lp, 'file');
     await lp.fill('form#add-file input[name=title]', 'Worksheet (PDF)');
     await lp.setInputFiles('form#add-file input[name=file]', { name: 'worksheet.pdf', mimeType: 'application/pdf', buffer: Buffer.from(PDF) });
     assert.equal(await submit(lp, 'form#add-file'), 303);
+    await choose(lp, 'file');
     await lp.fill('form#add-file input[name=title]', 'Pizza slices');
     await lp.setInputFiles('form#add-file input[name=file]', { name: 'pizza.png', mimeType: 'image/png', buffer: Buffer.from(PNG) });
     assert.equal(await submit(lp, 'form#add-file'), 303);
+    await choose(lp, 'video_link');
     await lp.fill('form#add-video input[name=title]', 'Watch: adding fractions');
     await lp.fill('form#add-video input[name=url]', VIDEO_URL);
     assert.equal(await submit(lp, 'form#add-video'), 303);
+    await choose(lp, 'link');
     await lp.fill('form#add-link input[name=title]', 'Practice online');
     await lp.fill('form#add-link input[name=url]', WEB_URL);
     assert.equal(await submit(lp, 'form#add-link'), 303);
+    await choose(lp, 'note');
     await lp.fill('form#add-note input[name=title]', 'Remember');
     await lp.fill('form#add-note textarea[name=text]', NOTE);
     assert.equal(await submit(lp, 'form#add-note'), 303);

@@ -95,6 +95,11 @@ async function assertArabicSpacePage(page: Page, where: string): Promise<void> {
   assert.ok(overflow <= 1, `${where}: fits the phone width (overflow ${overflow}px)`);
 }
 
+/** LMS wave 1, L2 (contract section 10, item 6): the lesson editor shows one chooser; a form is opened from it first. */
+async function choose(page: Page, kind: 'file' | 'video_link' | 'link' | 'note'): Promise<void> {
+  await page.locator(`#add-new a.choice[data-kind="${kind}"]`).click();
+}
+
 async function kindsOn(page: Page): Promise<string[]> {
   return page.locator('#items > li').evaluateAll((els) => els.map((e) => e.getAttribute('data-kind') ?? ''));
 }
@@ -275,6 +280,7 @@ describe('AT-3 the publisher builds the subject', { concurrency: false }, () => 
       { name: 'drawing.svg', mimeType: 'image/svg+xml', text: '<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>' },
     ];
     for (const [i, fake] of fakes.entries()) {
+      await choose(hadeer, 'file');
       await hadeer.fill('form#add-file input[name=title]', `Refused ${fake.name}`);
       await hadeer.setInputFiles('form#add-file input[name=file]', { name: fake.name, mimeType: fake.mimeType, buffer: Buffer.from(fake.text) });
       assert.equal(await submit(hadeer, 'form#add-file'), 400, `${fake.name} refused`);
@@ -293,6 +299,7 @@ describe('AT-3 the publisher builds the subject', { concurrency: false }, () => 
 
     // Video and web links accept only http and https.
     for (const [form, url] of [['form#add-video', 'javascript:alert(1)'], ['form#add-link', 'ftp://example.org/fractions']] as const) {
+      await choose(hadeer, form === 'form#add-video' ? 'video_link' : 'link');
       await hadeer.fill(`${form} input[name=title]`, 'Refused link');
       await hadeer.fill(`${form} input[name=url]`, url);
       assert.equal(await submit(hadeer, form), 400, `${url} refused`);
@@ -306,22 +313,27 @@ describe('AT-3 the publisher builds the subject', { concurrency: false }, () => 
 
   it('AT-3.4 Hadeer attaches a PDF, an image, a video link, a web link and a note; they are listed in that order', async () => {
     await hadeer.goto(at(lessonEditorPath()));
+    await choose(hadeer, 'file');
     await hadeer.fill('form#add-file input[name=title]', MATERIALS[0].title);
     await hadeer.setInputFiles('form#add-file input[name=file]', { name: 'worksheet.pdf', mimeType: 'application/pdf', buffer: Buffer.from(PDF) });
     assert.equal(await submit(hadeer, 'form#add-file'), 303, 'PDF added');
 
+    await choose(hadeer, 'file');
     await hadeer.fill('form#add-file input[name=title]', MATERIALS[1].title);
     await hadeer.setInputFiles('form#add-file input[name=file]', { name: 'pizza.png', mimeType: 'image/png', buffer: Buffer.from(PNG) });
     assert.equal(await submit(hadeer, 'form#add-file'), 303, 'image added');
 
+    await choose(hadeer, 'video_link');
     await hadeer.fill('form#add-video input[name=title]', MATERIALS[2].title);
     await hadeer.fill('form#add-video input[name=url]', VIDEO_URL);
     assert.equal(await submit(hadeer, 'form#add-video'), 303, 'video link added');
 
+    await choose(hadeer, 'link');
     await hadeer.fill('form#add-link input[name=title]', MATERIALS[3].title);
     await hadeer.fill('form#add-link input[name=url]', WEB_URL);
     assert.equal(await submit(hadeer, 'form#add-link'), 303, 'web link added');
 
+    await choose(hadeer, 'note');
     await hadeer.fill('form#add-note input[name=title]', MATERIALS[4].title);
     await hadeer.fill('form#add-note textarea[name=text]', NOTE);
     assert.equal(await submit(hadeer, 'form#add-note'), 303, 'note added');

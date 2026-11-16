@@ -5,7 +5,7 @@
 // removed. Every address is under /s/<space>/publish, behind the publisher
 // gate, and every form posts there; words come from the label function and
 // the space's kit.
-import { html } from 'hono/html';
+import { html, raw } from 'hono/html';
 import type { Label, LabelKey, Lang } from '../labels.ts';
 import type { MaterialRow, OutlineChapter, SubjectItem, SubjectRow } from '../learning.ts';
 import type { EditableChapter, EditableLesson, EditableMaterial } from '../publishing.ts';
@@ -121,10 +121,86 @@ ${recentlyRemovedLink(t, space, subject.id)}
   return spacePage(t, lang, space, subject.title, body);
 }
 
+/** The four kinds of the add-new chooser (LMS wave 1, L2, section 8.2), in
+ * its order; each is also the value of `?add=` and of the form's hidden kind. */
+export const ADD_KINDS = ['file', 'video_link', 'link', 'note'] as const;
+export type AddKind = (typeof ADD_KINDS)[number];
+export type AddField = 'title' | 'file' | 'url' | 'text';
+
+/** The chooser's state: the one open form (if any), a refusal beside its field with the typed title, or the title just added. */
+export interface AddState {
+  open?: AddKind;
+  error?: { field: AddField; message: string };
+  title?: string;
+  added?: string;
+}
+
+const FORM_ID: Record<AddKind, string> = { file: 'add-file', video_link: 'add-video', link: 'add-link', note: 'add-note' };
+const CHOICE: Record<AddKind, LabelKey> = { file: 'choiceFile', video_link: 'choiceVideo', link: 'choiceLink', note: 'choiceNote' };
+const HEADING: Record<AddKind, LabelKey> = { file: 'addFile', video_link: 'addVideo', link: 'addLink', note: 'addNote' };
+
+// With script, a choice opens its form in place (the others close) and focus
+// goes to its first field; Cancel closes it and focus goes back to the choice.
+// Without script, each choice and Cancel are plain links (?add=<kind>).
+const CHOOSER_SCRIPT = `(function(){var box=document.getElementById('add-new');if(!box)return;
+function show(kind){var shown=null;[].forEach.call(box.querySelectorAll('form[data-kind]'),function(f){var on=f.getAttribute('data-kind')===kind;f.hidden=!on;if(on)shown=f;});
+[].forEach.call(box.querySelectorAll('a.choice'),function(a){a.setAttribute('aria-expanded',a.getAttribute('data-kind')===kind?'true':'false');});return shown;}
+box.addEventListener('click',function(e){var a=e.target.closest('a.choice,a.cancel');if(!a)return;e.preventDefault();
+if(a.classList.contains('choice')){var f=show(a.getAttribute('data-kind'));var first=f&&f.querySelector('input:not([type=hidden]),textarea');if(first)first.focus();}
+else{var k=a.closest('form').getAttribute('data-kind');show(null);var c=box.querySelector('a.choice[data-kind="'+k+'"]');if(c)c.focus();}});})();`;
+
+/** The one "Add <material>" control: four choices, then the four forms of
+ * today (fields, hidden kind and add route unchanged), of which at most one is
+ * shown. A refusal sits beside its field (the field marked invalid and
+ * pointing at it), with the typed title kept. */
+function addChooser(t: Label, action: string, self: string, state: AddState): Html {
+  const open = state.open;
+  const bad = (f: AddField) => (open && state.error?.field === f ? html` aria-invalid="true" aria-describedby="error"` : '');
+  const err = (f: AddField) => (open && state.error?.field === f ? html`<p id="error" class="error field-error" role="alert">${state.error.message}</p>` : '');
+  const titleField = (kind: AddKind) => html`<label>${t('titleField')}<input name="title" required maxlength="${TITLE_MAX}"${open === kind && state.title ? html` value="${state.title}"` : ''}${open === kind ? bad('title') : ''}${open === kind && state.error?.field === 'title' ? html` autofocus` : ''}></label>${open === kind ? err('title') : ''}`;
+  const shown = (kind: AddKind) => (open === kind ? '' : html` hidden`);
+  const actions = html`<div class="form-actions"><button type="submit">${t('add')}</button><a class="cancel" href="${self}#add-new">${t('cancel')}</a></div>`;
+  const choices = ADD_KINDS.map((kind) => html`<li><a class="choice" id="choose-${kind}" data-kind="${kind}" href="${self}?add=${kind}#add-new" aria-controls="${FORM_ID[kind]}" aria-expanded="${open === kind ? 'true' : 'false'}">${t(CHOICE[kind])}</a></li>`);
+  return html`<section id="add-new" class="card add-new" aria-labelledby="add-new-title">
+  <h2 id="add-new-title">${t('addMaterial')}</h2>
+  <ul class="choices">${choices}</ul>
+  <form id="add-file" class="stack card" data-kind="file" method="post" action="${action}" enctype="multipart/form-data"${shown('file')}>
+    <h3>${t(HEADING.file)}</h3>
+    <input type="hidden" name="kind" value="file">
+    ${titleField('file')}
+    <label>${t('fileField')}<input name="file" type="file" required accept="${ACCEPT}"${open === 'file' ? bad('file') : ''}></label>${open === 'file' ? err('file') : ''}
+    ${actions}
+  </form>
+  <form id="add-video" class="stack card" data-kind="video_link" method="post" action="${action}"${shown('video_link')}>
+    <h3>${t(HEADING.video_link)}</h3>
+    <input type="hidden" name="kind" value="video_link">
+    ${titleField('video_link')}
+    <label>${addressField(t)}<input name="url" required dir="ltr" inputmode="url" autocomplete="off"${open === 'video_link' ? bad('url') : ''}><span class="hint">${t('videoHint')}</span></label>${open === 'video_link' ? err('url') : ''}
+    ${actions}
+  </form>
+  <form id="add-link" class="stack card" data-kind="link" method="post" action="${action}"${shown('link')}>
+    <h3>${t(HEADING.link)}</h3>
+    <input type="hidden" name="kind" value="link">
+    ${titleField('link')}
+    <label>${addressField(t)}<input name="url" required dir="ltr" inputmode="url" autocomplete="off"${open === 'link' ? bad('url') : ''}></label>${open === 'link' ? err('url') : ''}
+    ${actions}
+  </form>
+  <form id="add-note" class="stack card" data-kind="note" method="post" action="${action}"${shown('note')}>
+    <h3>${t(HEADING.note)}</h3>
+    <input type="hidden" name="kind" value="note">
+    ${titleField('note')}
+    <label>${t('noteField')}<textarea name="text" required maxlength="${NOTE_MAX}" dir="auto" rows="5"${open === 'note' ? bad('text') : ''}></textarea></label>${open === 'note' ? err('text') : ''}
+    ${actions}
+  </form>
+  <script>${raw(CHOOSER_SCRIPT)}</script>
+</section>`;
+}
+
 /** The lesson editor: its materials in order (as they are read, with move
- * buttons and a way to change each), then one form for each kind: a file (PDF
- * or image), a video link, a web link, a note; then renaming and removing the
- * lesson itself (AT-8). */
+ * buttons and a way to change each), then (LMS wave 1, L2) the one "Add
+ * <material>" chooser with today's four forms (a file, PDF or image; a video
+ * link; a web link; a note), one open at a time; then renaming and removing
+ * the lesson itself (AT-8). */
 export function lessonEditor(
   t: Label,
   lang: Lang,
@@ -136,6 +212,7 @@ export function lessonEditor(
     error?: string;
     notice?: EditorNotice;
     typedName?: string;
+    add?: AddState;
   },
 ): Html {
   const action = `${base(space)}/compose/${v.lesson.id}/add`;
@@ -143,8 +220,9 @@ export function lessonEditor(
   const rows = files.map((m, i) => materialItem(t, space, m, html`${moveForm(t, `${base(space)}/item/${m.id}/move`, i === 0, i === files.length - 1)}
   <a class="change" href="${base(space)}/item/${m.id}">${t('change')}</a>`));
   const items = rows.length ? html`<ol id="items" class="items">${rows}</ol>` : html`<p class="card muted">${t('nothingHere')}</p>`;
-  const titleField = html`<label>${t('titleField')}<input name="title" required maxlength="${TITLE_MAX}"></label>`;
   const self = `${base(space)}/compose/${v.lesson.id}`;
+  const add = v.add ?? {};
+  const added = add.added ? html`<p id="added" class="done" role="status">${sentence(t, 'materialAdded', { title: add.added })}</p>` : '';
   const rename = renameForm(t, { id: renameId('lesson'), heading: t('renameItem', { item: t('lesson') }), action: `${self}/name`, field: 'title', value: v.typedName ?? v.lesson.title });
   const body = html`<nav id="trail" class="trail muted">
   <span>${t('subject')}: <a id="back-subject" href="${base(space)}/edit/${v.subject.id}"><bdi>${v.subject.title}</bdi></a></span> ·
@@ -157,34 +235,8 @@ ${errorBox(v.error)}
 <p><a id="preview" href="/s/${space.id}/read/${v.lesson.id}">${t('preview')}</a></p>
 <h2>${t('material')}</h2>
 ${items}
-<form id="add-file" class="stack card" method="post" action="${action}" enctype="multipart/form-data">
-  <h3>${t('addFile')}</h3>
-  <input type="hidden" name="kind" value="file">
-  ${titleField}
-  <label>${t('fileField')}<input name="file" type="file" required accept="${ACCEPT}"></label>
-  <button type="submit">${t('add')}</button>
-</form>
-<form id="add-video" class="stack card" method="post" action="${action}">
-  <h3>${t('addVideo')}</h3>
-  <input type="hidden" name="kind" value="video_link">
-  ${titleField}
-  <label>${addressField(t)}<input name="url" required dir="ltr" inputmode="url" autocomplete="off"><span class="hint">${t('videoHint')}</span></label>
-  <button type="submit">${t('add')}</button>
-</form>
-<form id="add-link" class="stack card" method="post" action="${action}">
-  <h3>${t('addLink')}</h3>
-  <input type="hidden" name="kind" value="link">
-  ${titleField}
-  <label>${addressField(t)}<input name="url" required dir="ltr" inputmode="url" autocomplete="off"></label>
-  <button type="submit">${t('add')}</button>
-</form>
-<form id="add-note" class="stack card" method="post" action="${action}">
-  <h3>${t('addNote')}</h3>
-  <input type="hidden" name="kind" value="note">
-  ${titleField}
-  <label>${t('noteField')}<textarea name="text" required maxlength="${NOTE_MAX}" dir="auto" rows="5"></textarea></label>
-  <button type="submit">${t('add')}</button>
-</form>
+${added}
+${addChooser(t, action, self, add)}
 ${rename}
 ${removeEntry(t, `${self}/remove`)}
 ${recentlyRemovedLink(t, space, v.subject.id)}`;

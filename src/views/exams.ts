@@ -300,9 +300,12 @@ export function marksMessagePage(t: Label, lang: Lang, space: SpaceView, exam: E
  * <date>" (R2-c, AT-12a). Never the previous value or the reason. A
  * guardian's card carries no result id ('guardian'); a learner's links to the
  * result's own page ('link') or not ('plain'). */
+/** A result's value as every page shows it: "mark / maximum", or Absent. */
+export const scoreText = (t: Label, r: OwnResult): string => (r.status === 'absent' ? t('absent') : `${markText(r.mark ?? 0)} / ${markText(r.max_mark)}`);
+
 export function resultCard(t: Label, space: SpaceView, r: OwnResult, mode: 'link' | 'plain' | 'guardian'): Html {
   const head = html`<bdi class="exam">${r.exam_title}</bdi> · <bdi class="subject">${r.subject_title}</bdi>`;
-  const score = r.status === 'absent' ? t('absent') : `${markText(r.mark ?? 0)} / ${markText(r.max_mark)}`;
+  const score = scoreText(t, r);
   const corrected = r.corrected_at === null ? '' : html`<div class="row"><span class="corrected">${t('correctedOn', { date: utcDate(r.corrected_at) })}</span></div>`;
   return html`<li class="card result"${mode === 'guardian' ? '' : html` data-result="${r.id}"`}>
   <div class="title">${mode === 'link' ? html`<a href="/s/${space.id}/results/${r.id}">${head}</a>` : head}</div>

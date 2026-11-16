@@ -7,8 +7,15 @@ export class Client {
   private cookies = new Map<string, string>();
   lastSetCookie: string[] = [];
 
-  constructor(base: string) {
+  /** `lang`: the language chosen on this device for the pages outside any space (LMS wave 1, L2,
+   * section 8.3: the lms_lang cookie). The request tests of releases 1 and 2 were written when such
+   * pages followed the browser's language, which a client without Accept-Language left English; from
+   * L2 they start in Arabic, so a client chooses English as a browser does with the switch (section
+   * 10, item 7). `null`: a fresh device that has chosen nothing. */
+  constructor(base: string, opts: { lang?: 'ar' | 'en' | null } = {}) {
     this.base = base;
+    const lang = opts.lang === undefined ? 'en' : opts.lang;
+    if (lang) this.cookies.set('lms_lang', lang);
   }
 
   private remember(res: Response): void {
@@ -77,6 +84,11 @@ export class Client {
 
   has(name: string): boolean {
     return this.cookies.has(name);
+  }
+
+  /** The value of a cookie this client holds, if any. */
+  cookie(name: string): string | undefined {
+    return this.cookies.get(name);
   }
 }
 
