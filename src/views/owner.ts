@@ -6,6 +6,7 @@ import { LABEL_MAX, labelField } from '../kits/edit.ts';
 import { DISPLAY_NAME_MAX, USERNAME_MAX } from '../names.ts';
 import { formatBytes } from '../usage.ts';
 import { errorBox, layout, sentence, type Html } from './layout.ts';
+import { viewAsLink } from './preview.ts';
 
 export interface UsageLine {
   kind: 'requests' | 'writes' | 'storage';
@@ -207,6 +208,7 @@ export function ownerSpacePage(
   const body = html`<h1 style="display:flex;align-items:center;gap:12px">
   ${space.kit.theme.logoKey ? html`<img src="/owner/spaces/${space.id}/logo" alt="" width="48" height="48" style="object-fit:contain">` : ''}
   <span>${space.name}</span></h1>
+<p>${viewAsLink(t, 'view-as', `/owner/spaces/${space.id}/preview`)}</p>
 ${v.done ? html`<p id="done" class="done" role="status">${v.done}</p>` : ''}
 <div class="card">
   <div>${t('kitIs', { kit: space.kit.name[lang] })}</div>

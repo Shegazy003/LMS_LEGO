@@ -35,6 +35,8 @@ const GATES = [
   { prefix: '/s/:spaceId/linked', gate: '/s/:spaceId/linked/*' },
   // Release 2 (R2-b): a learner's own results.
   { prefix: '/s/:spaceId/results', gate: '/s/:spaceId/results/*' },
+  // LMS wave 3a (contract section 11): "View as <learner>", for an admin or publisher here.
+  { prefix: '/s/:spaceId/preview', gate: '/s/:spaceId/preview/*' },
 ];
 
 /** Data-changing routes that are not role pages, each for a stated reason. */
@@ -252,6 +254,11 @@ describe('role guard: in the running product, every gated route refuses people w
       }
       if (under(r.path, '/s/:spaceId/admin') || under(r.path, '/owner')) {
         assert.equal((await send(publisher)).status, 403, `${r.method} ${r.path} refused for a publisher`);
+      }
+      if (under(r.path, '/s/:spaceId/preview')) {
+        // LMS wave 3a: the admin and the publisher pass the preview gate (positive control).
+        assert.notEqual((await send(admin)).status, 403, `${r.method} ${r.path} admitted for an admin`);
+        assert.notEqual((await send(publisher)).status, 403, `${r.method} ${r.path} admitted for a publisher`);
       }
       if (under(r.path, '/s/:spaceId/linked')) {
         assert.equal((await send(admin)).status, 403, `${r.method} ${r.path} refused for an admin (not a guardian)`);

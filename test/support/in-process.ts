@@ -21,11 +21,14 @@ export interface StatementHooks {
   after?(sql: string, params: Param[]): Promise<void> | void;
   /** Rewrites a statement before it runs (a deliberately broken product, for a test's self-check). */
   rewrite?(sql: string, params: Param[]): [string, Param[]];
+  /** Sees every statement that runs, also those inside a batch (the wave 3a statement spy). */
+  seen?(sql: string, params: Param[]): void;
 }
 
 function d1Over(sqlite: DatabaseSync, hooks: StatementHooks): D1Database {
   const exec = (sql: string, params: Param[]) => {
     const [s, p] = hooks.rewrite ? hooks.rewrite(sql, params) : [sql, params];
+    hooks.seen?.(s, p);
     const prepared = sqlite.prepare(s);
     if (/^\s*(SELECT|WITH)\b/i.test(s)) return { results: prepared.all(...p), meta: { rows_written: 0, changes: 0 } };
     const r = prepared.run(...p);
@@ -121,7 +124,7 @@ export async function startInProcess(vars: Record<string, string> = {}): Promise
   for (const f of readdirSync(dir).filter((n) => n.endsWith('.sql')).sort()) sqlite.exec(readFileSync(join(dir, f), 'utf8'));
   let hooks: StatementHooks = {};
   const env = {
-    DB: d1Over(sqlite, { before: (s, p) => hooks.before?.(s, p), after: (s, p) => hooks.after?.(s, p), rewrite: (s, p) => (hooks.rewrite ? hooks.rewrite(s, p) : [s, p]) }),
+    DB: d1Over(sqlite, { before: (s, p) => hooks.before?.(s, p), after: (s, p) => hooks.after?.(s, p), rewrite: (s, p) => (hooks.rewrite ? hooks.rewrite(s, p) : [s, p]), seen: (s, p) => hooks.seen?.(s, p) }),
     FILES: r2InMemory(),
     TEST_HOOKS: '1',
     ...vars,

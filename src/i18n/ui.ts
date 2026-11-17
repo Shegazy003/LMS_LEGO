@@ -416,6 +416,20 @@ const en = {
   choiceLink: 'Web link',
   choiceNote: 'Note',
   materialAdded: 'Added: {title}',
+  // LMS wave 3a (product-contract v2 on PIL-216, sections 5, 6.3, 8.3 and 9; ux-plan wording table).
+  previewTitlePrefix: 'Preview',
+  previewTag: 'Preview',
+  previewBanner: 'Preview of the {learner} view. Nothing is saved here.',
+  previewScopeAdmin: 'Assigned in this preview: every published {subject} of this space. Results: none.',
+  previewScopePublisher: 'Assigned in this preview: each published {subject} you publish. Results: none.',
+  previewScopeOne: 'Assigned in this preview: this {subject} only, as last saved. Results: none.',
+  previewNoNotice: 'Space notices are not shown here.',
+  previewScopeOwner: 'As product owner you see this space\'s look and words, not what is inside it.',
+  previewUnpublished: 'Not published yet: no {learner} can open this {subject}. This is how it will look once published.',
+  previewInert: 'Switched off in a preview: it would save something or leave this view.',
+  previewBack: 'Back to where I was',
+  previewEnd: 'End of the preview page.',
+  viewAsLearner: 'View as {learner}',
 };
 
 export type UiKey = keyof typeof en;
@@ -824,6 +838,20 @@ const ar: Record<UiKey, string> = {
   choiceLink: 'رابط ويب',
   choiceNote: 'ملاحظة',
   materialAdded: 'تمت الإضافة: {title}',
+  // LMS wave 3a. No gender agreement with a kit word or the reader (ux-plan, Wording).
+  previewTitlePrefix: 'معاينة',
+  previewTag: 'معاينة',
+  previewBanner: 'معاينة واجهة {learner}. لا يُحفظ هنا شيء.',
+  previewScopeAdmin: 'في هذه المعاينة: كل ما نُشر هنا من {subject}. النتائج: لا توجد.',
+  previewScopePublisher: 'في هذه المعاينة: ما نُشر من {subject} تحت مسؤوليتك. النتائج: لا توجد.',
+  previewScopeOne: 'في هذه المعاينة: هذا المحتوى وحده، كما حُفظ آخر مرة. النتائج: لا توجد.',
+  previewNoNotice: 'لا تظهر هنا تنبيهات المساحة.',
+  previewScopeOwner: 'بصفتك مالك المنتج ترى شكل هذه المساحة وكلماتها، لا ما بداخلها.',
+  previewUnpublished: 'لم يُنشر هذا المحتوى بعد، فلا يراه أي {learner}. هكذا سيبدو بعد نشره.',
+  previewInert: 'معطَّل في المعاينة: كان سيحفظ شيئًا أو يخرج من هذه الواجهة.',
+  previewBack: 'العودة إلى حيث كنت',
+  previewEnd: 'نهاية صفحة المعاينة.',
+  viewAsLearner: 'عرض كـ{learner}',
 };
 
 export const UI: Record<'ar' | 'en', Record<UiKey, string>> = { en, ar };

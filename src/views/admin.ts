@@ -11,6 +11,7 @@ import { DISPLAY_NAME_MAX, RENAME_MAX, USERNAME_MAX } from '../names.ts';
 import { lastDigits } from '../reset.ts';
 import { errorBox, sentence, type Html } from './layout.ts';
 import { spacePage } from './learn.ts';
+import { previewPath, viewAsLink } from './preview.ts';
 import type { SpaceView } from './space.ts';
 
 const NAME_MAX = 100;
@@ -183,6 +184,7 @@ export function topicPage(
 <p class="muted">${t('subject')}</p>
 <h1 id="topic-title" dir="auto">${v.topic.title}</h1>
 <p class="muted">${v.topic.is_published ? t('published') : t('notPublished')}</p>
+<p>${viewAsLink(t, 'view-as', previewPath(space.id, `/learn/${v.topic.id}`, `topic:${v.topic.id}`))}</p>
 ${v.notice ? html`<p id="done" class="done" role="status">${t(v.notice)}</p>` : ''}
 ${errorBox(v.error)}
 <form id="topic-access" class="stack card" method="post" action="${action}">

@@ -662,6 +662,155 @@ jobs:
         with:
           name: evidence-wave-1
           path: evidence/
+  # LMS wave 3a, task W3a-1 (product-contract v2 on PIL-216, rev 95302322):
+  # "View as <learner>". One named step per labelled expectation (W3a AT-1.1 to
+  # AT-5.4) and per UX floor item (UX-18 to UX-26), each selecting its part of
+  # a shared test file by name. The statement spy needs the in-process product,
+  # so this job runs the router in Node (LMS_TEST_RUNTIME=in-process); the
+  # wave-1 job keeps running the learner pages on workerd. W3a AT-3.1 runs the
+  # preview journey once and records it in evidence/wave3a/ for this run; the
+  # later AT-3 steps judge that record. Screenshots go to evidence/ux/.
+  wave-3a:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      WRANGLER_SEND_METRICS: "false"
+      LMS_TEST_RUNTIME: in-process
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install (lockfile only, when present)
+        run: if [ -f package-lock.json ]; then npm ci; fi
+      - name: Read the Playwright version
+        id: playwright
+        run: |
+          echo "version=$(node -p "require('playwright/package.json').version")" >> "$GITHUB_OUTPUT"
+          echo "image=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
+      - name: Cache Chromium for the browser test
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.image }}-${{ steps.playwright.outputs.version }}-chromium
+      - name: Install Chromium for the browser test
+        timeout-minutes: 10
+        run: |
+          npx playwright install-deps chromium
+          for attempt in 1 2 3; do
+            timeout 180 npx playwright install chromium && exit 0
+            echo "::warning::Chromium install attempt $attempt did not finish; retrying"
+            sleep 10
+          done
+          exit 1
+      - name: W3a AT-1.1 the admin's preview home lists exactly the space's published subjects, and every subject can be previewed
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^W3a AT-1\.1 ' test/wave3a/at1.test.ts
+      - name: W3a AT-1.2 the publisher's preview home lists only her published subjects, and another publisher's subject is refused
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^W3a AT-1\.2 ' test/wave3a/at1.test.ts
+      - name: W3a AT-1.3 the owner's preview is an empty learner home with the space's look, and reads nothing inside the space
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^W3a AT-1\.3 ' test/wave3a/at1.test.ts
+      - name: W3a AT-1.4 learners and guardians are refused every preview address before any lookup, and see no preview link
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^W3a AT-1\.4 ' test/wave3a/at1.test.ts
+      - name: W3a AT-1.5 the admin's preview of another space's subject or lesson is refused
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^W3a AT-1\.5 ' test/wave3a/at1.test.ts
+      - name: W3a AT-2.0 the fixture still pins the comparisons
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^W3a AT-2\.0 ' test/wave3a/at2.test.ts
+      - name: W3a AT-2.1 each normalised preview document equals the normalised learner document
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^W3a AT-2\.1 ' test/wave3a/at2.test.ts
+      - name: W3a AT-2.2 every learner link leads to its preview address with the same from, and Next and Previous follow Salma's sequence
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^W3a AT-2\.2 ' test/wave3a/at2.test.ts
+      - name: W3a AT-2.3 removed items never appear in a preview page, and their preview addresses answer 404 as Salma's do
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^W3a AT-2\.3 ' test/wave3a/at2.test.ts
+      - name: W3a AT-2.4 Physics is never on a preview home, and its preview equals Omar C's Physics pages in world W-b, with the unpublished line
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^W3a AT-2\.4 ' test/wave3a/at2.test.ts
+      - name: W3a AT-2.5 the admin's preview shows the notice in full with Got it inert, the publisher's and the owner's never
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^W3a AT-2\.5 ' test/wave3a/at2.test.ts
+      - name: W3a AT-2.6 My results in preview is the learner's empty state, and no preview address shows a result
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^W3a AT-2\.6 ' test/wave3a/at2.test.ts
+      - name: W3a AT-3.1 every row of every table is unchanged but usage_day and the previewers' session expiry
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^W3a AT-3\.1 ' test/wave3a/at3.test.ts
+      - name: W3a AT-3.2 no preview request runs a write other than the session refresh and the usage flush
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^W3a AT-3\.2 ' test/wave3a/at3.test.ts
+      - name: W3a AT-3.3 no Set-Cookie, Cache-Control no-store, cookies and browser storage unchanged
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^W3a AT-3\.3 ' test/wave3a/at3.test.ts
+      - name: W3a AT-3.4 GET or HEAD only, no post form, every control that would write or leave is inert
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^W3a AT-3\.4 ' test/wave3a/at3.test.ts
+      - name: W3a AT-3.5 tables, columns, indexes, migrations and cookie names are those of the base commit
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^W3a AT-3\.5 ' test/wave3a/at3.test.ts
+      - name: W3a AT-4.1 every preview page starts with the banner and ends with the bottom line, in its language
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^W3a AT-4\.1 ' test/wave3a/at4.test.ts
+      - name: W3a AT-4.2 every link of every preview page is a preview address with the same from, a material, or inert
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^W3a AT-4\.2 ' test/wave3a/at4.test.ts
+      - name: W3a AT-4.3 Back leads to the page of origin after any number of pages, and an invalid from leads to the space home
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^W3a AT-4\.3 ' test/wave3a/at4.test.ts
+      - name: W3a AT-4.4 the entry points name the kit's learner word, and the editors' links keep their text and open the preview
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^W3a AT-4\.4 ' test/wave3a/at4.test.ts
+      - name: W3a AT-5.1 every existing step of contract section 10 is still in its job under its own name
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^W3a AT-5\.1 ' test/wave3a/at5.test.ts
+      - name: W3a AT-5.2 today's learn and read addresses keep their behaviour, and Salma's first open after the preview is her first record
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^W3a AT-5\.2 ' test/wave3a/at5.test.ts
+      - name: W3a AT-5.3 set-up retries a busy database
+        if: success() || failure()
+        run: npm run test:wave3a -- test/wave3a/hk1.test.ts
+      - name: W3a AT-5.4 the admin's preview home runs the same number of reads with four or eight published subjects
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^W3a AT-5\.4 ' test/wave3a/at5.test.ts
+      - name: UX-18 preview banner, top and bottom
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^UX-18 ' test/wave3a/ux.test.ts
+      - name: UX-19 inert controls in preview
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^UX-19 ' test/wave3a/ux.test.ts
+      - name: UX-20 way back from every entry point
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^UX-20 ' test/wave3a/ux.test.ts
+      - name: UX-21 keyboard and names in preview
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^UX-21 ' test/wave3a/ux.test.ts
+      - name: UX-22 entry points name the learner and open the preview
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^UX-22 ' test/wave3a/ux.test.ts
+      - name: UX-23 preview states
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^UX-23 ' test/wave3a/ux.test.ts
+      - name: UX-24 no sideways scroll in preview and entry pages
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^UX-24 ' test/wave3a/ux.test.ts
+      - name: UX-25 sizes and contrast in preview and entry pages
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^UX-25 ' test/wave3a/ux.test.ts
+      - name: UX-26 Arabic, mixed text and kit words in preview (three kits)
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^UX-26 ' test/wave3a/ux.test.ts
+      - name: Upload evidence (wave 3a screenshots, the AT-3 journey record and the read count)
+        if: always() && hashFiles('evidence/**') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-wave-3a
+          path: evidence/
   # AT-14a: rollback holds. The code live before release 2 (main at f3b1fa7,
   # the H-1 version 528786a4, the rollback target) is checked out beside this
   # commit and given this commit's migrations, so the old code runs on a

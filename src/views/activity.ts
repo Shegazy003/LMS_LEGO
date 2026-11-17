@@ -38,14 +38,19 @@ card.replaceWith(line);sum.focus();});})();`;
  * hold the one activityNotice sentence (id activity-notice, data-activity, as
  * the privacy scans read it) and the detail of what is recorded. `here` is the
  * page’s own address, for Got it without script. */
-export function activityNotice(t: Label, form: NoticeForm, here: string): Html {
+export function activityNotice(t: Label, form: NoticeForm, here: string, inert = false): Html {
   const sentence = html`<p id="activity-notice" data-activity>${t('activityNotice')}</p>`;
   const detail = html`<p id="activity-detail" data-activity>${t('activityDetail')}</p>`;
   if (form === 'folded') {
     return html`<div id="notice-line" class="notice-line">${sentence}<details id="notice-more"><summary>${t('activityWhatTitle')}</summary>${detail}</details></div>`;
   }
+  // LMS wave 3a (section 6.3): in the admin's preview, Got it keeps its text and
+  // place, is not a form and does nothing (the script finds no form to fold).
+  const fold = inert
+    ? html`<div id="notice-fold"><button type="button" id="notice-got-it" data-what="${t('activityWhatTitle')}" aria-disabled="true" aria-describedby="preview-reason">${t('activityGotIt')}</button></div>`
+    : html`<form id="notice-fold" method="get" action="${here}"><button type="submit" id="notice-got-it" data-what="${t('activityWhatTitle')}">${t('activityGotIt')}</button></form>`;
   return html`<div id="notice-card" class="card notice-card">${sentence}${detail}
-<form id="notice-fold" method="get" action="${here}"><button type="submit" id="notice-got-it" data-what="${t('activityWhatTitle')}">${t('activityGotIt')}</button></form>
+${fold}
 <script>${raw(FOLD_SCRIPT)}</script></div>`;
 }
 

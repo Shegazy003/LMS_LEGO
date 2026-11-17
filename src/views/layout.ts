@@ -94,6 +94,7 @@ a.button.start{margin-top:auto;display:flex;align-items:center;justify-content:c
 @media (min-width:1024px){.cards{grid-template-columns:repeat(3,minmax(0,1fr))}}
 .fold-all{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
 .fold-all a.button{display:inline-flex;align-items:center;min-height:44px}
+a.button.view-as{display:inline-flex;align-items:center;justify-content:center;min-height:44px;min-width:44px}
 details.fold{padding:0}
 details.fold>summary{list-style:none;display:flex;align-items:center;gap:8px;min-height:48px;padding:8px 16px}
 details.fold>summary::-webkit-details-marker{display:none}
@@ -160,7 +161,13 @@ export interface LayoutOptions {
   wide?: boolean;
   /** The language switch of a page outside any space (wave 1, L2, section 8.3): this page's own address. */
   switchFrom?: string;
+  /** LMS wave 3a: a learner page drawn as a preview. The banner comes first, the
+   * bottom line last; the product name and Sign out keep their text and place
+   * and do nothing (contract sections 6.3 and 8.3). */
+  preview?: { banner: Html; end: Html };
 }
+
+const INERT_ATTRS = raw(' aria-disabled="true" aria-describedby="preview-reason"');
 
 /** The language switch: a link to the same page in the other language, named in that language (UX-12). */
 function languageSwitch(t: Label, lang: Lang, path: string): Html {
@@ -172,7 +179,13 @@ export function signOutForm(t: Label): Html {
   return html`<form id="signout" method="post" action="/signout"><button type="submit">${t('signOut')}</button></form>`;
 }
 
-export function layout({ t, lang, title, body, signedIn = false, header, wide = false, switchFrom }: LayoutOptions): Html {
+export function layout({ t, lang, title, body, signedIn = false, header, wide = false, switchFrom, preview }: LayoutOptions): Html {
+  const brand = preview
+    ? html`<a class="brand" tabindex="0"${INERT_ATTRS}>${t('appName')}</a>`
+    : html`<a class="brand" href="/">${t('appName')}</a>`;
+  const signOut = !signedIn ? '' : preview
+    ? html`<button id="signout" type="button"${INERT_ATTRS}>${t('signOut')}</button>`
+    : signOutForm(t);
   return html`<!doctype html>
 <html lang="${lang}" dir="${dirFor(lang)}">
 <head>
@@ -182,10 +195,10 @@ export function layout({ t, lang, title, body, signedIn = false, header, wide = 
 <style>${raw(CSS)}</style>
 </head>
 <body>
-<div class="bar"><a class="brand" href="/">${t('appName')}</a>${signedIn ? signOutForm(t) : ''}${switchFrom ? languageSwitch(t, lang, switchFrom) : ''}</div>
+${preview ? preview.banner : ''}<div class="bar">${brand}${signOut}${switchFrom ? languageSwitch(t, lang, switchFrom) : ''}</div>
 ${header ?? ''}
 <main${wide ? html` class="wide"` : ''}>${body}</main>
-</body>
+${preview ? preview.end : ''}</body>
 </html>`;
 }
 
