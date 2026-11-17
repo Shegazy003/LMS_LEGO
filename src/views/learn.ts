@@ -15,17 +15,21 @@ import { externalUrl } from '../links.ts';
 import type { NoticeForm } from '../notice.ts';
 import { activityNotice } from './activity.ts';
 import { layout, sentence, type Html } from './layout.ts';
-import { spaceHeader, spaceNav, type NavCurrent, type SpaceView } from './space.ts';
+import { learnerUrl, spaceHeader, spaceNav, type NavCurrent, type SpaceView } from './space.ts';
 
 export function spacePage(t: Label, lang: Lang, space: SpaceView, title: string, body: Html, opts: { current?: NavCurrent; wide?: boolean } = {}): Html {
-  return layout({ t, lang, title, signedIn: true, wide: opts.wide, header: html`${spaceHeader(space)}${spaceNav(t, space, opts.current)}`, body });
+  // LMS wave 3a (section 7.2): a preview's title starts with "Preview · ", and its banner and bottom line frame the page.
+  const shown = space.preview ? `${t('previewTitlePrefix')} · ${title}` : title;
+  const preview = space.preview ? { banner: space.preview.banner, end: space.preview.end } : undefined;
+  return layout({ t, lang, title: shown, signedIn: true, wide: opts.wide, header: html`${spaceHeader(space)}${spaceNav(t, space, opts.current)}`, body, preview });
 }
 
+// Every learner link goes through learnerUrl, so in a preview it leads to the matching preview address (wave 3a, section 8.2).
 const subjectHref = (space: SpaceView, subjectId: string, chapterId?: string) =>
-  chapterId ? `/s/${space.id}/learn/${subjectId}?open=${chapterId}#${anchor(chapterId)}` : `/s/${space.id}/learn/${subjectId}`;
+  learnerUrl(space, chapterId ? `/learn/${subjectId}?open=${chapterId}#${anchor(chapterId)}` : `/learn/${subjectId}`);
 /** The id of a chapter on the outline, which the way back scrolls to (section 6.3). */
 const anchor = (chapterId: string) => ['chapter', chapterId].join('-');
-const lessonHref = (space: SpaceView, lessonId: string) => `/s/${space.id}/read/${lessonId}`;
+const lessonHref = (space: SpaceView, lessonId: string) => learnerUrl(space, `/read/${lessonId}`);
 
 /** "<n> <lessons>", or "1 <lesson>" in lower case for one (section 4.2), the number isolated. */
 function lessonCount(t: Label, lang: Lang, n: number): Html[] | string[] {
@@ -60,7 +64,7 @@ ${cards.length
     ? html`<ul id="my-list" class="cards">${cards.map((card) => subjectCard(t, lang, space, card))}</ul>`
     : html`<p id="nothing-yet" class="card message">${t('nothingAssigned')}</p>`}`;
   const body = html`<p id="greeting">${t('welcome', { name: displayName })}</p>
-${notice ? activityNotice(t, notice, `/s/${space.id}`) : ''}
+${notice ? activityNotice(t, notice, learnerUrl(space), Boolean(space.preview)) : ''}
 ${list}`;
   return spacePage(t, lang, space, space.name, body, { current: 'home', wide: true });
 }
@@ -92,7 +96,7 @@ export function subjectPage(t: Label, lang: Lang, space: SpaceView, head: { id: 
   const opened = openChapters(parts, open);
   const blocks = parts.length ? parts.map((ch) => chapterBlock(t, lang, space, ch, opened.has(ch.id))) : html`<p class="card muted">${t('nothingHere')}</p>`;
   const fold = parts.length > 3
-    ? html`<p id="fold-all" class="fold-all"><a id="expand-all" class="button plain" href="/s/${space.id}/learn/${head.id}?open=all">${t('expandAll')}</a><a id="collapse-all" class="button plain" href="/s/${space.id}/learn/${head.id}?open=none">${t('collapseAll')}</a></p>`
+    ? html`<p id="fold-all" class="fold-all"><a id="expand-all" class="button plain" href="${learnerUrl(space, `/learn/${head.id}?open=all`)}">${t('expandAll')}</a><a id="collapse-all" class="button plain" href="${learnerUrl(space, `/learn/${head.id}?open=none`)}">${t('collapseAll')}</a></p>`
     : '';
   const body = html`<p class="muted">${t('subject')}</p>
 <h1 id="subject-title" dir="auto">${head.title}</h1>
@@ -161,7 +165,7 @@ function lessonNav(t: Label, lang: Lang, space: SpaceView, subject: { id: string
   if (!next) {
     rows = html`<p id="last-lesson" class="done" role="status">${sentence(t, 'lastLesson', { title: subject.title })}</p>
 <div class="pager">${previousLink}</div>
-<div class="pager ends">${outline}<a id="end-home" class="go back" href="/s/${space.id}">${t('home')}</a></div>`;
+<div class="pager ends">${outline}<a id="end-home" class="go back" href="${learnerUrl(space)}">${t('home')}</a></div>`;
   } else if (!previous) {
     rows = html`<div class="pager">${nextLink}${outline}</div>`;
   } else {
@@ -198,7 +202,7 @@ export function lessonPage(
 <h1 id="lesson-title" dir="auto">${title}</h1>
 <p id="lesson-place" class="muted">${sentence(t, 'lessonPlace', { place: where })}</p>
 </div>
-${v.notice ? activityNotice(t, v.notice, lessonHref(space, v.lesson.id)) : ''}
+${v.notice ? activityNotice(t, v.notice, lessonHref(space, v.lesson.id), Boolean(space.preview)) : ''}
 ${introBlock}
 <h2>${t('material')}</h2>
 ${list}

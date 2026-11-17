@@ -329,6 +329,12 @@ describe('removed guard: no learner read path shows removed content', { concurre
         for (const [who, c] of [['the learner', salma], ['the admin', admin], ['the publisher', hadeer]] as const) {
           const page = await read(c, address);
           sent++;
+          // LMS wave 3a: the preview addresses refuse a learner before any lookup (contract AT-1.4).
+          if (who === 'the learner' && path.startsWith('/s/:spaceId/preview')) {
+            assert.equal(page.status, 403, `${who}: GET ${address} (${path}) is refused, got ${page.status}`);
+            assertNothingRemoved(page, `${who}: GET ${address}`);
+            continue;
+          }
           if (gone) {
             assert.equal(page.status, 404, `${who}: GET ${address} (${path}) answers not found, got ${page.status}`);
             assert.ok(!page.type.includes('pdf') && !page.type.startsWith('image/'), `${who}: ${address} sends no file`);
@@ -357,6 +363,9 @@ describe('removed guard: no learner read path shows removed content', { concurre
       ['the learner', salma, `/s/${spaceId}`],
       ['the publisher (preview)', hadeer, `/s/${spaceId}/learn/${ids.subject}`],
       ['the admin', admin, `/s/${spaceId}/learn/${ids.subject}`],
+      // LMS wave 3a (contract section 11): the admin's and the publisher's preview homes.
+      ['the admin (View as)', admin, `/s/${spaceId}/preview?from=home`],
+      ['the publisher (View as)', hadeer, `/s/${spaceId}/preview?from=home`],
     ] as const) {
       const seen = new Set<string>();
       const queue = [start];
@@ -372,7 +381,8 @@ describe('removed guard: no learner read path shows removed content', { concurre
           if (!seen.has(link)) queue.push(link);
         }
       }
-      assert.ok(seen.has(`/s/${spaceId}/read/${ids.adding}`) && seen.has(`/s/${spaceId}/file/${ids.kept}`), `${who}: the crawl reached the lesson and its kept file (${seen.size} pages)`);
+      const lessonAt = start.includes('/preview') ? `/s/${spaceId}/preview/read/${ids.adding}?from=home` : `/s/${spaceId}/read/${ids.adding}`;
+      assert.ok(seen.has(lessonAt) && seen.has(`/s/${spaceId}/file/${ids.kept}`), `${who}: the crawl reached the lesson and its kept file (${seen.size} pages)`);
     }
   });
 });

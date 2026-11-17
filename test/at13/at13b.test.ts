@@ -96,4 +96,40 @@ describe('AT-13b the forbidden-string scan finds nothing a guardian or learner c
       assert.ok(scanned >= 30, `${viewer.username}: bodies scanned ${scanned}`);
     });
   }
+
+  // LMS wave 3a (contract section 11): Amal's preview home ("View as"), with the same
+  // forbidden list, plus every learner's and guardian's name; the crawl stays inside the
+  // preview (its pages, the files and the logo they load).
+  it(`${ADMIN.username}: every preview page reachable from the preview home, Arabic and English`, async () => {
+    const c = new Client(w.p.url);
+    assert.equal((await c.post('/signin', { username: ADMIN.username, password: ADMIN.password })).status, 302);
+    const session = cookieOf(c);
+    assert.ok(session, 'the session value is known to the test');
+    const forbidden = new Map<string, string>();
+    for (const p of [...EVERYONE, OWNER as { username: string; password: string; mobile: string }]) {
+      forbidden.set(`${p.username}'s password`, p.password);
+      if (p.username !== ADMIN.username && p !== OWNER) forbidden.set(`username ${p.username}`, p.username);
+      mobileForms(p.mobile).forEach((f, i) => forbidden.set(`${p.username}'s mobile (${i === 4 ? 'last eight digits' : `form ${i}`})`, f));
+    }
+    for (const p of [A, B, C, D, KARIM, G1, G2]) forbidden.set(`the name of ${p.username}`, p.display_name);
+    forbidden.set('the session value', session);
+    resetTokens.forEach((t, i) => forbidden.set(`reset token ${i}`, t));
+    for (const [readers, score] of SCORES) forbidden.set(`"${score}", which ${readers.join(', ') || 'nobody'} may read`, score);
+
+    const inside = (p: string) => p.startsWith(`/s/${w.spaceId}/preview`) || p.startsWith(`/s/${w.spaceId}/file/`) || p === `/s/${w.spaceId}/logo`;
+    let scanned = 0;
+    for (const lang of ['ar', 'en'] as const) {
+      await useLanguage(c, lang);
+      const pages = await crawl(c, [`/s/${w.spaceId}/preview?from=home`], [`/s/${w.spaceId}/preview/results?from=home`], 80, inside);
+      assert.ok(pages.some((p) => p.path.startsWith(`/s/${w.spaceId}/preview/read/`) && p.status === 200), `${lang}: the crawl reached a preview lesson`);
+      for (const page of pages) {
+        scanned++;
+        const lower = page.body.toLowerCase();
+        const text = page.contentType.startsWith('text/');
+        const hits = [...forbidden].filter(([name, value]) => value && (text || !name.includes('last eight')) && lower.includes(value.toLowerCase())).map(([name]) => name);
+        assert.deepEqual(hits, [], `${lang} ${page.path} (${page.status})`);
+      }
+    }
+    assert.ok(scanned >= 10, `${ADMIN.username} (preview): bodies scanned ${scanned}`);
+  });
 });

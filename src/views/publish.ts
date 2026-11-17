@@ -13,6 +13,7 @@ import type { ContentKind, RemovedItem } from '../removal.ts';
 import { renameForm } from './admin.ts';
 import { errorBox, ltrSentence, sentence, type Html } from './layout.ts';
 import { KIND_LABEL, materialItem, spacePage } from './learn.ts';
+import { previewPath, viewAsLink } from './preview.ts';
 import type { SpaceView } from './space.ts';
 
 const TITLE_MAX = 200;
@@ -60,6 +61,7 @@ export function publisherHome(t: Label, lang: Lang, space: SpaceView, displayNam
   <span class="muted" data-published="${s.is_published}">${s.is_published ? t('published') : t('notPublished')}</span></li>`,
   )}</ul>`;
   const body = html`<p>${t('welcome', { name: displayName })}</p>
+<p>${viewAsLink(t, 'view-as', previewPath(space.id, '', 'home'))}</p>
 <h2>${t('responsibleFor')} <span class="muted">· ${t('subject')}</span></h2>
 ${items.length ? list : html`<p id="nothing-yet" class="card message">${t('nothingHere')}</p>`}`;
   return spacePage(t, lang, space, space.name, body);
@@ -107,7 +109,7 @@ ${errorBox(error)}
   ${published
     ? html`<form id="unpublish" method="post" action="${action}/unpublish"><button type="submit" class="secondary">${t('unpublish')}</button></form>`
     : html`<form id="publish" method="post" action="${action}/publish"><button type="submit">${t('publish')}</button></form>`}
-  <p><a id="preview-subject" href="/s/${space.id}/learn/${subject.id}">${t('preview')}</a></p>
+  <p><a id="preview-subject" href="${previewPath(space.id, `/learn/${subject.id}`, `subject:${subject.id}`)}">${t('preview')}</a></p>
 </div>
 <h2>${t('chapter')} <span class="muted">· ${t('lesson')}</span></h2>
 <div id="outline">${parts.map((ch, i) => chapterEditor(t, space, ch, i, parts.length))}</div>
@@ -232,7 +234,7 @@ export function lessonEditor(
 <h1 id="lesson-title" dir="auto">${v.lesson.title}</h1>
 ${noticeBox(t, v.notice)}
 ${errorBox(v.error)}
-<p><a id="preview" href="/s/${space.id}/read/${v.lesson.id}">${t('preview')}</a></p>
+<p><a id="preview" href="${previewPath(space.id, `/read/${v.lesson.id}`, `lesson:${v.lesson.id}`)}">${t('preview')}</a></p>
 <h2>${t('material')}</h2>
 ${items}
 ${added}

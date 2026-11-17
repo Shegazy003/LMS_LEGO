@@ -73,7 +73,7 @@ export async function useLanguage(c: Client, lang: 'ar' | 'en'): Promise<void> {
 }
 
 /** Every page reachable by following same-site links from the person's home (sign-out aside), and the typed addresses. */
-export async function crawl(c: Client, start: string[], typed: string[] = [], limit = 80): Promise<Reached[]> {
+export async function crawl(c: Client, start: string[], typed: string[] = [], limit = 80, keep: (path: string) => boolean = () => true): Promise<Reached[]> {
   const seen = new Set<string>();
   const queue = [...start, ...typed];
   const out: Reached[] = [];
@@ -87,13 +87,13 @@ export async function crawl(c: Client, start: string[], typed: string[] = [], li
     out.push({ path, status: res.status, cacheControl: res.headers.get('cache-control'), contentType, body });
     if (res.status >= 300 && res.status < 400) {
       const to = res.headers.get('location');
-      if (to?.startsWith('/')) queue.push(to);
+      if (to?.startsWith('/') && keep(to)) queue.push(to);
       continue;
     }
     if (!contentType.startsWith('text/html')) continue;
     for (const m of body.matchAll(/(?:href|src)="(\/[^"#]*)/g)) {
       const next = m[1].replace(/&amp;/g, '&');
-      if (!seen.has(next)) queue.push(next);
+      if (!seen.has(next) && keep(next)) queue.push(next);
     }
   }
   return out;

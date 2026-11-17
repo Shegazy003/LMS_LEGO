@@ -109,6 +109,59 @@ export async function learnerCards(db: Db, spaceId: string, userId: string): Pro
       ORDER BY s.title, s.id, c.position, c.title, c.id, l.position, l.title, l.id`,
     spaceId, userId, userId,
   );
+  return cardsOf(rows);
+}
+
+type CardRow = { subject_id: string; subject_title: string; publisher_name: string | null; lesson_id: string | null; lesson_title: string | null };
+
+/** Who a preview is drawn for (LMS wave 3a, contract section 4.1): the admin
+ * previews every subject of the space, a publisher (and not admin) the
+ * subjects they publish. Being also a learner changes nothing. */
+export interface Previewer {
+  kind: 'admin' | 'publisher';
+  userId: string;
+}
+
+/** The preview home's cards (wave 3a, section 5): the cards a made-up learner
+ * assigned every published subject of the space (admin), or every published
+ * subject this publisher publishes, would see. One read, in the learner home's
+ * order and with its counting, whatever the number of subjects (AT-5.4). */
+export async function previewCards(db: Db, spaceId: string, previewer: Previewer): Promise<LearnerCard[]> {
+  const rows = previewer.kind === 'admin'
+    ? await db.all<CardRow>(
+      `SELECT s.id AS subject_id, s.title AS subject_title, u.display_name AS publisher_name, l.id AS lesson_id, l.title AS lesson_title
+         FROM subject s
+         LEFT JOIN user u ON u.id = s.publisher_user_id
+         LEFT JOIN chapter c ON c.subject_id = s.id AND c.space_id = s.space_id AND c.removed_at IS NULL
+         LEFT JOIN lesson l ON l.chapter_id = c.id AND l.space_id = s.space_id AND l.removed_at IS NULL
+        WHERE s.space_id = ? AND s.is_published = 1
+        ORDER BY s.title, s.id, c.position, c.title, c.id, l.position, l.title, l.id`,
+      spaceId,
+    )
+    : await db.all<CardRow>(
+      `SELECT s.id AS subject_id, s.title AS subject_title, u.display_name AS publisher_name, l.id AS lesson_id, l.title AS lesson_title
+         FROM subject s
+         LEFT JOIN user u ON u.id = s.publisher_user_id
+         LEFT JOIN chapter c ON c.subject_id = s.id AND c.space_id = s.space_id AND c.removed_at IS NULL
+         LEFT JOIN lesson l ON l.chapter_id = c.id AND l.space_id = s.space_id AND l.removed_at IS NULL
+        WHERE s.space_id = ? AND s.is_published = 1 AND s.publisher_user_id = ?
+        ORDER BY s.title, s.id, c.position, c.title, c.id, l.position, l.title, l.id`,
+      spaceId, previewer.userId,
+    );
+  return cardsOf(rows);
+}
+
+/** A subject this person may preview (section 4.1), published or not; null otherwise. */
+export async function previewableSubject(db: Db, spaceId: string, previewer: Previewer, subjectId: string): Promise<SubjectRow | null> {
+  const subject = await db.first<SubjectRow>(
+    'SELECT s.id, s.title, s.publisher_user_id, s.is_published FROM subject s WHERE s.id = ? AND s.space_id = ?',
+    subjectId, spaceId,
+  );
+  if (!subject) return null;
+  return previewer.kind === 'admin' || subject.publisher_user_id === previewer.userId ? subject : null;
+}
+
+function cardsOf(rows: CardRow[]): LearnerCard[] {
   const cards: LearnerCard[] = [];
   for (const r of rows) {
     let card = cards.at(-1);

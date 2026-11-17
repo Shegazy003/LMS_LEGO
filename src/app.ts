@@ -22,8 +22,10 @@ import { LANGS, LANG_COOKIE, deviceLang, langChoice, makeLabel, type Concept, ty
 import { cleanDisplayName, cleanItemName, isUsername, typedUsername } from './names.ts';
 import { readLabels, switchedKit } from './kits/edit.ts';
 import {
-  findFile, findLesson, learnerCards, lessonMaterials, lessonSequence, outline, readableSubject, subjectsForPublisher, type SubjectRow,
+  findFile, findLesson, learnerCards, lessonMaterials, lessonSequence, outline, previewCards, previewableSubject, readableSubject, subjectsForPublisher,
+  type Previewer, type SubjectRow,
 } from './learning.ts';
+import { previewFrame, type PreviewScope } from './views/preview.ts';
 import { isGuardianHere, isLearnerHere, link, linkedLearner, linkedLearners, linksOf, subjectsSeenBy, subjectsSeenByLinked, unlink } from './guardians.ts';
 import { activityOf, activitySetting, lastOpenedOfLinked, linkedSince, recordOpen, recordingSince, switchOff, switchOn, type ActivitySetting } from './activity.ts';
 import { noticeCookieName, noticeCookieOptions, noticeFormFor, type NoticeForm } from './notice.ts';
@@ -660,6 +662,27 @@ app.get('/owner/spaces/:id/logo', async (c) => {
   return serveLogo(c, space.id, space.kit.theme.logoKey);
 });
 
+// LMS wave 3a (section 4.3): the owner's preview is the learner home of a
+// learner with nothing assigned, in the space's look and words; My results is
+// the empty state. Only the space and its kit are read: nothing inside the
+// space (no member, group, subject, lesson, material, link, exam, result or
+// activity row), so no notice. Behind the owner gate; an unknown space is 404.
+async function ownerPreview(c: C, spaceId: string, results: boolean) {
+  const space = await ownerSpace(c, spaceId);
+  if (!space) return refuse(c, 404, 'notFound');
+  const own = c.get('user')!.lang;
+  const lang = own && space.kit.languages.includes(own) ? own : space.kit.languages[0];
+  const t = makeLabel(lang, space.kit);
+  const frame = previewFrame({ t, lang, scope: 'owner', back: `/owner/spaces/${space.id}`, base: `/owner/spaces/${space.id}/preview`, from: null });
+  const view: SpaceView = {
+    id: space.id, name: space.name, primaryColor: space.kit.theme.primaryColor, hasLogo: Boolean(space.kit.theme.logoKey),
+    guardian: false, learner: true, preview: frame,
+  };
+  return page(c, results ? myResultsPage(t, lang, view, []) : learnerHome(t, lang, view, t('learner'), [], null));
+}
+app.get('/owner/spaces/:id/preview', (c) => ownerPreview(c, c.req.param('id'), false));
+app.get('/owner/spaces/:id/preview/results', (c) => ownerPreview(c, c.req.param('id'), true));
+
 // ---------------------------------------------------------------- spaces ----
 app.get('/home', async (c) => {
   const user = c.get('user');
@@ -693,9 +716,17 @@ use('/s/:spaceId/*', async (c, next) => {
   const user = c.get('user');
   // A sign-in that "End access now" stopped arrives here once more: if this
   // space is where access ended, its page says so; otherwise, sign in.
+  const spaceId = c.req.param('spaceId');
+  // LMS wave 3a (section 4.3): the owner's preview carries the learner page's
+  // own logo address, so the owner gets that one address too: the same logo
+  // the owner already sees at /owner/spaces/<space>/logo. Nothing else here.
+  if (user?.is_owner && c.req.path === `/s/${spaceId}/logo` && SAFE_METHOD.test(c.req.method)) {
+    const owned = await ownerSpace(c, spaceId);
+    if (!owned) return refuse(c, 404, 'notFound');
+    return serveLogo(c, owned.id, owned.kit.theme.logoKey);
+  }
   const personId = user?.id ?? c.get('endedSignIn');
   if (!personId) return c.redirect('/signin');
-  const spaceId = c.req.param('spaceId');
   const rows = await c.get('db').all<{ name: string; json: string; role: string; valid_from: string; valid_until: string; ended_on: string | null }>(
     `SELECT s.name, k.json, m.role, m.valid_from, m.valid_until, m.ended_on
        FROM membership m JOIN space s ON s.id = m.space_id JOIN kit k ON k.id = s.kit_id
@@ -751,6 +782,22 @@ use('/s/:spaceId/publish/*', requireSpaceRole('publisher'));
 use('/s/:spaceId/linked/*', requireSpaceRole('guardian'));
 // Release 2 (R2-b): a learner's own results live under /s/<space>/results.
 use('/s/:spaceId/results/*', requireSpaceRole('learner'));
+// LMS wave 3a (section 4.1): "View as <learner>" lives under /s/<space>/preview.
+// Anyone without the admin or publisher role here today gets 403 with the
+// plain refusal, before any lookup (so a made-up id gets the same answer).
+use('/s/:spaceId/preview/*', async (c, next) => {
+  if (!previewerOf(c)) return refuse(c, 403, 'noAccess');
+  await next();
+});
+
+/** Who previews (section 4.1): with the widest role held here today, admin then publisher. */
+function previewerOf(c: C): Previewer | null {
+  const roles = c.get('space').roles;
+  const userId = c.get('user')!.id;
+  if (roles.includes('admin')) return { kind: 'admin', userId };
+  if (roles.includes('publisher')) return { kind: 'publisher', userId };
+  return null;
+}
 
 function spaceView(space: CurrentSpace): SpaceView {
   return {
@@ -901,6 +948,116 @@ app.get('/s/:spaceId/results/:resultId', async (c) => {
 });
 
 app.get('/s/:spaceId/logo', (c) => serveLogo(c, c.get('space').id, c.get('space').kit.theme.logoKey));
+
+// ------------------------------------------------------- view as learner ----
+// LMS wave 3a (product-contract v2 on PIL-216, sections 4 to 9). A preview is
+// the learner's page, drawn by the learner's own view functions from the same
+// reads, as a made-up learner who exists only for the page: assigned what the
+// banner's scope line says, with no results and no record. It writes nothing:
+// recordOpen is never called, no cookie is set (the notice, when it shows, is
+// always the full form and never reads or sets the notice cookie), and no
+// result is read. Only the session upkeep and the usage count every page view
+// makes remain (section 6.2). Every page is sent with Cache-Control: no-store
+// by page().
+
+// `from` (section 8.3): only these shapes are carried by the preview's links;
+// anything else is dropped. The Back address is built from it only after its
+// id is checked in this space and within the person's scope now.
+const FROM_SHAPE = /^(home|(topic|subject|lesson):[A-Za-z0-9-]{1,64})$/;
+const fromOf = (c: C): string | null => {
+  const from = c.req.query('from') ?? '';
+  return FROM_SHAPE.test(from) ? from : null;
+};
+
+/** The page the preview was opened from, or the person's space home (section 8.3). */
+async function previewBack(c: C, previewer: Previewer, from: string | null): Promise<string> {
+  const space = c.get('space');
+  const home = `/s/${space.id}`;
+  const [kind, id] = (from ?? '').split(':');
+  const db = c.get('db');
+  if (kind === 'topic' && previewer.kind === 'admin') {
+    const subject = await previewableSubject(db, space.id, previewer, id);
+    return subject ? `/s/${space.id}/admin/topics/${subject.id}` : home;
+  }
+  // The editors are the publisher's own pages: behind the publisher gate, for the subjects they publish.
+  const publisher: Previewer = { kind: 'publisher', userId: previewer.userId };
+  if (kind === 'subject' && space.roles.includes('publisher')) {
+    const subject = await previewableSubject(db, space.id, publisher, id);
+    return subject ? subjectEditorPath(space.id, subject.id) : home;
+  }
+  if (kind === 'lesson' && space.roles.includes('publisher')) {
+    const lesson = await findLesson(db, space.id, id);
+    const subject = lesson && (await previewableSubject(db, space.id, publisher, lesson.subject_id));
+    return lesson && subject ? lessonEditorPath(space.id, lesson.id) : home;
+  }
+  return home;
+}
+
+/** The learner page's space view, drawn as a preview (sections 7.2 and 8). */
+async function previewView(c: C, previewer: Previewer, scope: 'home' | 'one', unpublished = false): Promise<SpaceView> {
+  const space = c.get('space');
+  const from = fromOf(c);
+  const s: PreviewScope = `${previewer.kind}-${scope}`;
+  const frame = previewFrame({
+    t: makeLabel(c.get('lang'), space.kit), lang: c.get('lang'), scope: s, unpublished,
+    back: await previewBack(c, previewer, from), base: `/s/${space.id}/preview`, from,
+  });
+  // The made-up learner: a learner here (My results in the navigation), nothing else.
+  return { ...spaceView(space), guardian: false, learner: true, preview: frame };
+}
+
+/** The admin's preview shows the learner's notice in full while activity is on; a publisher's never (section 5). */
+async function previewNotice(c: C, previewer: Previewer): Promise<NoticeForm | null> {
+  if (previewer.kind !== 'admin') return null;
+  return (await activitySetting(c.get('db'), c.get('space').id)).enabled ? 'full' : null;
+}
+
+app.get('/s/:spaceId/preview', async (c) => {
+  const previewer = previewerOf(c)!;
+  const { t, lang } = spaceLabel(c);
+  const view = await previewView(c, previewer, 'home');
+  const cards = await previewCards(c.get('db'), view.id, previewer);
+  return page(c, learnerHome(t, lang, view, t('learner'), cards, await previewNotice(c, previewer)));
+});
+
+app.get('/s/:spaceId/preview/results', async (c) => {
+  const previewer = previewerOf(c)!;
+  const { t, lang } = spaceLabel(c);
+  // No result is read: the made-up learner has none (section 5).
+  return page(c, myResultsPage(t, lang, await previewView(c, previewer, 'home'), []));
+});
+
+app.get('/s/:spaceId/preview/learn/:subjectId', async (c) => {
+  const previewer = previewerOf(c)!;
+  const db = c.get('db');
+  const space = c.get('space');
+  const subject = await previewableSubject(db, space.id, previewer, c.req.param('subjectId'));
+  if (!subject) return refuse(c, 403, 'noAccess');
+  const { t, lang } = spaceLabel(c);
+  const view = await previewView(c, previewer, 'one', subject.is_published !== 1);
+  return page(c, subjectPage(t, lang, view, subject, await outline(db, space.id, subject.id), c.req.query('open')));
+});
+
+app.get('/s/:spaceId/preview/read/:lessonId', async (c) => {
+  const previewer = previewerOf(c)!;
+  const db = c.get('db');
+  const space = c.get('space');
+  const lesson = await findLesson(db, space.id, c.req.param('lessonId'));
+  if (!lesson) {
+    // Removed, itself or with its chapter: "not found" within scope, as for a learner; otherwise the refusal.
+    const removedFrom = await removedLessonSubject(db, space.id, c.req.param('lessonId'));
+    const inScope = removedFrom && (await previewableSubject(db, space.id, previewer, removedFrom));
+    return inScope ? refuse(c, 404, 'notFound') : refuse(c, 403, 'noAccess');
+  }
+  const subject = await previewableSubject(db, space.id, previewer, lesson.subject_id);
+  if (!subject) return refuse(c, 403, 'noAccess');
+  const { t, lang } = spaceLabel(c);
+  const view = await previewView(c, previewer, 'one', subject.is_published !== 1);
+  const materials = await lessonMaterials(db, space.id, lesson.id);
+  const steps = lessonSequence(await outline(db, space.id, subject.id));
+  const place = { steps, index: Math.max(0, steps.findIndex((s) => s.id === lesson.id)) };
+  return page(c, lessonPage(t, lang, view, { subject, lesson, materials, place, notice: await previewNotice(c, previewer) }));
+});
 
 // Reading: a subject, a lesson, a stored file. Anything the person may not
 // read here (another space's id, a subject not assigned, unpublished, or no

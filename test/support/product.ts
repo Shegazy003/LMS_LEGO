@@ -13,6 +13,7 @@ import { createServer, type IncomingMessage } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { startInProcess } from './in-process.ts';
 import { startWorker } from './worker.ts';
+import { withBusyRetry } from './busy.ts';
 
 export interface Product {
   url: string;
@@ -20,6 +21,8 @@ export interface Product {
   /** Reads the product's database directly (one statement). */
   sql(query: string): Promise<Record<string, unknown>[]>;
   stop(): Promise<void>;
+  /** In-process only: the statement spy (wave 3a). Logs every SQL statement run from start() until stop(), which first waits for the work left after the responses. */
+  spy?: { start(): void; stop(): Promise<string[]> };
 }
 
 async function bodyOf(req: IncomingMessage): Promise<Buffer | undefined> {
@@ -31,6 +34,7 @@ async function bodyOf(req: IncomingMessage): Promise<Buffer | undefined> {
 async function inProcess(): Promise<Product> {
   const w = await startInProcess();
   let served = '';
+  let spied: string[] = [];
   const server = createServer((req, res) => {
     void (async () => {
       const headers = new Headers();
@@ -58,6 +62,18 @@ async function inProcess(): Promise<Product> {
     url: served,
     runtime: 'in-process',
     sql: async (query) => w.sqlite.prepare(query).all() as Record<string, unknown>[],
+    spy: {
+      start() {
+        const log: string[] = [];
+        spied = log;
+        w.setHooks({ seen: (sql) => void log.push(sql) });
+      },
+      async stop() {
+        await w.settle();
+        w.setHooks({});
+        return spied;
+      },
+    },
     async stop() {
       await new Promise((resolve) => server.close(resolve));
       w.stop();
@@ -72,5 +88,6 @@ export const runtime = (): Product['runtime'] =>
 export async function startProduct(): Promise<Product> {
   if (runtime() === 'in-process') return inProcess();
   const w = await startWorker();
-  return { url: w.url, runtime: 'workerd', sql: (q) => w.sql(q), stop: () => w.stop() };
+  // HK-1: a set-up statement that meets SQLITE_BUSY beside the Worker is run again (test/support/busy.ts).
+  return { url: w.url, runtime: 'workerd', sql: withBusyRetry((q) => w.sql(q)), stop: () => w.stop() };
 }
