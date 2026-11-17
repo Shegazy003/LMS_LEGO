@@ -22,9 +22,10 @@ import { LANGS, LANG_COOKIE, deviceLang, langChoice, makeLabel, type Concept, ty
 import { cleanDisplayName, cleanItemName, isUsername, typedUsername } from './names.ts';
 import { readLabels, switchedKit } from './kits/edit.ts';
 import {
-  findFile, findLesson, learnerCards, lessonMaterials, lessonSequence, outline, previewCards, previewableSubject, readableSubject, subjectsForPublisher,
-  type Previewer, type SubjectRow,
+  findFile, findLesson, learnerCards, lessonMaterials, lessonSequence, outline, previewCards, previewableSubject, readableSubject,
+  subjectsForPublisher, type Previewer, type SubjectRow,
 } from './learning.ts';
+import { isDone, markDone, markNotDone, readsAsLearner, signedInLearner } from './progress.ts';
 import { previewFrame, type PreviewScope } from './views/preview.ts';
 import { isGuardianHere, isLearnerHere, link, linkedLearner, linkedLearners, linksOf, subjectsSeenBy, subjectsSeenByLinked, unlink } from './guardians.ts';
 import { activityOf, activitySetting, lastOpenedOfLinked, linkedSince, recordOpen, recordingSince, switchOff, switchOn, type ActivitySetting } from './activity.ts';
@@ -53,7 +54,7 @@ import { accountPage, languagePage } from './views/account.ts';
 import { peoplePage, setPage, setsPage, topicPage, topicsPage, type AppointForm, type ItemNotice } from './views/admin.ts';
 import { recoverPage, recoveryCodePage, setupPage, signInPage } from './views/auth.ts';
 import { layout, messagePage, type Html } from './views/layout.ts';
-import { learnerHome, lessonPage, spacePage, subjectPage } from './views/learn.ts';
+import { learnerHome, lessonPage, spacePage, subjectPage, type DoneBlock } from './views/learn.ts';
 import {
   kitConfirmPage, newSpacePage, ownerHome, ownerSpacePage, type AdminRow, type AppointValues, type NewSpaceValues, type OwnerSpaceExtra,
 } from './views/owner.ts';
@@ -789,6 +790,12 @@ use('/s/:spaceId/preview/*', async (c, next) => {
   if (!previewerOf(c)) return refuse(c, 403, 'noAccess');
   await next();
 });
+// LMS wave 2, W2-1 (product-contract v2 on PIL-225, sections 4 and 7): the
+// mark address. Anyone without the learner role here today (an admin, a
+// publisher, a guardian, the owner) gets today's plain 403 before any lookup,
+// so before any done mark is read; a learner's press is then checked against
+// the lesson as the reading page checks it.
+use('/s/:spaceId/read/:lessonId/done', requireSpaceRole('learner'));
 
 /** Who previews (section 4.1): with the widest role held here today, admin then publisher. */
 function previewerOf(c: C): Previewer | null {
@@ -1056,7 +1063,8 @@ app.get('/s/:spaceId/preview/read/:lessonId', async (c) => {
   const materials = await lessonMaterials(db, space.id, lesson.id);
   const steps = lessonSequence(await outline(db, space.id, subject.id));
   const place = { steps, index: Math.max(0, steps.findIndex((s) => s.id === lesson.id)) };
-  return page(c, lessonPage(t, lang, view, { subject, lesson, materials, place, notice: await previewNotice(c, previewer) }));
+  // LMS wave 2 (UX-31): the made-up learner has no marks; the done block is "Mark as done", inert, and no done mark is read.
+  return page(c, lessonPage(t, lang, view, { subject, lesson, materials, place, notice: await previewNotice(c, previewer), done: { kind: 'inert' } }));
 });
 
 // Reading: a subject, a lesson, a stored file. Anything the person may not
@@ -1106,7 +1114,49 @@ app.get('/s/:spaceId/read/:lessonId', async (c) => {
       logError('activity write failed');
     }
   }
-  return page(c, lessonPage(t, lang, view, { subject, lesson, materials, place, notice }));
+  // LMS wave 2 (section 4): the done block, only for a person reading this lesson as a learner, with their own state.
+  // The status line of a press shows only when it matches the stored state; a failed save always says so.
+  let done: DoneBlock | null = null;
+  if (await readsAsLearner(db, space, c.get('user')!.id, subject)) {
+    const isMarked = await isDone(db, signedInLearner(c), lesson.id);
+    const asked = c.req.query('marked');
+    const status = asked === 'failed' || (asked === 'done' && isMarked) || (asked === 'not-done' && !isMarked) ? asked : null;
+    done = { kind: 'learner', done: isMarked, status };
+  }
+  return page(c, lessonPage(t, lang, view, { subject, lesson, materials, place, notice, done }));
+});
+
+// LMS wave 2 (section 4): "Mark as done" and "Mark as not done", a plain form
+// with one field, state. Behind the learner gate above. Refused with the
+// reading page's own answer for this person and lesson, and nothing stored,
+// unless the person reads this lesson as a learner (published, assigned to
+// them, not removed). The learner is the signed-in person and the space the
+// address's: nothing else in the request is read. A set, not a switch: done
+// makes the mark exist, not-done makes it not exist. Then back to the same
+// lesson at its done block, whose status line says what happened. A failed
+// write keeps the state and says so; its log line is the fixed event alone.
+// GET and HEAD have no route here: 404 to a learner, and nothing is written.
+app.post('/s/:spaceId/read/:lessonId/done', async (c) => {
+  const db = c.get('db');
+  const space = c.get('space');
+  const lesson = await findLesson(db, space.id, c.req.param('lessonId'));
+  if (!lesson) return removedOrRefused(c, await removedLessonSubject(db, space.id, c.req.param('lessonId')));
+  const subject = await readableSubject(db, space, c.get('user')!.id, lesson.subject_id);
+  if (!subject || !(await readsAsLearner(db, space, c.get('user')!.id, subject))) return refuse(c, 403, 'noAccess');
+  const state = field(await c.req.parseBody(), 'state');
+  if (state !== 'done' && state !== 'not-done') {
+    const t = label(c, space.kit);
+    return page(c, messagePage(t, c.get('lang'), t('choiceInvalid'), true), 400);
+  }
+  let marked: string = state;
+  try {
+    if (state === 'done') await markDone(db, signedInLearner(c), lesson.id);
+    else await markNotDone(db, signedInLearner(c), lesson.id);
+  } catch {
+    logError('progress write failed');
+    marked = 'failed';
+  }
+  return c.redirect(`/s/${space.id}/read/${lesson.id}?marked=${marked}#done-state`, 303);
 });
 
 app.get('/s/:spaceId/file/:materialId', async (c) => {

@@ -18,7 +18,8 @@ import { fileURLToPath } from 'node:url';
 import { UI } from '../../src/i18n/ui.ts';
 import type { World } from '../at9/world.ts';
 import {
-  A, B, G1, G2, EXEMPT_KEYS, activityIn, as, crawl, exemptRemoved, guardianPaths, isExemptPage, privacyWorld, resultsSection, useLanguage, visible,
+  A, B, G1, G2, EXEMPT_KEYS, activityIn, as, crawl, doneHits, doneWords, exemptRemoved, guardianPaths, isExemptPage, privacyWorld, resultsSection, useLanguage, visible,
+  withDoneMarks,
 } from './pages.ts';
 import { HADEER } from '../at9/world.ts';
 
@@ -66,6 +67,8 @@ describe('AT-13a the running product: guardian pages carry no activity, and open
   let w: World;
   before(async () => {
     w = await privacyWorld();
+    // LMS wave 2 (W2-1, AT-2.4): A's done marks are present while the guardians look around.
+    await withDoneMarks(w as Parameters<typeof withDoneMarks>[0]);
   });
   after(async () => {
     await w?.close();
@@ -93,6 +96,8 @@ describe('AT-13a the running product: guardian pages carry no activity, and open
           if (rest !== body) sections++;
           assert.deepEqual(strays, [], `${person.username} ${lang} ${p.path}: the results section holds digits only in its exam dates, scores and Corrected lines`);
           assert.deepEqual(activityIn(visible(rest)), [], `${person.username} ${lang} ${p.path}`);
+          // LMS wave 2 (AT-2.4): no done word, tick or marker on any guardian page, the dual-role B's included.
+          assert.deepEqual(doneHits(p.body, doneWords(false)), [], `${person.username} ${lang} ${p.path}: no done mark`);
         }
       }
     }

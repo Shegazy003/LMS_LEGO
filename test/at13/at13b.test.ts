@@ -12,13 +12,13 @@
 // their home, plus the addresses a curious person could type: every guardian
 // address with every person's id, and other people's subjects, lessons and
 // files. Response bodies of refusals and files are scanned too.
-import { describe, it, before, after } from 'node:test';
+import { describe, it, before, after, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { Client } from '../support/http.ts';
 import { issueLink } from '../support/admin.ts';
 import { ADMIN, C, D, HADEER, KARIM, OTHER_ADMIN, SHIMAA, personPath } from '../at9/world.ts';
 import { OWNER } from '../support/seed.ts';
-import { A, B, G1, G2, crawl, guardianPaths, privacyWorld, resultPaths, useLanguage, type PrivacyWorld } from './pages.ts';
+import { A, B, G1, G2, crawl, doneHits, doneWords, guardianPaths, privacyWorld, resultPaths, useLanguage, withDoneMarks, type PrivacyWorld } from './pages.ts';
 import { corrected } from '../at12/corrections.ts';
 
 const EVERYONE = [ADMIN, OTHER_ADMIN, HADEER, SHIMAA, A, B, C, D, KARIM, G1, G2];
@@ -40,6 +40,17 @@ function mobileForms(typed: string, countryCode = '20'): string[] {
 
 const cookieOf = (c: Client) => c.lastSetCookie.map((l) => l.match(/^lms_session=([^;]+)/)?.[1]).find(Boolean) ?? '';
 
+test('AT-13b done-mark scan self-check (LMS wave 2, AT-2.4): tags, done states and status lines are found; the own "Mark as done" of a learner is not', () => {
+  const tag = '<p id="done-tag" class="done-tag" data-done="tag"><span aria-hidden="true">✓</span><span>Done</span></p>';
+  assert.deepEqual(doneHits(tag, doneWords(false)), ['en doneTag', 'the tick marker data-done']);
+  assert.deepEqual(doneHits(tag, doneWords(true)), ['the tick marker data-done'], 'for a learner the tag is found by its marker');
+  assert.deepEqual(doneHits('<p role="status">وُضعت علامة &quot;تمّ&quot;.</p>', doneWords(true)), ['ar markedDone']);
+  assert.deepEqual(doneHits('<button class="undo">Mark as not done</button>', doneWords(true)), ['en markNotDone']);
+  const own = '<form id="done-control" method="post"><button type="submit">وضع علامة &quot;تمّ&quot;</button></form><button>Mark as done</button>';
+  assert.deepEqual(doneHits(own, doneWords(true)), [], 'the not-done button of a learner, their own');
+  assert.deepEqual(doneHits(own, doneWords(false)).sort(), ['ar doneTag', 'ar markDone', 'en markDone'], 'on a guardian page even the button is found');
+});
+
 describe('AT-13b the forbidden-string scan finds nothing a guardian or learner can reach, in Arabic and English', { concurrency: false }, () => {
   let w: PrivacyWorld;
   const resetTokens: string[] = [];
@@ -52,6 +63,8 @@ describe('AT-13b the forbidden-string scan finds nothing a guardian or learner c
       resetTokens.push(issued.token);
     }
     await corrected(w, w.hadeer, w.exam, w.ids[A.username], { mark: '18', reason: REASON });
+    // LMS wave 2 (W2-1, AT-2.4): A's done marks are present while the others look around.
+    await withDoneMarks(w);
   });
   after(async () => {
     await w?.close();
@@ -81,6 +94,8 @@ describe('AT-13b the forbidden-string scan finds nothing a guardian or learner c
         `/s/${w.spaceId}/admin/people`, `/s/${w.spaceId}/admin/people/${w.ids[A.username]}`, `/home`, `/account`, `/account/language`,
         ...resultPaths(w),
       ];
+      // LMS wave 2 (AT-2.4): A's done marks reach nobody else; B is a learner too, so B's own "Mark as done" is B's.
+      const done = viewer === A ? null : doneWords(viewer === B);
       let scanned = 0;
       for (const lang of ['ar', 'en'] as const) {
         await useLanguage(c, lang);
@@ -91,6 +106,7 @@ describe('AT-13b the forbidden-string scan finds nothing a guardian or learner c
           const text = page.contentType.startsWith('text/');
           const hits = [...forbidden].filter(([name, value]) => value && (text || !name.includes('last eight')) && lower.includes(value.toLowerCase())).map(([name]) => name);
           assert.deepEqual(hits, [], `${lang} ${page.path} (${page.status})`);
+          if (text && done) assert.deepEqual(doneHits(page.body, done), [], `done marks: ${lang} ${page.path} (${page.status})`);
         }
       }
       assert.ok(scanned >= 30, `${viewer.username}: bodies scanned ${scanned}`);
@@ -128,6 +144,8 @@ describe('AT-13b the forbidden-string scan finds nothing a guardian or learner c
         const text = page.contentType.startsWith('text/');
         const hits = [...forbidden].filter(([name, value]) => value && (text || !name.includes('last eight')) && lower.includes(value.toLowerCase())).map(([name]) => name);
         assert.deepEqual(hits, [], `${lang} ${page.path} (${page.status})`);
+        // LMS wave 2 (AT-2.4, AT-4.3): the preview draws only the inert "Mark as done", never a tick, tag or progress line.
+        if (text) assert.deepEqual(doneHits(page.body, doneWords(true)), [], `done marks: ${lang} ${page.path} (${page.status})`);
       }
     }
     assert.ok(scanned >= 10, `${ADMIN.username} (preview): bodies scanned ${scanned}`);

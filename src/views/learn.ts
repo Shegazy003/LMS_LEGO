@@ -8,14 +8,14 @@
 // every page has the top navigation with My results; a long outline folds; a
 // lesson ends with Next and Previous in the outline’s order; the activity
 // notice is told in full once, then folded.
-import { html } from 'hono/html';
+import { html, raw } from 'hono/html';
 import type { Label, Lang, LabelKey } from '../labels.ts';
 import type { LearnerCard, LessonRow, MaterialKind, MaterialRow, OutlineChapter, SequenceStep } from '../learning.ts';
 import { externalUrl } from '../links.ts';
 import type { NoticeForm } from '../notice.ts';
 import { activityNotice } from './activity.ts';
 import { layout, sentence, type Html } from './layout.ts';
-import { learnerUrl, spaceHeader, spaceNav, type NavCurrent, type SpaceView } from './space.ts';
+import { INERT, learnerUrl, spaceHeader, spaceNav, type NavCurrent, type SpaceView } from './space.ts';
 
 export function spacePage(t: Label, lang: Lang, space: SpaceView, title: string, body: Html, opts: { current?: NavCurrent; wide?: boolean } = {}): Html {
   // LMS wave 3a (section 7.2): a preview's title starts with "Preview · ", and its banner and bottom line frame the page.
@@ -175,15 +175,55 @@ function lessonNav(t: Label, lang: Lang, space: SpaceView, subject: { id: string
   return html`<nav id="lesson-nav" class="way-on" aria-label="${t('lessonNav')}">${rows}</nav>`;
 }
 
+/** The done block of a lesson page (LMS wave 2, section 4): for a person reading
+ * as a learner, their own state, and the status line of a press only when it
+ * matches the stored state (the router decides); in a preview, "Mark as done"
+ * inert (UX-31). Nobody else gets one. */
+export type DoneBlock =
+  | { kind: 'learner'; done: boolean; status: 'done' | 'not-done' | 'failed' | null }
+  | { kind: 'inert' };
+
+const STATUS_KEY = { done: 'markedDone', 'not-done': 'markedNotDone', failed: 'markFailed' } as const;
+
+/** The block's and the "Done" tag's style, drawn with the block (as the
+ * preview banner does), so pages without a done block carry none of it. */
+const DONE_CSS = `.done-block{display:flex;flex-direction:column;gap:12px;margin:24px 0 0;border-radius:12px}
+.done-block:focus{outline:3px solid #1b1f24;outline-offset:4px}
+.done-block>*{margin:0}
+.done-block form{display:flex}
+.done-block button{flex:1 1 auto;display:flex;align-items:center;justify-content:center;min-height:48px;min-width:44px;background:#1a5fd0;font-size:1.05rem}
+.done-block button.undo{min-height:44px;background:#fff;color:#1a5fd0;border:2px solid #1a5fd0;font-size:1rem}
+@media (min-width:700px){.done-block button{flex:0 1 auto;min-width:240px}}
+.done-now{display:flex;align-items:center;gap:8px;font-weight:700;color:#0f5132}
+.done-now .tick{flex:0 0 auto;color:#1a7f37;font-weight:700}
+.done-tag{display:inline-flex;align-items:center;gap:6px;margin-top:8px!important;padding:2px 12px;border:1px solid #2f7d4a;border-radius:999px;background:#e8f5ec;color:#0f5132;font-weight:600;font-size:.9rem}`;
+const doneStyle = html`<style>${raw(DONE_CSS)}</style>`;
+
+/** The block after the materials (UX-27): it takes focus when the page opens at #done-state, after a press. */
+function doneBlock(t: Label, space: SpaceView, lessonId: string, d: DoneBlock): Html {
+  if (d.kind === 'inert') {
+    return html`
+<section id="done-state" class="done-block" tabindex="-1">${doneStyle}<button type="button" id="done-control"${INERT}>${t('markDone')}</button></section>`;
+  }
+  const status = d.status
+    ? html`<p id="done-status" class="${d.status === 'failed' ? 'error' : 'done'}" role="status">${t(STATUS_KEY[d.status])}</p>`
+    : '';
+  const now = d.done ? html`<p class="done-now" data-done="block"><span class="tick" aria-hidden="true">✓</span><span>${t('doneTag')}</span></p>` : '';
+  const control = html`<form id="done-control" method="post" action="${`/s/${space.id}/read/${lessonId}/done`}"><input type="hidden" name="state" value="${d.done ? 'not-done' : 'done'}"><button type="submit"${d.done ? html` class="undo"` : ''}>${t(d.done ? 'markNotDone' : 'markDone')}</button></form>`;
+  return html`
+<section id="done-state" class="done-block" tabindex="-1">${doneStyle}${status}${now}${control}</section>`;
+}
+
 /** A lesson: where it sits (the trail, and its place "<lesson> N / M"), the
  * learner’s notice while lesson activity is on (R2-d, in the same response
  * that is recorded, AT-15f; wave 1: in full once, then folded), its materials
- * in order, and the way on (Next, Previous) in the subject’s order. */
+ * in order, and the way on (Next, Previous) in the subject’s order.
+ * LMS wave 2: the "Done" tag under the place line, and the done block before the way on. */
 export function lessonPage(
   t: Label,
   lang: Lang,
   space: SpaceView,
-  v: { subject: { id: string; title: string }; lesson: LessonRow; materials: MaterialRow[]; place: LessonPlace; notice?: NoticeForm | null },
+  v: { subject: { id: string; title: string }; lesson: LessonRow; materials: MaterialRow[]; place: LessonPlace; notice?: NoticeForm | null; done?: DoneBlock | null },
 ): Html {
   const { title, body_text: intro, chapter_title: part } = v.lesson;
   const top = { id: v.subject.id, title: v.subject.title };
@@ -193,6 +233,10 @@ export function lessonPage(
     ? html`<ol id="items" class="items">${files.map((m) => materialItem(t, space, m))}</ol>`
     : html`<p class="card muted">${t('nothingHere')}</p>`;
   const where = `${v.place.index + 1} / ${v.place.steps.length}`;
+  const tag = v.done?.kind === 'learner' && v.done.done
+    ? html`
+<p id="done-tag" class="done-tag" data-done="tag"><span aria-hidden="true">✓</span><span>${t('doneTag')}</span></p>`
+    : '';
   const body = html`<nav id="trail" class="trail muted">
   <span>${t('subject')}: <a href="${subjectHref(space, top.id, v.lesson.chapter_id)}"><bdi>${top.title}</bdi></a></span> ·
   <span>${t('chapter')}: <bdi>${part}</bdi></span> ·
@@ -200,12 +244,12 @@ export function lessonPage(
 </nav>
 <div id="lesson-head" class="title-block">
 <h1 id="lesson-title" dir="auto">${title}</h1>
-<p id="lesson-place" class="muted">${sentence(t, 'lessonPlace', { place: where })}</p>
+<p id="lesson-place" class="muted">${sentence(t, 'lessonPlace', { place: where })}</p>${tag}
 </div>
 ${v.notice ? activityNotice(t, v.notice, lessonHref(space, v.lesson.id), Boolean(space.preview)) : ''}
 ${introBlock}
 <h2>${t('material')}</h2>
-${list}
+${list}${v.done ? doneBlock(t, space, v.lesson.id, v.done) : ''}
 ${lessonNav(t, lang, space, top, v.lesson, v.place)}`;
   return spacePage(t, lang, space, title, body);
 }

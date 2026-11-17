@@ -27,6 +27,8 @@ const root = fileURLToPath(new URL('../..', import.meta.url));
 const SPACE_TABLES = [
   'membership', 'group', 'group_member', 'subject', 'subject_access', 'chapter', 'lesson', 'material', 'guardian_link', 'exam', 'exam_result',
   'lesson_view_setting', 'lesson_view',
+  // LMS wave 2, W2-1 (product-contract v2 on PIL-225, AT-3.4): done_mark, a learner's own done mark per lesson.
+  'done_mark',
 ];
 // Tables whose rows belong to a row of a space table and carry no space_id of
 // their own (R2-b: exam_result_history, per contract section 5). A statement
@@ -210,7 +212,7 @@ describe('space guard: the database and the running product keep spaces apart', 
         assert.ok(cols.includes('space_id'), `${t} → ${fk.parent} includes space_id (has ${cols.join(', ')})`);
       }
     }
-    for (const t of ['group_member', 'subject_access', 'chapter', 'lesson', 'material', 'exam', 'exam_result', 'lesson_view']) {
+    for (const t of ['group_member', 'subject_access', 'chapter', 'lesson', 'material', 'exam', 'exam_result', 'lesson_view', 'done_mark']) {
       assert.ok(keys.some((k) => k.tbl === t && SPACE_TABLES.includes(String(k.parent))), `${t} refers to its parent (the check above is meaningful)`);
     }
     // A child table without space_id refers to its parent, which carries it.

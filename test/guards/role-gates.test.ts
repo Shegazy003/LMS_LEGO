@@ -37,6 +37,8 @@ const GATES = [
   { prefix: '/s/:spaceId/results', gate: '/s/:spaceId/results/*' },
   // LMS wave 3a (contract section 11): "View as <learner>", for an admin or publisher here.
   { prefix: '/s/:spaceId/preview', gate: '/s/:spaceId/preview/*' },
+  // LMS wave 2 (W2-1, AT-2.2): the mark address, for a learner only.
+  { prefix: '/s/:spaceId/read/:lessonId/done', gate: '/s/:spaceId/read/:lessonId/done' },
 ];
 
 /** Data-changing routes that are not role pages, each for a stated reason. */
@@ -50,6 +52,7 @@ export const OPEN_WRITES: Record<string, string> = {
   'POST /r/:token': 'a one-time reset link: the link is the permission, bound to the username (task 4)',
   'POST /__test/clock': 'test builds only (production guard)',
   'POST /__test/seed': 'test builds only (production guard)',
+  'POST /__test/mark-clock': 'test builds only (production guard): the done marks\' test clock (LMS wave 2)',
 };
 
 const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE', 'ALL']);
@@ -246,6 +249,13 @@ describe('role guard: in the running product, every gated route refuses people w
       if (under(r.path, '/s/:spaceId/results')) {
         assert.equal((await send(admin)).status, 403, `${r.method} ${r.path} refused for an admin (not a learner)`);
         assert.equal((await send(publisher)).status, 403, `${r.method} ${r.path} refused for a publisher (not a learner)`);
+        continue;
+      }
+      // LMS wave 2: the mark address is the learner's own, like the results; everyone else is refused there.
+      if (under(r.path, '/s/:spaceId/read/:lessonId/done')) {
+        assert.equal((await send(admin)).status, 403, `${r.method} ${r.path} refused for an admin (not a learner)`);
+        assert.equal((await send(publisher)).status, 403, `${r.method} ${r.path} refused for a publisher (not a learner)`);
+        assert.notEqual((await send(learner)).status, 403, `${r.method} ${r.path} admitted for the learner`);
         continue;
       }
       assert.equal((await send(learner)).status, 403, `${r.method} ${r.path} refused for a learner`);

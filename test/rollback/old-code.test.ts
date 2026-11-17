@@ -11,7 +11,9 @@
 // from R2-d a lesson-view row with the setting switched on (each only if its
 // tables exist). Old code must show the guardian nothing (no learner, no
 // subject, no lesson, no file), show nobody an exam or a mark, expose nothing
-// to others, write no lesson-view row and delete nothing.
+// to others, write no lesson-view row and delete nothing. From LMS wave 2
+// (W2-1, AT-3.3) a done mark of Salma's: old code shows nobody anything of it,
+// writes no done mark and deletes nothing.
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { startWorker, type RunningWorker } from '../support/worker.ts';
@@ -41,7 +43,7 @@ async function release2Rows(): Promise<Record<string, number>> {
     guardian_link: await count('SELECT COUNT(*) AS n FROM guardian_link'),
     guardian_membership: await count("SELECT COUNT(*) AS n FROM membership WHERE role = 'guardian'"),
   };
-  for (const t of ['lesson_view', 'lesson_view_setting', 'exam', 'exam_result', 'exam_result_history']) {
+  for (const t of ['lesson_view', 'lesson_view_setting', 'exam', 'exam_result', 'exam_result_history', 'done_mark']) {
     if (await tableExists(t)) out[t] = await count(`SELECT COUNT(*) AS n FROM "${t}"`);
   }
   return out;
@@ -77,6 +79,10 @@ describe('AT-14a old code on a release 2 database shows a guardian nothing, expo
     }
     if (await tableExists('lesson_view')) {
       await worker.sql(`INSERT INTO lesson_view (space_id, lesson_id, learner_user_id, last_opened_on) VALUES ('${spaceId}', '${content.lesson}', '${ids[SALMA.username]}', '2026-11-02')`);
+    }
+    // From LMS wave 2 (W2-1, AT-3.3): Salma's done mark on her lesson.
+    if (await tableExists('done_mark')) {
+      await worker.sql(`INSERT INTO done_mark (space_id, lesson_id, learner_user_id, marked_at) VALUES ('${spaceId}', '${content.lesson}', '${ids[SALMA.username]}', 1951234567890)`);
     }
     // From R2-b: an exam of Mathematics with Salma's published mark (and its history row), and a draft of another exam.
     if (await tableExists('exam')) {
@@ -160,6 +166,29 @@ describe('AT-14a old code on a release 2 database shows a guardian nothing, expo
     }
   });
 
+  it('W2 AT-3.3 old code shows nobody anything of a done mark, writes none and deletes none', async () => {
+    assert.ok(await tableExists('done_mark'), 'the rollback job gave the old code the done-mark migration');
+    const marks = async () => (await worker.sql('SELECT space_id, lesson_id, learner_user_id, marked_at FROM done_mark'))
+      .map((r) => [r.space_id, r.lesson_id, r.learner_user_id, Number(r.marked_at)]);
+    const before = await marks();
+    assert.deepEqual(before, [[spaceId, content.lesson, ids[SALMA.username], 1951234567890]], 'Salma\'s done mark is stored');
+    const people = [
+      ['the learner', await signedIn(worker.url, SALMA.username, SALMA.password), [`/s/${spaceId}`, `/s/${spaceId}/learn/${content.subject}`, `/s/${spaceId}/read/${content.lesson}`]],
+      ['the guardian', await signedIn(worker.url, MONA.username, MONA.password), [`/s/${spaceId}`, `/s/${spaceId}/linked/${ids[SALMA.username]}`]],
+      ['the publisher', await signedIn(worker.url, HADEER.username, HADEER.password), [`/s/${spaceId}`, `/s/${spaceId}/publish/edit/${content.subject}`]],
+      ['the admin', await signedIn(worker.url, ADMIN.username, ADMIN.password), [`/s/${spaceId}`, `/s/${spaceId}/admin/people`, `/s/${spaceId}/admin/topics/${content.subject}`]],
+    ] as const;
+    for (const [who, c, paths] of people) {
+      for (const path of paths) {
+        const body = await (await (c as Client).get(path)).text();
+        for (const sign of ['done-state', 'data-done', 'Mark as done', 'Mark as not done', '1951234567890', '1951234567']) {
+          assert.ok(!body.includes(sign), `${who}, ${path}: nothing of the done mark (${sign})`);
+        }
+      }
+    }
+    assert.deepEqual(await marks(), before, 'old code wrote no done mark and deleted none');
+  });
+
   it('old code writes no lesson-view row and deletes nothing release 2 stored', async () => {
     const before = await release2Rows();
     const salma = await signedIn(worker.url, SALMA.username, SALMA.password);
@@ -174,6 +203,11 @@ describe('AT-14a old code on a release 2 database shows a guardian nothing, expo
     assert.equal(before.guardian_link, 1);
     assert.equal(before.guardian_membership, 1);
     assert.deepEqual([before.lesson_view, before.lesson_view_setting], [1, 1], 'Salma\'s opens wrote no lesson-view row, and the stored one stays');
+    if (await tableExists('done_mark')) {
+      assert.equal(before.done_mark, 1, 'Salma\'s done mark is still there, and old code wrote no other');
+      const kept = await worker.sql('SELECT space_id, lesson_id, learner_user_id, marked_at FROM done_mark');
+      assert.deepEqual(kept.map((r) => [r.space_id, r.lesson_id, r.learner_user_id, Number(r.marked_at)]), [[spaceId, content.lesson, ids[SALMA.username], 1951234567890]], 'unchanged');
+    }
     if (await tableExists('exam')) {
       assert.deepEqual([before.exam, before.exam_result, before.exam_result_history], [2, 2, 1], 'the exams, marks and history are all still there');
       const published = await worker.sql(`SELECT mark, published_at FROM exam_result WHERE id = 'result-1'`);

@@ -11,7 +11,7 @@
 // direct database read, so a test is written once.
 import { createServer, type IncomingMessage } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { startInProcess } from './in-process.ts';
+import { startInProcess, type StatementHooks } from './in-process.ts';
 import { startWorker } from './worker.ts';
 import { withBusyRetry } from './busy.ts';
 
@@ -23,6 +23,8 @@ export interface Product {
   stop(): Promise<void>;
   /** In-process only: the statement spy (wave 3a). Logs every SQL statement run from start() until stop(), which first waits for the work left after the responses. */
   spy?: { start(): void; stop(): Promise<string[]> };
+  /** In-process only (LMS wave 2): statement hooks for a forced fault (as AT-15i), and the product's own log lines. */
+  faults?: { set(h: StatementHooks): void; clearLog(): void; log(): string[]; settle(): Promise<void> };
 }
 
 async function bodyOf(req: IncomingMessage): Promise<Buffer | undefined> {
@@ -74,6 +76,7 @@ async function inProcess(): Promise<Product> {
         return spied;
       },
     },
+    faults: { set: (h) => w.setHooks(h), clearLog: () => w.clearLog(), log: () => w.log(), settle: () => w.settle() },
     async stop() {
       await new Promise((resolve) => server.close(resolve));
       w.stop();

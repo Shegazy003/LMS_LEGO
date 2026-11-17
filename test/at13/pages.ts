@@ -6,6 +6,7 @@ import { Client } from '../support/http.ts';
 import { A, B, G1, G2, as, linkThrough, type World } from '../at9/world.ts';
 import { resultsWorld } from '../at10/marks.ts';
 import { utcDatePlusDays } from '../support/http.ts';
+import { UI } from '../../src/i18n/ui.ts';
 
 export interface Reached {
   path: string;
@@ -168,4 +169,49 @@ export const isExemptPage = (path: string) => /^\/s\/[^/]+\/linked\/[^/]+\/activ
  * element of its own name. */
 export function exemptRemoved(html: string): string {
   return html.replace(/<(p|a)\b[^>]*\bdata-activity\b[^>]*>[\s\S]*?<\/\1>/g, ' ');
+}
+
+// ------------------------------------------------- done marks (LMS wave 2) ----
+// Product-contract v2 on PIL-225, AT-2.4: the scans gain the English and Arabic
+// words of every ui.ts key W2-1 added, and the tick's marker attribute, for
+// guardian pages and for other learners' reach, and pass with A's marks present.
+
+/** The ui.ts keys W2-1a added (a page shows each as words). */
+export const W2_KEYS = ['markDone', 'markNotDone', 'doneTag', 'markedDone', 'markedNotDone', 'markFailed'] as const;
+
+/** A's done marks while the viewers look around: A presses "Mark as done" on both
+ * of her lessons (Mathematics, shared with B and C, and Arabic, hers alone). */
+export async function withDoneMarks(w: PrivacyWorld): Promise<void> {
+  const a = new Client(w.p.url);
+  const signin = await a.post('/signin', { username: A.username, password: A.password });
+  if (signin.status !== 302) throw new Error(`A signs in: ${signin.status}`);
+  const arabic = await w.p.sql(`SELECT l.id FROM lesson l JOIN chapter c ON c.id = l.chapter_id WHERE c.subject_id = '${w.content.arabic}'`);
+  for (const lesson of [w.content.lesson, String(arabic[0].id)]) {
+    const res = await a.post(`/s/${w.spaceId}/read/${lesson}/done`, { state: 'done' });
+    if (res.status !== 303) throw new Error(`A marks a lesson done: ${res.status}`);
+  }
+  const rows = await w.p.sql('SELECT COUNT(*) AS n FROM done_mark');
+  if (Number(rows[0].n) !== 2) throw new Error(`A's two done marks are stored: ${rows[0].n}`);
+}
+
+/** The done-mark words a viewer must never meet, in both languages: the fixed text of each key.
+ * A viewer who is also a learner meets "Mark as done" on their own lessons (and, in Arabic, the
+ * tag word inside it), so for them those two are left out: the tag is still found by its marker. */
+export function doneWords(learnerToo: boolean): Map<string, string> {
+  const words = new Map<string, string>();
+  for (const lang of ['en', 'ar'] as const) {
+    for (const key of W2_KEYS) {
+      if (learnerToo && (key === 'markDone' || key === 'doneTag')) continue;
+      words.set(`${lang} ${key}`, UI[lang][key].split('{')[0].trim());
+    }
+  }
+  return words;
+}
+
+/** Every done-mark word or marker on a page (words in the text a person reads, the marker anywhere). */
+export function doneHits(body: string, words: Map<string, string>): string[] {
+  const text = visible(body);
+  const hits = [...words].filter(([, value]) => text.includes(value)).map(([name]) => name);
+  if (/\bdata-done\b/.test(body)) hits.push('the tick marker data-done');
+  return hits;
 }

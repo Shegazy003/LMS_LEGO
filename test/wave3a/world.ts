@@ -137,12 +137,14 @@ export function textOfHtml(fragment: string): string {
     .replace(/\s+/g, ' ').trim();
 }
 
-/** The four controls of section 6.3, each found by its own place in the page. */
+/** The four controls of section 6.3, each found by its own place in the page,
+ * and (LMS wave 2, contract on PIL-225 section 11 item 3) the done block's control. */
 export const CONTROLS = [
   { kind: 'brand', open: brand },
   { kind: 'sign-out', open: byId('signout') },
   { kind: 'my-account', open: byId('nav-account') },
   { kind: 'got-it', open: byId('notice-fold') },
+  { kind: 'done', open: byId('done-control') },
 ] as const;
 
 /** UX-19 / N4: in the preview, a control has aria-disabled, the reason as description, no address and no form action, and stays focusable. */

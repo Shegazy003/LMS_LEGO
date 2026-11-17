@@ -23,7 +23,8 @@
 // wrangler.jsonc: a reset link's token is part of its address.
 
 /** Every event the product logs. */
-export type LogEvent = 'usage flush failed' | 'request failed' | 'activity write failed';
+// LMS wave 2 (product-contract v2 on PIL-225, section 4): 'progress write failed', a done mark not saved.
+export type LogEvent = 'usage flush failed' | 'request failed' | 'activity write failed' | 'progress write failed';
 
 const MESSAGE_MAX = 200;
 const REDACTED = '[redacted]';
