@@ -241,7 +241,8 @@ describe('UX-18 preview banner, top and bottom', { concurrency: false }, () => {
 
 // ------------------------------------------------------------------ UX-19 ----
 
-const INERT = [['brand', 'a.brand'], ['sign-out', '#signout'], ['my-account', '#nav-account'], ['got-it', '#notice-got-it']] as const;
+// LMS wave 2 (contract on PIL-225, section 11 item 3; ux-plan UX-31): the list gains the done block's control.
+const INERT = [['brand', 'a.brand'], ['sign-out', '#signout'], ['my-account', '#nav-account'], ['got-it', '#notice-got-it'], ['done', '#done-control']] as const;
 
 describe('UX-19 inert controls in preview', { concurrency: false }, () => {
   for (const lang of LANGS) {
@@ -265,7 +266,7 @@ describe('UX-19 inert controls in preview', { concurrency: false }, () => {
             text: (e as HTMLElement).innerText.trim(), decoration: cs.textDecorationLine, outline: cs.outlineStyle,
           };
         });
-        const expectedText = { brand: 'appName', 'sign-out': 'signOut', 'my-account': 'myAccount', 'got-it': 'activityGotIt' } as const;
+        const expectedText = { brand: 'appName', 'sign-out': 'signOut', 'my-account': 'myAccount', 'got-it': 'activityGotIt', done: 'markDone' } as const;
         assert.equal(facts.text, word(lang, expectedText[kind]), `${kind}: keeps its text`);
         assert.equal(facts.disabled, 'true', `${kind}: aria-disabled="true"`);
         assert.equal(facts.describedby, 'preview-reason', `${kind}: aria-describedby points at the reason sentence`);

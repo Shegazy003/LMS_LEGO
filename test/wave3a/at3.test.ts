@@ -11,7 +11,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { chromium, type Browser, type Page } from 'playwright';
 import { OWNER } from '../support/seed.ts';
 import {
-  ADMIN, CONTROLS, HADEER, activity, as, assertInert, browserAs, element, ownerPreview, previewHome, wave3aWorld, type Wave3aWorld,
+  ADMIN, CONTROLS, HADEER, SALMA, activity, as, assertInert, browserAs, element, ownerPreview, previewHome, wave3aWorld, type Wave3aWorld,
 } from './world.ts';
 
 const LANGS = ['ar', 'en'] as const;
@@ -28,6 +28,8 @@ const BASE_MIGRATIONS: Record<string, string> = {
   '0007_guardians.sql': '7a71fa1935e390f757a62316d3e7130835b41b3e43b7966c30ccd77581ea25b9',
   '0008_exams.sql': '2cdd582036334b0d22af827ae2347c7379e0af26bbd33067ef5181daaba0041e',
   '0010_lesson_views.sql': '5cced02b9b0d13259d7ce148d67cad742293d201122f98a490eb8dd9bd10b95e',
+  // LMS wave 2 (contract on PIL-225, section 11 item 2): the done-mark table.
+  '0011_done_marks.sql': '4feabd782aca26c332b2282d93744198411dbe20fdef5b201cf006cebf47ab15',
 };
 /** The cookie names src/ sets today: the session, the device language and the learner's notice. */
 const BASE_COOKIES = ['lms_lang', 'lms_notice_', 'lms_session'];
@@ -97,6 +99,23 @@ async function usageRequests(world: Wave3aWorld): Promise<number> {
   return Number(m[1]);
 }
 
+/** Resolves once the page has not scrolled for three animation frames (at most two seconds). */
+async function settled(page: Page): Promise<void> {
+  await page.evaluate(() => new Promise<void>((done) => {
+    let last = -1;
+    let same = 0;
+    let frames = 0;
+    const tick = () => {
+      const y = window.scrollY;
+      same = y === last ? same + 1 : 0;
+      last = y;
+      if (same >= 3 || ++frames > 120) done();
+      else requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }));
+}
+
 /** Clicks, and presses Enter and Space on, every control of the page that is not a link out of it: the inert controls and the folds. */
 async function clickEverything(page: Page, j: Journey, who: string, path: string): Promise<void> {
   const url = page.url();
@@ -104,8 +123,11 @@ async function clickEverything(page: Page, j: Journey, who: string, path: string
   for (const c of CONTROLS) {
     const e = element(doc, c.open);
     if (!e) continue;
-    const sel = { brand: 'a.brand', 'sign-out': '#signout', 'my-account': '#nav-account', 'got-it': '#notice-fold button' }[c.kind];
+    const sel = { brand: 'a.brand', 'sign-out': '#signout', 'my-account': '#nav-account', 'got-it': '#notice-fold button', done: '#done-control' }[c.kind];
     const target = page.locator(sel).first();
+    // Chromium animates the scroll a Space press starts: a click aimed while it moves can land on the
+    // element below (the done control sits right above Next, LMS wave 2). Wait until the page is still.
+    await settled(page);
     // A real mouse click; forced, because Playwright waits for aria-disabled controls to become enabled.
     // Space on a focused control scrolls the page; a click racing that scroll is tried once more from the top.
     await target.click({ force: true }).catch(async () => {
@@ -141,6 +163,10 @@ async function run(): Promise<Journey> {
   const world = w;
   browser = await chromium.launch();
   await activity(world, true);
+  // LMS wave 2 (W2 AT-4.4): Salma holds two done marks during the journey, so the snapshots hold the done-mark table with rows.
+  for (const [title, at] of [['Adding fractions', 1951234567890], ['Comparing fractions', 1951234599999]] as const) {
+    await world.p.sql(`INSERT INTO done_mark (space_id, lesson_id, learner_user_id, marked_at) VALUES ('${world.school.id}', '${world.school.lessons[title]}', '${world.ids[SALMA.username]}', ${at})`);
+  }
   const ownerId = String((await world.p.sql(`SELECT id FROM user WHERE username = '${OWNER.username}'`))[0].id);
   const j: Journey = {
     before: {}, after: {}, schemaBefore: '', schemaAfter: '', previewers: new Set([world.ids[ADMIN.username], world.ids[HADEER.username], ownerId]),
@@ -317,7 +343,7 @@ describe('W3a AT-3 the preview changes nothing', { concurrency: false }, () => {
     assert.deepEqual(sent, [], 'no request other than GET or HEAD, whatever is clicked');
     assert.deepEqual(j.postForms, [], 'no preview page holds a <form method="post">');
     assert.ok(j.inert.length > 0, 'the inert controls were clicked');
-    for (const kind of ['brand', 'sign-out', 'my-account', 'got-it']) assert.ok(j.inert.some((x) => x.kind === kind), `${kind} was met and clicked`);
+    for (const kind of ['brand', 'sign-out', 'my-account', 'got-it', 'done']) assert.ok(j.inert.some((x) => x.kind === kind), `${kind} was met and clicked`);
     for (const x of j.inert) {
       assertInert(x.html, `${x.who} ${x.path} ${x.kind}`);
       assert.equal(x.moved, false, `${x.who} ${x.path} ${x.kind}: click, Enter and Space do nothing`);

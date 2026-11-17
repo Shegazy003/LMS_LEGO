@@ -14,6 +14,7 @@ import { hashPassword } from './auth/password.ts';
 import { now, setClockOffset } from './clock.ts';
 import type { Db, Param } from './db.ts';
 import { normaliseMobile } from './phone.ts';
+import { setMarkClock } from './progress.ts';
 
 // The running Worker instance's identity, made on its first request (random
 // values cannot be made at load time in a Worker). It changes only when the
@@ -35,6 +36,22 @@ export function registerTestHooks(app: Hono<AppEnv>): void {
     if (!Number.isFinite(offset)) return c.json({ error: 'offsetMs must be a number' }, 400);
     setClockOffset(offset);
     return c.json({ now: new Date(now()).toISOString() });
+  });
+
+  // LMS wave 2 (product-contract v2 on PIL-225, section 3, "Test clock"): fixes
+  // the time a done mark is stored ({ "atMs": <number> }), or gives it back to
+  // the real time ({ "atMs": null }).
+  app.post('/__test/mark-clock', async (c) => {
+    if (c.env.TEST_HOOKS !== '1') return c.notFound();
+    const body = await c.req.json<{ atMs?: unknown }>();
+    if (body.atMs === null) {
+      setMarkClock(null);
+      return c.json({ atMs: null });
+    }
+    const at = Number(body.atMs);
+    if (!Number.isFinite(at)) return c.json({ error: 'atMs must be a number or null' }, 400);
+    setMarkClock(at);
+    return c.json({ atMs: at });
   });
 
   app.post('/__test/seed', async (c) => {

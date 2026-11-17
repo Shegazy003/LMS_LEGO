@@ -32,7 +32,8 @@ import { tokenHash } from '../../src/auth/tokens.ts';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 const LOG_MODULE = 'src/log.ts';
-const EVENTS = ['usage flush failed', 'request failed', 'activity write failed'];
+// LMS wave 2, W2-1 (product-contract v2 on PIL-225, section 4): a done mark not saved.
+const EVENTS = ['usage flush failed', 'request failed', 'activity write failed', 'progress write failed'];
 
 // ------------------------------------------------------------- 1. source ----
 function sourceFiles(dir = join(root, 'src')): string[] {

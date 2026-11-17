@@ -805,7 +805,87 @@ jobs:
       - name: UX-26 Arabic, mixed text and kit words in preview (three kits)
         if: success() || failure()
         run: npm run test:wave3a -- --test-name-pattern='^UX-26 ' test/wave3a/ux.test.ts
-      - name: Upload evidence (wave 3a screenshots, the AT-3 journey record and the read count)
+      # LMS wave 2, task W2-1a (product-contract v2 on PIL-225, rev be07da3d):
+      # done marks, write path and data rules. These steps share this job (no
+      # new job): they need the same in-process product for the statement spy,
+      # and W2 AT-4.4 judges the record the W3a AT-3 steps above wrote in this
+      # run, with Salma's done marks in the wave 3a world. One named step per
+      # labelled expectation (W2 AT-1.1 to AT-4.4) and per UX floor item (UX-27,
+      # UX-30, UX-31). W2 AT-3.1 and AT-3.2 apply the migrations with Wrangler,
+      # as the deploy does. W2 AT-3.3 is a step of the "rollback" job.
+      - name: W2 AT-1.1 after Mark as done the same lesson shows the status line, the Done tag and Mark as not done; one mark is stored
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^W2 AT-1\.1 ' test/wave2/at1.test.ts
+      - name: W2 AT-1.2 marking is a set, not a switch; undo deletes; a stale marked= shows nothing
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^W2 AT-1\.2 ' test/wave2/at1.test.ts
+      - name: W2 AT-1.4 every refused press gets the reading page's own answer, and nothing is stored
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^W2 AT-1\.4 ' test/wave2/at1.test.ts
+      - name: W2 AT-1.5 with script off the press works the same
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^W2 AT-1\.5 ' test/wave2/at1.test.ts
+      - name: W2 AT-2.1 mark and undo by the admin, the publisher, the guardian and the owner are refused; another learner marks only their own
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^W2 AT-2\.1 ' test/wave2/at2.test.ts
+      - name: W2 AT-2.2 no page the admin, the publisher, the guardian or the owner reaches shows anything of done marks
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^W2 AT-2\.2 ' test/wave2/at2.test.ts
+      - name: W2 AT-2.3 another learner's pages show only their own marks
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^W2 AT-2\.3 ' test/wave2/at2.test.ts
+      - name: W2 AT-2.4 the privacy scans AT-13a and AT-13b carry the done-mark words and marker
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^W2 AT-2\.4 ' test/wave2/at2.test.ts
+      - name: W2 AT-2.5 (code guard) done_mark is named only in src/progress.ts, bound to the signed-in learner and space
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^W2 AT-2\.5 ' test/wave2/at2.test.ts
+      - name: W2 AT-2.6 (W2-e) an admin or guardian who is also a learner marks only as themselves and sees only their own marks
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^W2 AT-2\.6 ' test/wave2/at2.test.ts
+      - name: W2 AT-2.7 lesson and outline responses carry Cache-Control no-store, and no stored marked_at reaches a body, header or log line
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^W2 AT-2\.7 ' test/wave2/at2.test.ts
+      - name: W2 AT-3.1 the new migration adds exactly the done_mark table and its key; everything else is unchanged; a second apply is a no-op
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^W2 AT-3\.1 ' test/wave2/at3.test.ts
+      - name: W2 AT-3.2 the down script brings the schema and the applied-migrations record back to main's
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^W2 AT-3\.2 ' test/wave2/at3.test.ts
+      - name: W2 AT-3.4 done marks are isolated per space
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^W2 AT-3\.4 ' test/wave2/at3.test.ts
+      - name: W2 AT-3.5 done marks are deleted with the learner and with the space
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^W2 AT-3\.5 ' test/wave2/at3.test.ts
+      - name: W2 AT-3.6 a mark on hidden content stays stored and is not shown on the lesson page; it shows again after restore
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^W2 AT-3\.6 ' test/wave2/at3.test.ts
+      - name: W2 AT-3.7 no route returns done marks but the learner's own pages; the README and Later list state the export rule
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^W2 AT-3\.7 ' test/wave2/at3.test.ts
+      - name: W2 AT-4.1 opening, scrolling, folding, Next, a PDF, My results and the activity switch record no done mark
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^W2 AT-4\.1 ' test/wave2/at4.test.ts
+      - name: W2 AT-4.2 only a POST to the mark address writes a done mark
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^W2 AT-4\.2 ' test/wave2/at4.test.ts
+      - name: W2 AT-4.3 every preview page shows nothing of done marks, draws Mark as done inert, and runs no statement naming done_mark
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^W2 AT-4\.3 ' test/wave2/at4.test.ts
+      - name: W2 AT-4.4 W3a AT-3.1 to AT-3.5 pass with the done-mark table in the snapshot, holding Salma's rows unchanged
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^W2 AT-4\.4 ' test/wave2/at4.test.ts
+      - name: UX-27 done block on the lesson page
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^UX-27 ' test/wave2/at4.test.ts
+      - name: UX-30 marking states and errors
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^UX-30 ' test/wave2/at4.test.ts
+      - name: UX-31 done block inert in preview, no ticks or progress
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^UX-31 ' test/wave2/at4.test.ts
+      - name: Upload evidence (wave 3a and wave 2 screenshots, the AT-3 journey record and the read count)
         if: always() && hashFiles('evidence/**') != ''
         uses: actions/upload-artifact@v4
         with:
@@ -868,6 +948,10 @@ jobs:
       - name: AT-14a release 1.1 code on the release 2 database shows a guardian nothing, shows nobody a mark, exposes nothing, writes and deletes nothing
         working-directory: release-1.1
         run: node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./test/support/github-reporter.mjs --test-reporter-destination=stdout test/rollback/old-code.test.ts
+      - name: W2 AT-3.3 release 1.1 code on the database with a done mark shows nobody anything of it, writes none and deletes none
+        if: success() || failure()
+        working-directory: release-1.1
+        run: node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./test/support/github-reporter.mjs --test-reporter-destination=stdout --test-name-pattern='^W2 AT-3\.3 ' test/rollback/old-code.test.ts
       - name: AT-14a release 1.1 suite on the release 2 database - AT-1
         if: success() || failure()
         working-directory: release-1.1

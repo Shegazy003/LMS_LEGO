@@ -430,6 +430,13 @@ const en = {
   previewBack: 'Back to where I was',
   previewEnd: 'End of the preview page.',
   viewAsLearner: 'View as {learner}',
+  // LMS wave 2, W2-1 (product-contract v2 on PIL-225, sections 4 and 5; ux-plan wording table).
+  markDone: 'Mark as done',
+  markNotDone: 'Mark as not done',
+  doneTag: 'Done',
+  markedDone: 'Marked as done.',
+  markedNotDone: 'Done mark removed.',
+  markFailed: 'Not saved. Please try again.',
 };
 
 export type UiKey = keyof typeof en;
@@ -852,6 +859,13 @@ const ar: Record<UiKey, string> = {
   previewBack: 'العودة إلى حيث كنت',
   previewEnd: 'نهاية صفحة المعاينة.',
   viewAsLearner: 'عرض كـ{learner}',
+  // LMS wave 2, W2-1a. Noun phrases and passives only: no gender agreement with a kit word or the reader (ux-plan, Wording).
+  markDone: 'وضع علامة "تمّ"',
+  markNotDone: 'إلغاء علامة "تمّ"',
+  doneTag: 'تمّ',
+  markedDone: 'وُضعت علامة "تمّ".',
+  markedNotDone: 'أُزيلت علامة "تمّ".',
+  markFailed: 'لم يُحفظ. يُرجى المحاولة مرة أخرى.',
 };
 
 export const UI: Record<'ar' | 'en', Record<UiKey, string>> = { en, ar };

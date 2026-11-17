@@ -54,7 +54,7 @@ function placeOf(path: string): { client: Client; address: string } | null {
     path === '/owner' || path.startsWith('/owner/') ? owner
       : path.startsWith('/s/:spaceId/admin') ? admin
         : path.startsWith('/s/:spaceId/publish') ? publisher
-          : path.startsWith('/account') || path === '/signout' ? learner
+          : path.startsWith('/account') || path === '/signout' || path.startsWith('/s/:spaceId/read/') ? learner
             : ['/setup', '/signin', '/recover', '/r/:token'].includes(path) ? anonymous
               : null;
   assert.ok(client, `the sweep does not know who uses POST ${path}: add it here`);
@@ -86,6 +86,7 @@ function fields(path: string): Record<string, string> {
     text: 'forged',
     url: 'https://example.org/forged',
     lang: 'en',
+    state: 'done',
     member: ids.salmaId,
     set: ids.groupId,
     learner: ids.salmaId,
@@ -188,6 +189,8 @@ describe('AT-5 guard: every form refuses a cross-origin post', { concurrency: fa
       '/s/:spaceId/admin/people/:userId/links', '/s/:spaceId/admin/people/:userId/links/:learnerId/remove',
       // R2-d: the admin's lesson-activity switch, on and off.
       '/s/:spaceId/admin/activity', '/s/:spaceId/admin/activity/off',
+      // Wave 2 (W2-1a): a learner's done mark.
+      '/s/:spaceId/read/:lessonId/done',
     ]) assert.ok(posts.includes(must), `POST ${must} exists and is in the sweep`);
 
     const dataBefore: Snapshot = await snapshot(worker);
@@ -221,9 +224,10 @@ describe('AT-5 guard: every form refuses a cross-origin post', { concurrency: fa
     assert.equal((await admin.post(`/s/${ids.space}/admin/sets`, { name: 'Control', member: ids.salmaId })).status, 303, 'the admin forms a group');
     assert.equal((await publisher.post(`/s/${ids.space}/publish/item/${ids.materialId}/move`, { direction: 'up' })).status, 303, 'the publisher moves a material');
     assert.equal((await learner.post('/account/language', { lang: 'en' })).status, 303, 'the learner chooses English');
+    assert.equal((await learner.post(`/s/${ids.space}/read/${ids.lessonId}/done`, { state: 'done' })).status, 303, 'the learner marks a lesson done');
     const reset = await anonymous.post(`/r/${ids.token}`, { username: HADEER.username, new_password: 'hadeer-new-pass' });
     assert.equal(reset.status, 200, 'the reset link sets the password');
     const diff = changes(before, await snapshot(worker));
-    for (const t of ['kit', 'group', 'group_member', 'material', 'user', 'reset_link']) assert.ok(diff[t], `${t} changed`);
+    for (const t of ['kit', 'group', 'group_member', 'material', 'user', 'reset_link', 'done_mark']) assert.ok(diff[t], `${t} changed`);
   });
 });

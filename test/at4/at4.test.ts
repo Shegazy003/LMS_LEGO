@@ -247,7 +247,8 @@ describe('AT-4 a learner sees exactly what was assigned', { concurrency: false }
     assert.deepEqual(kinds, MATERIALS.map((m) => m.kind), 'five materials in order: PDF, image, video link, web link, note');
     const titles = await salma.locator('#items > li .title').allInnerTexts();
     assert.deepEqual(titles.map((s) => s.trim()), MATERIALS.map((m) => m.title));
-    await assertNoEditControls(salma, 'lesson page');
+    // LMS wave 2 (contract on PIL-225, section 4): the lesson page's one write is the learner's own done mark.
+    await assertNoEditControls(salma, 'lesson page', ['signout', 'done-control']);
     await shot(salma, '05-lesson-adding-fractions');
   });
 
@@ -298,7 +299,7 @@ describe('AT-4 a learner sees exactly what was assigned', { concurrency: false }
     assert.equal(await note.locator('script, b').count(), 0, 'markup in a note is not markup');
     assert.ok((await salma.content()).includes('&lt;script&gt;alert'), 'escaped in the page');
 
-    await assertNoEditControls(salma, 'lesson page');
+    await assertNoEditControls(salma, 'lesson page', ['signout', 'done-control']);
     await salma.locator('#items > li[data-kind=note]').scrollIntoViewIfNeeded();
     await shot(salma, '06-lesson-materials-opened');
     await salma.goto(at(filePath('Pizza slices')));
