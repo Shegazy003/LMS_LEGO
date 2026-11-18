@@ -25,7 +25,7 @@ import {
   findFile, findLesson, learnerCards, lessonMaterials, lessonSequence, outline, previewCards, previewableSubject, readableSubject,
   subjectsForPublisher, type Previewer, type SubjectRow,
 } from './learning.ts';
-import { isDone, markDone, markNotDone, readsAsLearner, signedInLearner } from './progress.ts';
+import { doneLessonIds, isDone, markDone, markNotDone, readsAsLearner, signedInLearner } from './progress.ts';
 import { previewFrame, type PreviewScope } from './views/preview.ts';
 import { isGuardianHere, isLearnerHere, link, linkedLearner, linkedLearners, linksOf, subjectsSeenBy, subjectsSeenByLinked, unlink } from './guardians.ts';
 import { activityOf, activitySetting, lastOpenedOfLinked, linkedSince, recordOpen, recordingSince, switchOff, switchOn, type ActivitySetting } from './activity.ts';
@@ -1084,8 +1084,10 @@ app.get('/s/:spaceId/learn/:subjectId', async (c) => {
   const subject = await readableSubject(db, space, c.get('user')!.id, c.req.param('subjectId'));
   if (!subject) return refuse(c, 403, 'noAccess');
   const { t, lang, view } = spaceLabel(c);
+  // LMS wave 2 (section 5): ticks and the progress line, from this person's own marks, only when they read it as a learner.
+  const marks = (await readsAsLearner(db, space, c.get('user')!.id, subject)) ? await doneLessonIds(db, signedInLearner(c)) : undefined;
   // Wave 1 (section 6): ?open=all, ?open=none or one chapter of this subject; any other value is ignored.
-  return page(c, subjectPage(t, lang, view, subject, await outline(db, space.id, subject.id), c.req.query('open')));
+  return page(c, subjectPage(t, lang, view, subject, await outline(db, space.id, subject.id), c.req.query('open'), marks));
 });
 
 app.get('/s/:spaceId/read/:lessonId', async (c) => {

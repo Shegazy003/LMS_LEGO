@@ -6,7 +6,8 @@ import assert from 'node:assert/strict';
 import { chromium, type Browser } from 'playwright';
 import type { Client } from '../support/http.ts';
 import {
-  OMAR, SALMA, T1, T2, as, browserAs, lessonPath, markClock, markPath, marks, plain, press, subjectPath, wave2World, words, type Wave1World,
+  MATH_ORDER, OMAR, SALMA, T1, T2, as, browserAs, home, lessonPath, markClock, markPath, marks, plain, press, salmaThreeMarks, subjectPath,
+  wave2World, words, type Wave1World,
 } from './world.ts';
 
 const personPath = (w: Wave1World, userId: string) => `/s/${w.school.id}/admin/people/${userId}`;
@@ -52,8 +53,10 @@ describe('W2 AT-1.1 after "Mark as done" the same lesson shows the status line, 
     const rows = await marks(w);
     assert.equal(rows.length, 1, 'exactly one done mark');
     assert.deepEqual([rows[0].space_id, rows[0].learner_user_id, rows[0].lesson_id], [w.school.id, w.ids[SALMA.username], lesson]);
-    // Task split (Lead, PIL-228): ticks and the progress line come in W2-1b, so the outline stays exactly as on main.
-    assert.equal(await page(salma, subjectPath(w.school, w.school.math)), outlineBefore, 'the outline is exactly as before the mark');
+    // W2-1b: the outline now shows this one mark (it was "exactly as before" while the split held the ticks back).
+    const outlineAfter = await page(salma, subjectPath(w.school, w.school.math));
+    assert.notEqual(outlineAfter, outlineBefore, 'the outline shows the mark');
+    assert.equal(byId(outlineAfter, 'done-progress'), 'Done: 1 of 5 lessons');
   });
 });
 
@@ -99,6 +102,30 @@ describe('W2 AT-1.2 marking is a set, not a switch: a second press keeps the fir
     for (const odd of ['yes', 'DONE', '', 'done%20']) {
       assert.equal(byId(await page(salma, `/s/${w.school.id}/read/${lesson}?marked=${odd}`), 'done-status'), null, `?marked=${odd} is ignored`);
     }
+  });
+});
+
+describe('W2 AT-1.3 with three lessons done the outline ticks exactly those and says "Done: 3 of 5 lessons"; other outlines and the home are unchanged', { concurrency: false }, () => {
+  let w: Wave1World;
+  before(async () => (w = await wave2World()));
+  after(() => w?.close());
+
+  it('W2 AT-1.3 ticks, hidden text, progress line, and nothing else changed', async () => {
+    const salma = await as(w, SALMA, 'en');
+    const others = [w.school.arabic, w.school.reading, w.school.science];
+    const pagesBefore = new Map<string, string>();
+    for (const path of [home(w.school), ...others.map((s) => subjectPath(w.school, s)), `/s/${w.school.id}/results`]) pagesBefore.set(path, await page(salma, path));
+
+    await salmaThreeMarks(w, salma);
+    const outline = await page(salma, subjectPath(w.school, w.school.math));
+    const ticked = [...outline.matchAll(/<li class="is-done"><span class="tick" data-done="lesson"><span aria-hidden="true">✓<\/span><span class="sr-only">([^<]*)<\/span><\/span><a data-lesson="([^"]+)"/g)];
+    assert.deepEqual(ticked.map((m) => m[2]).sort(), MATH_ORDER.slice(0, 3).map((t) => w.school.lessons[t]).sort(), 'a tick on exactly the three done lessons');
+    for (const m of ticked) assert.equal(m[1], 'Done', 'each with the hidden text "Done"');
+    assert.equal((outline.match(/data-done="lesson"/g) ?? []).length, 3, 'no other lesson tick');
+    assert.equal(byId(outline, 'done-progress'), 'Done: 3 of 5 lessons', 'the progress line');
+    assert.match(outline, /<h1 id="subject-title"[^>]*>[^<]*<\/h1>\s*(?:<style>[^<]*<\/style>)?<p id="done-progress"/, 'right under the title');
+
+    for (const [path, html] of pagesBefore) assert.equal(await page(salma, path), html, `${path} is exactly as before the marks`);
   });
 });
 
@@ -189,5 +216,30 @@ describe('W2 AT-1.5 with script off the press works the same: plain form, plain 
     assert.equal((await tab.locator('#done-control button').innerText()).trim(), 'Mark as not done');
     assert.equal((await marks(w)).length, 1, 'stored');
     await ctx.close();
+  });
+});
+
+describe('W2 AT-1.6 in the Company and University kits the outline\'s progress line uses the kit\'s lesson word', { concurrency: false }, () => {
+  let w: Wave1World;
+  before(async () => (w = await wave2World()));
+  after(() => w?.close());
+
+  it('W2 AT-1.6 "Done: 3 of 5 sessions" and "Done: 3 of 5 lectures", and the Arabic line with the kit word', async () => {
+    for (const lang of ['en', 'ar'] as const) {
+      const salma = await as(w, SALMA, lang);
+      for (const s of [w.company, w.university]) {
+        for (const title of MATH_ORDER.slice(0, 3)) {
+          assert.equal((await press(salma, s, s.lessons[title], 'done')).status, 303, `${s.kit}: ${title}`);
+        }
+        const t = words(s.kit, lang);
+        const line = byId(await page(salma, subjectPath(s, s.math)), 'done-progress');
+        const expected = lang === 'en'
+          ? { company: 'Done: 3 of 5 sessions', university: 'Done: 3 of 5 lectures' }[s.kit as 'company' | 'university']
+          : t('doneProgress', { n: '3', total: '5', count: '' });
+        assert.equal(line, expected, `${s.kit} ${lang}`);
+        assert.ok(line!.includes(t('lessonPlural')), `${s.kit} ${lang}: the kit's plural lesson word`);
+      }
+    }
+    assert.deepEqual(['company', 'university'].map((k) => words(k as 'company', 'ar')('lessonPlural')), ['الجلسات', 'المحاضرات'], 'the Arabic kit words');
   });
 });

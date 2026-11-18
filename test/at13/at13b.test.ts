@@ -46,6 +46,12 @@ test('AT-13b done-mark scan self-check (LMS wave 2, AT-2.4): tags, done states a
   assert.deepEqual(doneHits(tag, doneWords(true)), ['the tick marker data-done'], 'for a learner the tag is found by its marker');
   assert.deepEqual(doneHits('<p role="status">وُضعت علامة &quot;تمّ&quot;.</p>', doneWords(true)), ['ar markedDone']);
   assert.deepEqual(doneHits('<button class="undo">Mark as not done</button>', doneWords(true)), ['en markNotDone']);
+  // W2-1b: the outline's ticks and progress lines.
+  const tick = '<li class="is-done"><span class="tick" data-done="lesson"><span aria-hidden="true">✓</span><span class="sr-only">Done</span></span><a href="/x">Adding</a></li>';
+  assert.deepEqual(doneHits(tick, doneWords(false)), ['en doneTag', 'the tick marker data-done']);
+  assert.deepEqual(doneHits(tick, doneWords(true)), ['the tick marker data-done'], 'for a learner the tick is found by its marker');
+  assert.deepEqual(doneHits('<p id="done-progress">المُنجَز من الدروس: 3 من 5</p>', doneWords(true)), ['ar doneProgress']);
+  assert.deepEqual(doneHits('<p>All done: 5 lessons</p>', doneWords(true)), ['en allDone', 'en chapterAllDone']);
   const own = '<form id="done-control" method="post"><button type="submit">وضع علامة &quot;تمّ&quot;</button></form><button>Mark as done</button>';
   assert.deepEqual(doneHits(own, doneWords(true)), [], 'the not-done button of a learner, their own');
   assert.deepEqual(doneHits(own, doneWords(false)).sort(), ['ar doneTag', 'ar markDone', 'en markDone'], 'on a guardian page even the button is found');

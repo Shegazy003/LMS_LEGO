@@ -16,7 +16,7 @@ import { Client, utcDatePlusDays } from '../support/http.ts';
 import { seed } from '../support/seed.ts';
 import { SEGMENT } from '../../src/views/publish.ts';
 import {
-  ADMIN, HADEER, LINA, MATH_ORDER, OMAR, SALMA, activity, as, lessonPath, marks, markPath, press, wave2World, withNile, type Wave1World,
+  ADMIN, HADEER, LINA, MATH_ORDER, OMAR, SALMA, activity, as, lessonPath, marks, markPath, plain, press, subjectPath, wave2World, withNile, type Wave1World,
 } from './world.ts';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
@@ -356,37 +356,62 @@ describe('W2 AT-3.6 a mark on hidden content stays stored and is not shown; it s
       return /id="done-tag"/.test(body) && /Mark as not done/.test(body) ? 'done' : 'not done';
     };
     const kept = async (what: string) => assert.deepEqual(await marks(w), stored, `${what}: the marks stay stored, unchanged`);
+    /** W2-1b: her Mathematics outline: the number of ticked lessons (each must be a shown lesson; the line must say N of M), or the refusal's status. */
+    const counted = async (what: string) => {
+      const res = await salma.get(subjectPath(s, s.math));
+      const body = await res.text();
+      if (res.status !== 200) {
+        assert.ok(!/data-done|done-progress/.test(body), `${what}: a refusal shows nothing of a mark`);
+        return res.status;
+      }
+      const shown = [...body.matchAll(/<a data-lesson="([^"]+)"/g)].map((m) => m[1]);
+      const ticked = [...body.matchAll(/data-done="lesson"[\s\S]*?<a data-lesson="([^"]+)"/g)].map((m) => m[1]);
+      assert.ok(ticked.every((id) => shown.includes(id)) && ticked.every((id) => stored.some((r) => r.lesson_id === id)), `${what}: only shown, marked lessons are ticked`);
+      const line = body.match(/<p id="done-progress"[^>]*>([\s\S]*?)<\/p>/)?.[1];
+      if (ticked.length === 0) assert.equal(line, undefined, `${what}: no line at N = 0`);
+      else assert.equal(plain(line!), ticked.length === shown.length ? `All done: ${shown.length} lessons` : `Done: ${ticked.length} of ${shown.length} lessons`, `${what}: the line counts shown lessons only (N never above M)`);
+      return ticked.length;
+    };
 
     assert.equal(await shows(extra), 'done');
+    assert.equal(await counted('both shown'), 2, 'the outline counts both marks');
     // Removed lesson, then Restore.
     assert.equal((await hadeer.post(`/s/${s.id}/publish/${SEGMENT.lesson}/${extra}/remove`, {})).status, 303, 'Extra practice removed');
     assert.equal(await shows(extra), 404, 'removed lesson: not shown');
+    assert.equal(await counted('removed lesson'), 1, 'removed lesson: not ticked, not counted on the outline');
     await kept('removed lesson');
     assert.equal((await hadeer.post(`/s/${s.id}/publish/${SEGMENT.lesson}/${extra}/restore`, {})).status, 303, 'restored');
     assert.equal(await shows(extra), 'done', 'after Restore it shows again');
+    assert.equal(await counted('lesson restored'), 2, 'after Restore it counts again');
 
     // Removed chapter (as Remove leaves it, like the world's Draft chapter), then Restore.
     await w.p.sql(`UPDATE chapter SET removed_at = 1 WHERE id = '${s.chapters['Fractions']}'`);
     assert.equal(await shows(comparing), 404, 'removed chapter: not shown');
+    assert.equal(await counted('removed chapter'), 1, 'removed chapter: its lesson not ticked, not counted');
     await kept('removed chapter');
     assert.equal((await hadeer.post(`/s/${s.id}/publish/${SEGMENT.chapter}/${s.chapters['Fractions']}/restore`, {})).status, 303, 'chapter restored');
     assert.equal(await shows(comparing), 'done', 'after Restore it shows again');
+    assert.equal(await counted('chapter restored'), 2, 'after Restore it counts again');
 
     // Unpublished, then published again.
     assert.equal((await hadeer.post(`/s/${s.id}/publish/edit/${s.math}/unpublish`, {})).status, 303);
     assert.equal(await shows(comparing), 403, 'unpublished: not shown');
+    assert.equal(await counted('unpublished'), 403, 'unpublished: no outline');
     await kept('unpublished');
     assert.equal((await hadeer.post(`/s/${s.id}/publish/edit/${s.math}/publish`, {})).status, 303);
     assert.equal(await shows(comparing), 'done', 'published again: shows again');
+    assert.equal(await counted('published again'), 2, 'published again: counts again');
 
     // No longer assigned (the admin takes the group off the subject), then assigned again.
     const group = String((await w.p.sql(`SELECT group_id FROM subject_access WHERE subject_id = '${s.math}' AND group_id IS NOT NULL`))[0].group_id);
     const publisher = { publisher: w.ids[HADEER.username] };
     assert.equal((await w.admin.post(`/s/${s.id}/admin/topics/${s.math}`, publisher)).status, 303, 'unassigned');
     assert.equal(await shows(comparing), 403, 'not assigned: not shown');
+    assert.equal(await counted('unassigned'), 403, 'not assigned: no outline');
     await kept('unassigned');
     assert.equal((await w.admin.post(`/s/${s.id}/admin/topics/${s.math}`, { ...publisher, set: group })).status, 303, 'assigned again');
     assert.equal(await shows(comparing), 'done', 'assigned again: shows again');
+    assert.equal(await counted('assigned again'), 2, 'assigned again: counts again');
 
     // Ended access, then restored.
     const person = `/s/${s.id}/admin/people/${w.ids[SALMA.username]}`;
@@ -414,9 +439,13 @@ describe('W2 AT-3.7 no route returns done marks but the learner\'s own pages; th
   it('W2 AT-3.7 the guard, the README and the Later list', () => {
     const progress = readFileSync(join(root, 'src', 'progress.ts'), 'utf8');
     const exported = [...progress.matchAll(/export (?:async )?function (\w+)/g)].map((m) => m[1]).sort();
-    assert.deepEqual(exported, ['isDone', 'markDone', 'markNotDone', 'readsAsLearner', 'setMarkClock', 'signedInLearner'], 'progress.ts gives out a yes/no per lesson (and whether a subject is read as a learner), never a list, count or time (AT-2.5 guards the rest)');
+    // W2-1b adds doneLessonIds: the signed-in learner's own lesson ids, for their outline only (never a count, a time or another person's marks).
+    assert.deepEqual(exported, ['doneLessonIds', 'isDone', 'markDone', 'markNotDone', 'readsAsLearner', 'setMarkClock', 'signedInLearner'], 'progress.ts gives out a yes/no per lesson, the learner\'s own done lesson ids (and whether a subject is read as a learner), never a count or time (AT-2.5 guards the rest)');
+    assert.match(progress, /export async function doneLessonIds\(db: Db, who: Learner\)/, 'doneLessonIds takes only the signed-in learner (the branded Learner)');
+    assert.doesNotMatch(progress.match(/export async function doneLessonIds[\s\S]*?\n\}/)?.[0] ?? '', /marked_at/, 'doneLessonIds never reads the time');
     const app = readFileSync(join(root, 'src', 'app.ts'), 'utf8');
     assert.deepEqual([...app.matchAll(/\bisDone\(/g)].length, 1, 'one reader: the lesson page');
+    assert.deepEqual([...app.matchAll(/\bdoneLessonIds\(/g)].length, 1, 'one reader: the outline (the home changes in W2-2)');
     const readme = readFileSync(join(root, 'README.md'), 'utf8');
     const section = readme.match(/\n### Done marks \(LMS wave 2[^\n]*\n([\s\S]*?)(?=\n### |\n## )/)?.[1] ?? '';
     assert.ok(section, 'README has the done-marks section');
