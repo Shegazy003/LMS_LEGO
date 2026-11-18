@@ -51,7 +51,12 @@ describe('AT-1.3 the empty subject card and the home with nothing assigned', { c
       // word, which release 1's AT-5.6 checks on an empty home and section 10
       // keeps unchanged ("no assertion about a kit word changes"). Nothing else:
       // no card, no list (AMBER, named for the Lead in CANDIDATE READY).
-      assert.deepEqual(parts, [t('welcome', { name: YOUSSEF.display_name }), `${t('assignedToYou')} · ${t('subject')}`, t('nothingAssigned')]);
+      // LMS wave 2, W2-2 (contract section 8, AT-5.4): every learner home and
+      // every preview home has "Continue where you stopped", here in its
+      // first-time state (no link), after the greeting (named in CANDIDATE READY).
+      const first = `${t('continueHeading')} ${t('continueFirst', { lesson: t('lesson').toLocaleLowerCase(lang) })}`;
+      assert.deepEqual(parts, [t('welcome', { name: YOUSSEF.display_name }), first, `${t('assignedToYou')} · ${t('subject')}`, t('nothingAssigned')]);
+      assert.equal(await tab.page.locator('main a[href*="/read/"]').count(), 0, 'no lesson link');
       assert.equal(await tab.page.locator('#my-list').count(), 0, 'no card list');
       await tab.ctx.close();
     });

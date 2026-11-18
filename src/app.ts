@@ -857,7 +857,7 @@ async function renderLearnerHome(c: C) {
   // LMS wave 2, W2-2 (section 8): "Continue where you stopped" and the cards'
   // done lines, from this learner's own marks (one more read, whatever their
   // number); a mark counts only on a lesson of one of these cards (section 6.3).
-  const where = learner ? continueWhere(cards, await markOrder(c.get('db'), signedInLearner(c))) : undefined;
+  const where = learner ? continueWhere(cards, await markOrder(c.get('db'), signedInLearner(c))) : null;
   return page(c, learnerHome(t, lang, view, user.display_name, cards, notice, where));
 }
 

@@ -159,9 +159,12 @@ describe('W2 AT-5.1 first time: the continue area says how it works with no link
       const at = (re: RegExp) => doc.search(re);
       assert.ok(at(/id="greeting"/) < at(/id="continue"/) && at(/id="continue"/) < at(/id="my-list"/), 'greeting, then the area, then the cards');
     }
-    // With nothing assigned (Youssef), the home stays wave 1's empty home: no area (wave 1 AT-1.3).
-    const youssef = await homeOf(await as(w, YOUSSEF, 'en'), s);
-    assert.equal(areaOf(youssef), null, 'Youssef (nothing assigned): no continue area');
+    // With nothing assigned (Youssef) there is no countable mark either: the first-time state (8.2 step 1), then "nothing assigned".
+    for (const lang of LANGS) {
+      const youssef = await homeOf(await as(w, YOUSSEF, lang), s);
+      assertFirstTime(areaOf(youssef), lang, `Youssef (nothing assigned) ${lang}`);
+      assert.ok(youssef.search(/id="continue"/) < youssef.search(/id="nothing-yet"/), `Youssef ${lang}: the area, then "nothing assigned"`);
+    }
     const salma = await as(w, SALMA, 'en');
     const first = await homeOf(salma, s);
     assertFirstTime(areaOf(first), 'en', 'Salma en');
@@ -372,13 +375,9 @@ describe('W2 AT-5.4 only the learner\'s own marks decide it, and nobody else see
         const doc = await res.text();
         const statements = await spy.stop();
         assert.equal(res.status, 200, `${who} ${path}`);
-        if (path === ownerPreview(s)) {
-          // The owner's preview is the home of a learner with nothing assigned: wave 1's empty home, so no area at all (as Youssef's).
-          assert.equal(areaOf(doc), null, `owner preview ${lang}: the empty home, no continue area`);
-          assert.ok(plain(doc).includes(word(lang, 'nothingAssigned')), `owner preview ${lang}: "nothing assigned"`);
-        } else {
-          assertFirstTime(areaOf(doc), lang, `${who} preview ${lang} ${path}`);
-        }
+        // Every preview home shows the first-time state, the owner's too (a learner with nothing assigned, as Youssef's home).
+        assertFirstTime(areaOf(doc), lang, `${who} preview ${lang} ${path}`);
+        if (path === ownerPreview(s)) assert.ok(plain(doc).includes(word(lang, 'nothingAssigned')), `owner preview ${lang}: "nothing assigned"`);
         assert.deepEqual(doneHits(doc, doneWords(true)), [], `${who} preview ${lang}: no done line or marker`);
         assert.deepEqual(statements.filter((x) => /\bdone_mark\b/.test(x)), [], `${who} preview ${lang} ${path}: no statement names done_mark`);
       }

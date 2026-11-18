@@ -93,18 +93,21 @@ ${inner}
  * the learner’s notice (AT-15f), in full once, then folded (wave 1, section 7). */
 export function learnerHome(
   t: Label, lang: Lang, space: SpaceView, displayName: string, cards: LearnerCard[], notice: NoticeForm | null = null,
-  where: { area: ContinueArea; progress: Map<string, CardProgress> } = { area: { kind: 'first' }, progress: new Map() },
+  where: { area: ContinueArea; progress: Map<string, CardProgress> } | null = { area: { kind: 'first' }, progress: new Map() },
 ): Html {
+  // The continue area (W2-2, section 8.1) is on every learner home and every
+  // preview home, also with nothing assigned (the first-time state, AT-5.4);
+  // `null` only for a signed-in person without the learner role.
   // The heading shows also with nothing assigned, as today: it carries the
   // kit's subject word (release 1 AT-5.6; contract section 10 keeps kit-word
   // assertions unchanged).
   const list = html`<h2>${t('assignedToYou')} <span class="muted">· ${t('subject')}</span></h2>
 ${cards.length
-    ? html`<ul id="my-list" class="cards">${cards.map((card) => subjectCard(t, lang, space, card, where.progress.get(card.id)))}</ul>`
+    ? html`<ul id="my-list" class="cards">${cards.map((card) => subjectCard(t, lang, space, card, where?.progress.get(card.id)))}</ul>`
     : html`<p id="nothing-yet" class="card message">${t('nothingAssigned')}</p>`}`;
   const body = html`<p id="greeting">${t('welcome', { name: displayName })}</p>
 ${notice ? activityNotice(t, notice, learnerUrl(space), Boolean(space.preview)) : ''}
-${cards.length ? html`${continueArea(t, lang, space, where.area)}
+${where ? html`${continueArea(t, lang, space, where.area)}
 ` : ''}${list}`;
   return spacePage(t, lang, space, space.name, body, { current: 'home', wide: true });
 }
