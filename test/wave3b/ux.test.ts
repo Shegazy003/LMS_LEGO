@@ -415,11 +415,17 @@ describe('UX-40 earlier uploads list', { concurrency: false }, () => {
     assert.equal(await page.locator('#uploads-none').count(), 0, 'no empty state');
     await Promise.all([page.waitForEvent('load'), page.click(`#${links[0].id}`)]);
     assert.equal(await page.locator('#done-title').innerText(), UI.en.doneTitle.replace('{n}', '1'), 'the link opens the done page');
-    // Only this space's: Amal's list has none of Nile's.
+    // Only this space's: Amal's list has her own upload and none of Nile's
+    // (the test makes its Mesk upload itself, so it holds when run alone).
     const amal = await open(ADMIN, 'en');
+    await checkIn(amal, 'school', passing(uniq(), 1));
+    assert.equal(await add(amal), 200);
+    const meskDone = new URL(amal.url()).pathname;
     await visit(amal, uploadPath(w.school));
     const meskHrefs = await amal.evaluate(() => [...document.querySelectorAll('#uploads a')].map((a) => a.getAttribute('href') ?? ''));
-    assert.ok(meskHrefs.length > 0 && meskHrefs.every((h) => h.startsWith(`/s/${w.school.id}/admin/upload/`)), 'Mesk\'s list holds only Mesk\'s uploads');
+    assert.ok(meskHrefs.includes(meskDone), 'Mesk\'s list holds the upload just made in Mesk');
+    assert.ok(meskHrefs.every((h) => h.startsWith(`/s/${w.school.id}/admin/upload/`)), 'Mesk\'s list holds only Mesk\'s uploads');
+    assert.ok(ids.every((id) => !meskHrefs.some((h) => h.endsWith(`/${id}`))), 'none of Nile\'s uploads in Mesk\'s list');
   });
 
   it('UX-40 screenshots: the Arabic upload page with earlier uploads', async () => {
