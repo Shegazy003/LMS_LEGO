@@ -998,7 +998,7 @@ jobs:
       - name: W3b AT-2.1 one add makes exactly the 8 accounts and memberships and answers 303 to the done page
         if: success() || failure()
         run: npm run test:wave3b -- --test-name-pattern='^W3b AT-2\.1 ' test/wave3b/at2.test.ts
-      - name: W3b AT-2.2 changed since the check: nothing saved, 409 with a fresh check
+      - name: W3b AT-2.2 changed since the check, nothing saved, 409 with a fresh check
         if: success() || failure()
         run: npm run test:wave3b -- --test-name-pattern='^W3b AT-2\.2 ' test/wave3b/at2.test.ts
       - name: W3b AT-2.3 a failed write saves nothing and logs only the fixed event
@@ -1037,7 +1037,7 @@ jobs:
       - name: W3b AT-4.5 the server holds the limits and makes at most 2 round trips besides the gate's (prints the counts)
         if: success() || failure()
         run: npm run test:wave3b -- --test-name-pattern='^W3b AT-4\.5 ' test/wave3b/at4.test.ts
-      - name: W3b AT-4.6 CPU gate: median CPU of the check and of the add of a worst-case file at most 5 ms each (prints both medians)
+      - name: W3b AT-4.6 CPU gate, median CPU of the check and of the add of a worst-case file at most 5 ms each (prints both medians)
         if: success() || failure()
         run: npm run test:wave3b -- --test-name-pattern='^W3b AT-4\.6 ' test/wave3b/at4.test.ts
       - name: W3b AT-5.1 each add makes exactly one class_upload row of six fields; a check makes none
