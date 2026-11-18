@@ -10,7 +10,7 @@
 // notice is told in full once, then folded.
 import { html, raw } from 'hono/html';
 import type { Label, Lang, LabelKey } from '../labels.ts';
-import type { LearnerCard, LessonRow, MaterialKind, MaterialRow, OutlineChapter, SequenceStep } from '../learning.ts';
+import type { CardProgress, ContinueArea, LearnerCard, LessonRow, MaterialKind, MaterialRow, OutlineChapter, SequenceStep } from '../learning.ts';
 import { externalUrl } from '../links.ts';
 import type { NoticeForm } from '../notice.ts';
 import { activityNotice } from './activity.ts';
@@ -38,10 +38,16 @@ function lessonCount(t: Label, lang: Lang, n: number): Html[] | string[] {
     : sentence(t, 'lessonCount', { n: String(n) });
 }
 
-/** One subject card (section 4.1, UX-1): its title links to the outline, the teacher line only with a publisher, the count, and Start, its one action. */
-function subjectCard(t: Label, lang: Lang, space: SpaceView, card: LearnerCard): Html {
+/** One subject card (section 4.1, UX-1): its title links to the outline, the teacher line only with a publisher, the count, and Start, its one action.
+ * LMS wave 2, W2-2 (section 8.3, UX-34): once the learner marked one of its lessons, "Done: N of M <lessons>" (or "All done: M <lessons>")
+ * in place of the count, and "Continue: <its target>" (or "Read again: <first lesson>") in place of Start; an unstarted card is exactly today's. */
+function subjectCard(t: Label, lang: Lang, space: SpaceView, card: LearnerCard, p?: CardProgress): Html {
   const teacher = card.publisherName ? html`<p class="teacher">${sentence(t, 'teacherLine', { publisher: t('publisher'), name: card.publisherName })}</p>` : '';
-  const work = card.first
+  const go = p?.target ?? card.first;
+  const work = p && go
+    ? html`<p class="count done-count" data-done="card">${doneLine(t, lang, p.done, card.count)}</p>
+  <a class="button start" data-action="${p.target ? 'continue' : 'read-again'}" href="${lessonHref(space, go.id)}"><span>${sentence(t, p.target ? 'continueLink' : 'readAgain', { title: go.title })}</span></a>`
+    : card.first
     ? html`<p class="count muted">${lessonCount(t, lang, card.count)}</p>
   <a class="button start" href="${lessonHref(space, card.first.id)}"><span>${sentence(t, 'startLesson', { title: card.first.title })}</span></a>`
     : html`<p class="none muted">${t('noLessonsYet')}</p>`;
@@ -52,20 +58,54 @@ function subjectCard(t: Label, lang: Lang, space: SpaceView, card: LearnerCard):
 </li>`;
 }
 
+const CONTINUE_CSS = `.continue h2{margin:0 0 8px;font-size:1.25rem}
+.continue p{margin:0 0 8px}
+.continue a.go{margin-top:8px}
+.continue .line1,.continue .line2{overflow-wrap:anywhere}`;
+
+/** "Continue where you stopped" (LMS wave 2, W2-2, section 8, UX-34): after the
+ * greeting and the notice, before the cards, on a home with at least one card (with
+ * nothing assigned, the home stays wave 1's empty home: greeting, heading and the
+ * "nothing assigned" line only, as is the owner's preview). First time (and in every preview):
+ * how it works, no link; with a target: the subject, its progress and one link
+ * to the lesson (its chapter on a second line); everything started done: one
+ * line, no link. A plain link: opening it is a normal open. */
+function continueArea(t: Label, lang: Lang, space: SpaceView, area: ContinueArea): Html {
+  let inner: Html;
+  if (area.kind === 'target') {
+    const forward = lang === 'ar' ? '←' : '→';
+    inner = html`<p id="continue-subject"><span class="muted">${t('subject')}:</span> <bdi>${area.card.title}</bdi></p>
+<p id="continue-progress" data-done="area">${doneLine(t, lang, area.done, area.card.count)}</p>
+<a id="continue-link" class="go next" href="${lessonHref(space, area.target.id)}"><span class="line1">${sentence(t, 'continueLink', { title: area.target.title })}</span><span class="line2">${sentence(t, 'chapterLine', { title: area.target.chapterTitle })}</span><span class="arrow" aria-hidden="true">${forward}</span></a>`;
+  } else if (area.kind === 'all-done') {
+    inner = html`<p id="continue-state" data-done="area">${t('everythingDone')}</p>`;
+  } else {
+    inner = html`<p id="continue-state" class="muted">${sentence(t, 'continueFirst', { lesson: t('lesson').toLocaleLowerCase(lang) })}</p>`;
+  }
+  return html`<section id="continue" class="card continue" aria-labelledby="continue-heading"><style>${raw(CONTINUE_CSS)}</style>
+<h2 id="continue-heading">${t('continueHeading')}</h2>
+${inner}
+</section>`;
+}
+
 /** A learner’s home: exactly the published subjects assigned to them, as cards;
  * My results is in the top navigation; from R2-d, while lesson activity is on,
  * the learner’s notice (AT-15f), in full once, then folded (wave 1, section 7). */
-export function learnerHome(t: Label, lang: Lang, space: SpaceView, displayName: string, cards: LearnerCard[], notice: NoticeForm | null = null): Html {
+export function learnerHome(
+  t: Label, lang: Lang, space: SpaceView, displayName: string, cards: LearnerCard[], notice: NoticeForm | null = null,
+  where: { area: ContinueArea; progress: Map<string, CardProgress> } = { area: { kind: 'first' }, progress: new Map() },
+): Html {
   // The heading shows also with nothing assigned, as today: it carries the
   // kit's subject word (release 1 AT-5.6; contract section 10 keeps kit-word
   // assertions unchanged).
   const list = html`<h2>${t('assignedToYou')} <span class="muted">· ${t('subject')}</span></h2>
 ${cards.length
-    ? html`<ul id="my-list" class="cards">${cards.map((card) => subjectCard(t, lang, space, card))}</ul>`
+    ? html`<ul id="my-list" class="cards">${cards.map((card) => subjectCard(t, lang, space, card, where.progress.get(card.id)))}</ul>`
     : html`<p id="nothing-yet" class="card message">${t('nothingAssigned')}</p>`}`;
   const body = html`<p id="greeting">${t('welcome', { name: displayName })}</p>
 ${notice ? activityNotice(t, notice, learnerUrl(space), Boolean(space.preview)) : ''}
-${list}`;
+${cards.length ? html`${continueArea(t, lang, space, where.area)}
+` : ''}${list}`;
   return spacePage(t, lang, space, space.name, body, { current: 'home', wide: true });
 }
 
@@ -103,14 +143,18 @@ details.fold .list li.is-done>a{flex:1 1 auto;min-width:0}`;
 /** The progress line under a subject's title (LMS wave 2, section 5, UX-29): "Done: N of M <lessons>", or "All done: M <lessons>"; nothing while N = 0. Numbers in the digits of the place line. */
 function progressLine(t: Label, lang: Lang, n: number, total: number): Html | string {
   if (n === 0) return '';
+  return html`
+<style>${raw(OUTLINE_DONE_CSS)}</style><p id="done-progress" class="done-progress">${doneLine(t, lang, n, total)}</p>`;
+}
+
+/** "Done: N of M <lessons>", or "All done: M <lessons>" when N = M (section 5): the outline's progress line, and from W2-2 the home's. */
+function doneLine(t: Label, lang: Lang, n: number, total: number): (Html | string)[] {
   const digits = (v: number) => html`<bdi dir="ltr" class="nowrap">${String(v)}</bdi>`;
   // The total with the plural kit word (AT-1.6); for one, the count line of today.
   const count = html`${total === 1 ? lessonCount(t, lang, 1) : sentence(t, 'doneCount', { n: String(total) })}`;
-  const line = n >= total
+  return n >= total
     ? marked(t, 'allDone', { count, total: digits(total) })
     : marked(t, 'doneProgress', { n: digits(n), count, total: digits(total) });
-  return html`
-<style>${raw(OUTLINE_DONE_CSS)}</style><p id="done-progress" class="done-progress">${line}</p>`;
 }
 
 /** Which chapters open (sections 6.1 to 6.3): three or fewer, all; more, none,

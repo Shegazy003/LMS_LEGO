@@ -176,9 +176,13 @@ export function exemptRemoved(html: string): string {
 // words of every ui.ts key W2-1 added, and the tick's marker attribute, for
 // guardian pages and for other learners' reach, and pass with A's marks present.
 
-/** The ui.ts keys W2-1 (W2-1a and W2-1b) added that a page shows as words. (doneCount
+/** The ui.ts keys W2-1 (W2-1a and W2-1b) and W2-2 added that a page shows as words. (doneCount
  * is only the number part inside doneProgress and allDone, so it is found through them.) */
-export const W2_KEYS = ['markDone', 'markNotDone', 'doneTag', 'markedDone', 'markedNotDone', 'markFailed', 'doneProgress', 'allDone', 'chapterAllDone'] as const;
+export const W2_KEYS = [
+  'markDone', 'markNotDone', 'doneTag', 'markedDone', 'markedNotDone', 'markFailed', 'doneProgress', 'allDone', 'chapterAllDone',
+  // W2-2 (AT-5.4): the learner home's continue area and the started card's action.
+  'continueHeading', 'continueFirst', 'continueLink', 'everythingDone', 'readAgain',
+] as const;
 
 /** A's done marks while the viewers look around: A presses "Mark as done" on both
  * of her lessons (Mathematics, shared with B and C, and Arabic, hers alone). */
@@ -197,13 +201,17 @@ export async function withDoneMarks(w: PrivacyWorld): Promise<void> {
 
 /** The done-mark words a viewer must never meet, in both languages: the fixed text of each key.
  * A viewer who is also a learner meets "Mark as done" on their own lessons (and, in Arabic, the
- * tag word inside it), so for them those two are left out: the tag is still found by its marker. */
+ * tag word inside it), so for them those two are left out: the tag is still found by its marker.
+ * From W2-2 every learner home (and every preview home) also shows the continue area's heading and
+ * its first-time line, so those are left out too: a learner's own progress is found by its marker. */
+const LEARNER_TOO = new Set<string>(['markDone', 'doneTag', 'continueHeading', 'continueFirst']);
 export function doneWords(learnerToo: boolean): Map<string, string> {
   const words = new Map<string, string>();
   for (const lang of ['en', 'ar'] as const) {
     for (const key of W2_KEYS) {
-      if (learnerToo && (key === 'markDone' || key === 'doneTag')) continue;
-      words.set(`${lang} ${key}`, UI[lang][key].split('{')[0].trim());
+      if (learnerToo && LEARNER_TOO.has(key)) continue;
+      // The longest fixed part of the value (the text between its {placeholders}).
+      words.set(`${lang} ${key}`, UI[lang][key].split(/{[^}]*}/).map((x) => x.trim()).sort((x, y) => y.length - x.length)[0]);
     }
   }
   return words;

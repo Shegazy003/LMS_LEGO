@@ -22,10 +22,10 @@ import { LANGS, LANG_COOKIE, deviceLang, langChoice, makeLabel, type Concept, ty
 import { cleanDisplayName, cleanItemName, isUsername, typedUsername } from './names.ts';
 import { readLabels, switchedKit } from './kits/edit.ts';
 import {
-  findFile, findLesson, learnerCards, lessonMaterials, lessonSequence, outline, previewCards, previewableSubject, readableSubject,
+  continueWhere, findFile, findLesson, learnerCards, lessonMaterials, lessonSequence, outline, previewCards, previewableSubject, readableSubject,
   subjectsForPublisher, type Previewer, type SubjectRow,
 } from './learning.ts';
-import { doneLessonIds, isDone, markDone, markNotDone, readsAsLearner, signedInLearner } from './progress.ts';
+import { doneLessonIds, isDone, markDone, markNotDone, markOrder, readsAsLearner, signedInLearner } from './progress.ts';
 import { previewFrame, type PreviewScope } from './views/preview.ts';
 import { isGuardianHere, isLearnerHere, link, linkedLearner, linkedLearners, linksOf, subjectsSeenBy, subjectsSeenByLinked, unlink } from './guardians.ts';
 import { activityOf, activitySetting, lastOpenedOfLinked, linkedSince, recordOpen, recordingSince, switchOff, switchOn, type ActivitySetting } from './activity.ts';
@@ -854,7 +854,11 @@ async function renderLearnerHome(c: C) {
   const cards = learner ? await learnerCards(c.get('db'), view.id, user.id) : [];
   // R2-d (AT-15f): every learner is told while lesson activity is on, whether or not a guardian is linked.
   const notice = learner ? noticeFor(c, await activitySetting(c.get('db'), view.id)) : null;
-  return page(c, learnerHome(t, lang, view, user.display_name, cards, notice));
+  // LMS wave 2, W2-2 (section 8): "Continue where you stopped" and the cards'
+  // done lines, from this learner's own marks (one more read, whatever their
+  // number); a mark counts only on a lesson of one of these cards (section 6.3).
+  const where = learner ? continueWhere(cards, await markOrder(c.get('db'), signedInLearner(c))) : undefined;
+  return page(c, learnerHome(t, lang, view, user.display_name, cards, notice, where));
 }
 
 // The guardian home (release 2, R2-a): every learner actively linked to this

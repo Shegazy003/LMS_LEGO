@@ -12,7 +12,7 @@ import type { Client } from '../support/http.ts';
 import { appointAdmin, createSpace, seed } from '../support/seed.ts';
 import { utcDatePlusDays } from '../support/http.ts';
 import { ADMIN, MATH_ORDER, type Wave1World } from '../wave1/world.ts';
-import { MONA, wave3aWorld } from '../wave3a/world.ts';
+import { MONA, wave3aWorld, type Variant } from '../wave3a/world.ts';
 
 export * from '../wave3a/world.ts';
 
@@ -22,8 +22,9 @@ export const T1 = Date.UTC(2031, 2, 3, 9, 15, 42, 123);
 export const T2 = Date.UTC(2031, 2, 4, 18, 2, 7, 456);
 export const T3 = Date.UTC(2031, 2, 5, 7, 41, 33, 789);
 
-export async function wave2World(): Promise<Wave1World> {
-  const w = await wave3aWorld();
+/** The wave 2 world; W2-c (AT-5.5) is wave 3a's 'more-subjects' copy: four more published subjects assigned to Salma (through the group Science). */
+export async function wave2World(variant: Variant = 'as-is'): Promise<Wave1World> {
+  const w = await wave3aWorld(variant);
   if (w.p.runtime !== 'in-process') {
     // The spy and the forced faults need the router in this process (the job sets LMS_TEST_RUNTIME=in-process).
     await w.close();
