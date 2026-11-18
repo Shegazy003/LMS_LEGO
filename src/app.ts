@@ -79,6 +79,10 @@ import {
 } from './exams.ts';
 import { accessEndedPage, adminHome, membershipsPage, type MembershipItem, type SpaceView } from './views/space.ts';
 import { isSameOrigin } from './origin.ts';
+import {
+  UPLOAD_MAX_BODY, UPLOAD_MAX_ROWS, addPeople, check as checkUpload, fileText, repeatOf, uploadOf, type FileRefusal, type Place as UploadPlace,
+} from './upload.ts';
+import { checkPage, donePage, emptySheet, refusalText, uploadPage } from './views/upload.ts';
 import { logoKey, saveTheme, storedLogoKey } from './theme.ts';
 
 type C = Context<AppEnv>;
@@ -1254,6 +1258,104 @@ app.post('/s/:spaceId/admin/people', async (c) => {
     return renderPeople(c, { values, error: t('usernameTaken') }, 400); // taken in the same instant
   }
   return c.redirect(`/s/${space.id}/admin/people#people`, 303);
+});
+
+// LMS wave 3b, W3b-1 (product-contract v2 on PIL-232, sections 4 to 7): add a
+// class from a spreadsheet, behind the admin gate, into the space of the
+// address only (never one named in the form). The check reads the file and
+// saves nothing; the add reads the carried text again, runs every rule again
+// and saves exactly the rows that passed in one batch, or nothing (src/upload.ts).
+// No password is hashed and no reset link is made here. Every answer carries
+// no-store and no-referrer; nothing from the file reaches a log line.
+function uploadHeaders(c: C): void {
+  c.header('cache-control', 'no-store');
+  c.header('referrer-policy', 'no-referrer');
+}
+
+function uploadPlace(c: C): UploadPlace {
+  const space = c.get('space');
+  return { spaceId: space.id, adminId: c.get('user')!.id, kit: space.kit, today: utcDate(now()), ownEnd: space.validUntil };
+}
+
+/** A whole file refused: the upload page again with the message at the top (400), nothing listed, nothing saved. */
+function refuseFile(c: C, refusal: FileRefusal) {
+  const { t, lang, view } = spaceLabel(c);
+  return page(c, uploadPage(t, lang, view, { ownEnd: c.get('space').validUntil, refusal: refusalText(t, lang, refusal) }), 400);
+}
+
+/** The body of an upload form, unless it is too large to read at all. */
+async function uploadBody(c: C): Promise<Record<string, unknown> | null> {
+  if (Number(c.req.header('content-length') ?? '0') > UPLOAD_MAX_BODY) return null;
+  return c.req.parseBody();
+}
+const TOO_BIG: FileRefusal = { kind: 'tooBig', people: `${UPLOAD_MAX_ROWS}+` };
+
+app.get('/s/:spaceId/admin/upload', (c) => {
+  uploadHeaders(c);
+  const { t, lang, view } = spaceLabel(c);
+  return page(c, uploadPage(t, lang, view, { ownEnd: c.get('space').validUntil }));
+});
+
+// The empty sheet: the header line in the space's first language, UTF-8 with a byte-order mark (Excel then shows Arabic).
+app.get('/s/:spaceId/admin/upload/sheet.csv', (c) => {
+  const kit = c.get('space').kit;
+  return new Response(emptySheet(makeLabel(kit.languages[0], kit)), {
+    headers: {
+      'content-type': 'text/csv; charset=utf-8', 'content-disposition': 'attachment; filename="people.csv"',
+      'cache-control': 'no-store', 'referrer-policy': 'no-referrer',
+    },
+  });
+});
+
+app.post('/s/:spaceId/admin/upload/check', async (c) => {
+  uploadHeaders(c);
+  const body = await uploadBody(c);
+  if (!body) return refuseFile(c, TOO_BIG);
+  const file = body.file;
+  if (!(file instanceof File)) return refuseFile(c, { kind: 'empty' });
+  if (file.size > UPLOAD_MAX_BODY) return refuseFile(c, TOO_BIG);
+  const read = fileText(new Uint8Array(await file.arrayBuffer()));
+  if ('kind' in read) return refuseFile(c, read);
+  const place = uploadPlace(c);
+  const checked = await checkUpload(c.get('db'), place, read.text);
+  if ('refusal' in checked) return refuseFile(c, checked.refusal);
+  const { t, lang, view } = spaceLabel(c);
+  return page(c, checkPage(t, lang, view, { checked, text: read.text, ownEnd: place.ownEnd }));
+});
+
+app.post('/s/:spaceId/admin/upload/add', async (c) => {
+  uploadHeaders(c);
+  const body = await uploadBody(c);
+  if (!body) return refuseFile(c, TOO_BIG);
+  const text = typeof body.text === 'string' ? body.text : '';
+  const carried = typeof body.fp === 'string' ? body.fp : '';
+  const place = uploadPlace(c);
+  const db = c.get('db');
+  const checked = await checkUpload(db, place, text);
+  if ('refusal' in checked) return refuseFile(c, checked.refusal);
+  const { t, lang, view } = spaceLabel(c);
+  if (checked.add.length && checked.fingerprint === carried) {
+    try {
+      const id = await addPeople(db, place, { add: checked.add, refused: checked.refused.length, iterations: c.get('iterations'), now: now() });
+      return c.redirect(`/s/${place.spaceId}/admin/upload/${id}`, 303);
+    } catch {
+      logError('class upload failed');
+      return page(c, checkPage(t, lang, view, { checked, text, ownEnd: place.ownEnd, notice: 'uploadFailed' }), 500);
+    }
+  }
+  // The repeat rule (section 4 step 4): this very form was already added by this admin's earlier upload.
+  const repeat = await repeatOf(place, checked, carried);
+  if (repeat) return c.redirect(`/s/${place.spaceId}/admin/upload/${repeat}?again=1`, 303);
+  return page(c, checkPage(t, lang, view, { checked, text, ownEnd: place.ownEnd, notice: 'checkChanged' }), 409);
+});
+
+// The done page: read only with the space id of the address (another space's or an unknown id: 404).
+app.get('/s/:spaceId/admin/upload/:uploadId', async (c) => {
+  uploadHeaders(c);
+  const { t, lang, view } = spaceLabel(c);
+  const found = await uploadOf(c.get('db'), view.id, c.req.param('uploadId'));
+  if (!found) return refuse(c, 404, 'notFound');
+  return page(c, donePage(t, lang, view, { ...found, again: c.req.query('again') === '1' }));
 });
 
 // One person's page and its actions (rule 5): set a new password, or send a

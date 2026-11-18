@@ -90,7 +90,8 @@ describe('W3a AT-1 who may preview, and what each may see', { concurrency: false
       assert.ok(doc.includes(`id="nothing-yet"`) && doc.includes(word(lang, 'nothingAssigned')), 'nothing assigned');
       assert.ok(!/data-subject=|id="notice-|id="results"/.test(doc), 'no subject, notice or result');
       assert.ok((await results.text()).includes(`id="results-none"`), 'My results: the empty state');
-      const forbidden = /\b(membership|group|group_member|subject|subject_access|chapter|lesson|material|guardian_link|exam|exam_result|exam_result_history|lesson_view_setting|lesson_view)\b/i;
+      // LMS wave 3b (contract on PIL-232, section 10 item 2): class_upload too.
+      const forbidden = /\b(membership|group|group_member|subject|subject_access|chapter|lesson|material|guardian_link|exam|exam_result|exam_result_history|lesson_view_setting|lesson_view|class_upload)\b/i;
       const named = statements.filter((s) => forbidden.test(s.replace(/'[^']*'/g, "''")));
       t.diagnostic(`owner preview statements (${lang}): ${statements.length}`);
       assert.deepEqual(named, [], 'no statement names a table inside the space');

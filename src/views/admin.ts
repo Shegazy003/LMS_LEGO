@@ -26,14 +26,18 @@ export interface AppointForm {
   valid_until?: string;
 }
 
-/** A person on the people list: their row, and whether their access has ended. */
-export type ListedPerson = PersonRow & { ended: boolean };
+/** A person on the people list: their row, whether their access has ended, and (wave 3b) whether they have no password yet. */
+export type ListedPerson = PersonRow & { ended: boolean; no_password?: boolean };
+
+// LMS wave 3b (ux-plan UX-39): "No password yet" is a text tag with a border, never colour alone.
+const NO_PASSWORD_TAG = 'display:inline-block;padding:0 8px;border:1px solid #57606a;border-radius:999px;font-size:.875rem;font-weight:600;color:#1b1f24;background:#fff';
 
 function personRow(t: Label, space: SpaceView, p: ListedPerson): Html {
   const when = p.ended
     ? sentence(t, 'endedOn', { date: endedDate(p.valid_until, p.ended_on) })
     : sentence(t, 'validUntil', { date: p.valid_until });
-  return html`<li data-user="${p.id}"><a class="person" href="${base(space)}/people/${p.id}"><bdi>${p.display_name}</bdi></a>
+  const tag = p.no_password ? html` <span class="tag" data-tag="no-password" style="${NO_PASSWORD_TAG}">${t('noPasswordTag')}</span>` : '';
+  return html`<li data-user="${p.id}"><a class="person" href="${base(space)}/people/${p.id}"><bdi>${p.display_name}</bdi></a>${tag}
   <div class="muted">${t(p.role === 'publisher' ? 'publisher' : p.role === 'guardian' ? 'guardian' : 'learner')} · ${when} · ${sentence(t, 'mobileEnding', { digits: lastDigits(p.mobile) })}</div></li>`;
 }
 
@@ -61,6 +65,7 @@ ${ended.length
   ? html`<details id="ended" class="card"${v.search ? raw(' open') : ''}><summary>${t('endedTitle', { count: String(ended.length) })}</summary><ul class="list">${ended}</ul></details>`
   : ''}
 <h2>${t('appointPerson')}</h2>
+<p><a id="upload-entry" class="button plain" style="display:inline-flex;align-items:center;min-height:44px" href="${base(space)}/upload">${t('uploadEntry')}</a></p>
 ${errorBox(v.error)}
 <form id="appoint" class="stack card" method="post" action="${base(space)}/people">
   <label>${t('displayName')}<input name="display_name" required maxlength="${DISPLAY_NAME_MAX}" value="${v.values.display_name ?? ''}"></label>

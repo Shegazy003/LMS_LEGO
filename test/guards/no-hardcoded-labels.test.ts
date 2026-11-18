@@ -44,10 +44,17 @@ function forbiddenWords(): string[] {
  * ${…} expressions, HTML tags and label('key') lookups removed. Module paths in
  * import/export statements and literals that are exactly a canonical concept
  * key (an identifier such as 'subject', not a word on a page) are not text. */
+// LMS wave 3b (product-contract v2 on PIL-232, section 6.4): the fixed log
+// event 'class upload failed' is a log line, never a word on a page, so log
+// events (each logError('<event>') call and the LogEvent list of src/log.ts)
+// are not text either. The log guard (test/guards/log-redaction.test.ts) keeps
+// them fixed.
 export function visibleText(source: string): string {
   const withoutLookups = source
     .replace(/\b(?:label|t)\(\s*(['"`])[A-Za-z]+\1/g, '')
-    .replace(/\b(from|import)\s*(['"])[^'"\n]*\2/g, '');
+    .replace(/\b(from|import)\s*(['"])[^'"\n]*\2/g, '')
+    .replace(/\blogError\(\s*'[^'\n]*'/g, '')
+    .replace(/\bexport type LogEvent = [^;]*;/g, '');
   const pieces: string[] = [];
   const literal = /'((?:[^'\\\n]|\\.)*)'|"((?:[^"\\\n]|\\.)*)"|`((?:[^`\\]|\\.)*)`/g;
   for (const m of withoutLookups.matchAll(literal)) {
@@ -93,6 +100,10 @@ test('labels guard: the scanner catches a hard-coded role word (self-check)', ()
   assert.deepEqual(findHardCoded("const ok = t('guardian'); const role = 'guardian';"), []);
   assert.deepEqual(findHardCoded("const s = 'Linked to this {guardian}: {subject} titles';"), [], 'placeholders are lookups');
   assert.deepEqual(findHardCoded("const s = 'Linked to this Guardian {guardian}';"), ['Guardian'], 'the word itself is still caught beside one');
+  // LMS wave 3b: a fixed log event is not page text, but the same word on a page still is.
+  assert.deepEqual(findHardCoded("logError('class upload failed');"), [], 'a log event');
+  assert.deepEqual(findHardCoded("export type LogEvent = 'request failed' | 'class upload failed';"), [], 'the list of log events');
+  assert.deepEqual(findHardCoded("logError('class upload failed'); const s = html`<p>Class list</p>`;"), ['Class'], 'a page word beside a log event');
 });
 
 test('labels guard: no page template or product sentence hard-codes a canonical role word', () => {

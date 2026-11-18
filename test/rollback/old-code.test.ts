@@ -29,6 +29,10 @@ const SEEN_ONLY_BY_SALMA = ['Salma Test', 'Mathematics', 'Fractions', 'Adding fr
 const EXAM_TITLE = 'Mid-term exam';
 const DRAFT_TITLE = 'Quiz draft';
 const MARKS_SHOWN_TO_NOBODY = [EXAM_TITLE, DRAFT_TITLE, '17.5', '17,5'];
+// From LMS wave 3b (W3b-1, AT-5.5): a person added from a spreadsheet, with the no-password value
+// (today's stored form, the marker salt of 16 zero bytes, a random 32-byte hash nobody can match).
+const NO_PASSWORD = { display_name: 'Nopass Test', username: 'nopass.w3b' };
+const NO_PASSWORD_HASH = 'pbkdf2-sha256$100000$AAAAAAAAAAAAAAAAAAAAAA$q8Yb3Wl0Hn2T5vR7cK9xJ1mZ4pQ6sD8fG0hU2iV3wE4';
 
 let worker: RunningWorker;
 let spaceId = '';
@@ -83,6 +87,12 @@ describe('AT-14a old code on a release 2 database shows a guardian nothing, expo
     // From LMS wave 2 (W2-1, AT-3.3): Salma's done mark on her lesson.
     if (await tableExists('done_mark')) {
       await worker.sql(`INSERT INTO done_mark (space_id, lesson_id, learner_user_id, marked_at) VALUES ('${spaceId}', '${content.lesson}', '${ids[SALMA.username]}', 1951234567890)`);
+    }
+    // From LMS wave 3b (W3b-1, AT-5.5): an upload row, and the no-password person it added (the marker salt and a random hash).
+    if (await tableExists('class_upload')) {
+      await worker.sql(`INSERT INTO class_upload (id, space_id, uploaded_by, uploaded_at, lines_added, lines_refused) VALUES ('upload-1', '${spaceId}', '${adminId}', 1951234567890, 1, 0)`);
+      await worker.sql(`INSERT INTO user (id, username, password_hash, display_name, mobile, is_owner, created_at) VALUES ('nopass-1', '${NO_PASSWORD.username}', '${NO_PASSWORD_HASH}', '${NO_PASSWORD.display_name}', '+201046480001', 0, 1)`);
+      await worker.sql(`INSERT INTO membership (id, space_id, user_id, role, valid_from, valid_until, granted_by, class_upload_id) VALUES ('nopass-m', '${spaceId}', 'nopass-1', 'learner', '${utcDatePlusDays(0)}', '${utcDatePlusDays(30)}', '${adminId}', 'upload-1')`);
     }
     // From R2-b: an exam of Mathematics with Salma's published mark (and its history row), and a draft of another exam.
     if (await tableExists('exam')) {
@@ -187,6 +197,46 @@ describe('AT-14a old code on a release 2 database shows a guardian nothing, expo
       }
     }
     assert.deepEqual(await marks(), before, 'old code wrote no done mark and deleted none');
+  });
+
+  it('W3b AT-5.5 old code shows nothing of an upload, refuses the no-password person as a wrong password, and its reset link sets the password', async () => {
+    assert.ok(await tableExists('class_upload'), 'the rollback job gave the old code the upload migration');
+    const admin = await signedIn(worker.url, ADMIN.username, ADMIN.password);
+    for (const path of [`/s/${spaceId}`, `/s/${spaceId}/admin/people`, `/s/${spaceId}/admin/people/nopass-1`, `/s/${spaceId}/admin/upload`]) {
+      const body = await (await admin.get(path)).text();
+      for (const sign of ['upload-1', 'class_upload', 'No password yet', 'بلا كلمة مرور', 'Add from a spreadsheet', 'إضافة من جدول', 'AAAAAAAAAAAAAAAAAAAAAA']) {
+        assert.ok(!body.includes(sign), `the admin, ${path}: nothing of an upload (${sign})`);
+      }
+    }
+    // Sign-in: the no-password person is refused exactly as Hadeer with a wrong password (the same answer, the same full hash).
+    const attempt = async (username: string, password: string) => {
+      const c = new Client(worker.url);
+      const started = performance.now();
+      const res = await c.post('/signin', { username, password });
+      const ms = performance.now() - started;
+      return { status: res.status, body: (await res.text()).split(username).join('<user>'), ms };
+    };
+    const median = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
+    const wrong = [await attempt(HADEER.username, 'not-her-password'), await attempt(HADEER.username, 'password123')];
+    const none = [await attempt(NO_PASSWORD.username, ''), await attempt(NO_PASSWORD.username, 'password123'), await attempt(NO_PASSWORD.username, NO_PASSWORD.display_name)];
+    for (const n of none) {
+      assert.equal(n.status, wrong[1].status, 'the same status as a wrong password');
+      assert.equal(n.body, wrong[1].body, 'the same page as a wrong password');
+    }
+    const ratio = median(none.slice(1).map((n) => n.ms)) / median(wrong.map((x) => x.ms));
+    assert.ok(ratio > 0.4 && ratio < 2.5, `the refusal takes as long as a wrong password (the full hash runs): ratio ${ratio.toFixed(2)}`);
+    // The old code's reset link (the admin's person page) still sets a password, and the person then signs in.
+    const issued = await admin.post(`/s/${spaceId}/admin/people/nopass-1/link`, {});
+    assert.equal(issued.status, 200, 'the admin issues a reset link for the no-password person');
+    const token = /\/r\/([A-Za-z0-9_-]{20,})/.exec(await issued.text())?.[1];
+    assert.ok(token, 'the link is shown once');
+    const set = await new Client(worker.url).post(`/r/${token}`, { username: NO_PASSWORD.username, new_password: 'nopass-new-pass' });
+    assert.equal(set.status, 200, 'the link sets the password');
+    const signin = await new Client(worker.url).post('/signin', { username: NO_PASSWORD.username, password: 'nopass-new-pass' });
+    assert.equal(signin.status, 302, 'the person signs in with the password they set');
+    assert.notEqual(String((await worker.sql("SELECT password_hash FROM user WHERE id = 'nopass-1'"))[0].password_hash).split('$')[2], 'AAAAAAAAAAAAAAAAAAAAAA', 'a real hash now');
+    assert.equal(await count("SELECT COUNT(*) AS n FROM class_upload WHERE id = 'upload-1'"), 1, 'the upload row is untouched');
+    assert.equal(await count("SELECT COUNT(*) AS n FROM membership WHERE class_upload_id = 'upload-1'"), 1, 'the membership keeps its upload id');
   });
 
   it('old code writes no lesson-view row and deletes nothing release 2 stored', async () => {

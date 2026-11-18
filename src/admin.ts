@@ -11,6 +11,7 @@
 // - Each insert that links rows (a group member, a subject's reader) selects
 //   its rows from this space in the same statement, so it cannot link across.
 import type { Db, Param } from './db.ts';
+import { b64urlEncode } from './auth/encoding.ts';
 
 // From release 2 (R2-a) an admin also appoints guardians (a parent at the
 // School kit, a supervisor at the Company kit).
@@ -47,15 +48,42 @@ export function searchText(raw: string): string {
  * search, only those whose name or username contains it (letter case aside,
  * for a–z), in this space only. instr() reads the typed text as plain text
  * (no wildcards) and has no pattern-length limit, which D1 sets on LIKE. */
-export function peopleOf(db: Db, spaceId: string, search = ''): Promise<PersonRow[]> {
-  return db.all<PersonRow>(
-    `SELECT u.id, u.username, u.display_name, u.mobile, m.role, m.valid_from, m.valid_until, m.ended_on
+// LMS wave 3b (product-contract v2 on PIL-232, section 6.1): the list also
+// says who has no password yet. The stored value is read only to ask
+// hasNoPassword and is dropped at once: no page receives it.
+export async function peopleOf(db: Db, spaceId: string, search = ''): Promise<(PersonRow & { no_password: boolean })[]> {
+  const rows = await db.all<PersonRow & { password_hash: string }>(
+    `SELECT u.id, u.username, u.display_name, u.mobile, m.role, m.valid_from, m.valid_until, m.ended_on, u.password_hash
        FROM membership m JOIN user u ON u.id = m.user_id
       WHERE m.space_id = ? AND m.role IN ('publisher', 'learner', 'guardian')
         AND (instr(lower(u.display_name), lower(?)) > 0 OR instr(u.username, lower(?)) > 0)
       ORDER BY CASE m.role WHEN 'publisher' THEN 0 WHEN 'learner' THEN 1 ELSE 2 END, u.display_name, u.username`,
     spaceId, search, search,
   );
+  return rows.map(({ password_hash, ...p }) => ({ ...p, no_password: hasNoPassword(password_hash) }));
+}
+
+// ------------------------------------------------- no password yet (wave 3b) ----
+// A person added from a spreadsheet (src/upload.ts) gets no usable password
+// (product-contract v2 on PIL-232, section 6.1). Their stored value is in
+// exactly today's form, pbkdf2-sha256$<iterations>$<salt>$<hash>, with the
+// configured strength, the fixed marker salt (16 zero bytes) and 32 random
+// bytes as the hash: no password can match it, and making it costs no hashing.
+// No code path treats it specially: sign-in runs the full PBKDF2 and refuses it
+// as any wrong password, in this code and in earlier code alike. A real hash
+// never carries the marker (hashPassword draws a random 16-byte salt). The
+// reset link and "Set a new password" replace it with a real hash, as today.
+/** The marker salt of the no-password value: 16 zero bytes, base64url. */
+export const NO_PASSWORD_SALT = 'AAAAAAAAAAAAAAAAAAAAAA';
+
+/** A new no-password value (a different random hash every time). */
+export function noPasswordValue(iterations: number): string {
+  return `pbkdf2-sha256$${iterations}$${NO_PASSWORD_SALT}$${b64urlEncode(crypto.getRandomValues(new Uint8Array(32)))}`;
+}
+
+/** Whether a stored value is the no-password value (its salt is the marker): the only reader of the marker. */
+export function hasNoPassword(storedHash: string): boolean {
+  return storedHash.split('$')[2] === NO_PASSWORD_SALT;
 }
 
 /** A person this space's admin may manage: a publisher, learner or guardian
