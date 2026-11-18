@@ -1013,6 +1013,9 @@ jobs:
       - name: W3b AT-3.1 a new person has the no-password value; every sign-in attempt is refused as a wrong password and counts
         if: success() || failure()
         run: npm run test:wave3b -- --test-name-pattern='^W3b AT-3\.1 ' test/wave3b/at3.test.ts
+      - name: W3b AT-3.2 the person page says No password yet; today's reset link flow is unchanged and sets it; the tag and the line then go; Set a new password does the same
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W3b AT-3\.2 ' test/wave3b/at3.test.ts
       - name: W3b AT-3.3 the upload makes no reset link and no password; the upload code hashes nothing
         if: success() || failure()
         run: npm run test:wave3b -- --test-name-pattern='^W3b AT-3\.3 ' test/wave3b/at3.test.ts
@@ -1022,6 +1025,9 @@ jobs:
       - name: W3b AT-3.5 every reader of password_hash is listed and refuses the no-password value
         if: success() || failure()
         run: npm run test:wave3b -- --test-name-pattern='^W3b AT-3\.5 ' test/wave3b/at3.test.ts
+      - name: W3b AT-3.6 the follow-up for a whole class, three people in turn from the done page, one tap, the link once, Back to the upload at their row, Password set after one sets it
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W3b AT-3\.6 ' test/wave3b/at3.test.ts
       - name: W3b AT-4.1 every other person is refused with today's answer before any upload work (owner, publisher, learner, guardian, other space admin, ended admin, cross-site, other space upload id, unknown upload id)
         if: success() || failure()
         run: npm run test:wave3b -- --test-name-pattern='^W3b AT-4\.1 ' test/wave3b/at4.test.ts
@@ -1043,6 +1049,9 @@ jobs:
       - name: W3b AT-5.1 each add makes exactly one class_upload row of six fields; a check makes none
         if: success() || failure()
         run: npm run test:wave3b -- --test-name-pattern='^W3b AT-5\.1 ' test/wave3b/at5.test.ts
+      - name: W3b AT-5.2 the upload page lists Earlier uploads, newest first, at most 10, each linking to its done page; each admin sees only their space's; no owner page shows an upload
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W3b AT-5\.2 ' test/wave3b/at5.test.ts
       - name: W3b AT-5.3 the forward migration adds exactly class_upload and membership.class_upload_id; a second apply is a no-op
         if: success() || failure()
         run: npm run test:wave3b -- --test-name-pattern='^W3b AT-5\.3 ' test/wave3b/at5.test.ts
@@ -1061,9 +1070,15 @@ jobs:
       - name: UX-38 refusal, changed, failed and second-press states
         if: success() || failure()
         run: npm run test:wave3b -- --test-name-pattern='^UX-38 ' test/wave3b/ux.test.ts
-      - name: UX-39 done page and no-password tag (W3b-1a part)
+      - name: UX-39 done page and no-password tag
         if: success() || failure()
         run: npm run test:wave3b -- --test-name-pattern='^UX-39 ' test/wave3b/ux.test.ts
+      - name: UX-40 earlier uploads list
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-40 ' test/wave3b/ux.test.ts
+      - name: UX-43 reset link round trip from the done page
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-43 ' test/wave3b/ux.test.ts
       - name: UX-41 Arabic, mixed text and kit words for the upload (three kits)
         if: success() || failure()
         run: npm run test:wave3b -- --test-name-pattern='^UX-41 ' test/wave3b/ux.test.ts

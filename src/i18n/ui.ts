@@ -497,6 +497,12 @@ const en = {
   doneNoPassword: 'None of them has a password yet. Send each one a reset link (it works for 30 minutes from sending), or set a first password on their page.',
   noPasswordTag: 'No password yet',
   passwordSetTag: 'Password set',
+  // W3b-1b: the person-page line, the way back from the reset-link pages, Earlier uploads.
+  noPasswordLine: 'No password yet. Send a reset link, or set a first password below.',
+  backToUpload: 'Back to the upload',
+  uploadsHeading: 'Earlier uploads',
+  uploadsRow: '{date}, {name}: added {added}, refused {refused}',
+  uploadsNone: 'No uploads yet.',
   addToGroup: 'Add people to a {group}',
   // The month words of the shared date form "3 June 2027" (Gregorian calendar), in order, separated by commas.
   monthWords: 'January,February,March,April,May,June,July,August,September,October,November,December',
@@ -990,6 +996,11 @@ const ar: Record<UiKey, string> = {
   doneNoPassword: 'لا توجد كلمة مرور لأيّ منهم بعد. يُرسَل لكل شخص رابط إعادة تعيين (يعمل 30 دقيقة من الإرسال)، أو تُضبط كلمة مرور أولى من صفحته.',
   noPasswordTag: 'بلا كلمة مرور بعد',
   passwordSetTag: 'كلمة المرور مضبوطة',
+  noPasswordLine: 'لا توجد كلمة مرور بعد. يُرسَل رابط إعادة تعيين، أو تُضبط كلمة مرور أولى أدناه.',
+  backToUpload: 'العودة إلى عملية الرفع',
+  uploadsHeading: 'عمليات الرفع السابقة',
+  uploadsRow: '{date}، {name}: أُضيف {added}، رُفض {refused}',
+  uploadsNone: 'لا توجد عمليات رفع بعد.',
   addToGroup: 'إضافة أشخاص إلى {group}',
   monthWords: 'يناير,فبراير,مارس,أبريل,مايو,يونيو,يوليو,أغسطس,سبتمبر,أكتوبر,نوفمبر,ديسمبر',
 };

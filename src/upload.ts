@@ -393,5 +393,33 @@ export async function uploadOf(db: Db, spaceId: string, uploadId: string): Promi
   return { upload, people: rows.map(({ password_hash, ...p }) => ({ ...p, no_password: hasNoPassword(password_hash) })) };
 }
 
+// ------------------------------------------- the follow-up (W3b-1b) ----
+
+/** How many earlier uploads the upload page lists (ux-plan UX-40). */
+export const UPLOADS_LISTED = 10;
+
+/** This space's latest uploads, newest first, at most UPLOADS_LISTED (UX-40, AT-5.2). One read. */
+export function uploadsOf(db: Db, spaceId: string): Promise<UploadRow[]> {
+  return db.all<UploadRow>(
+    `SELECT cu.id, cu.uploaded_at, cu.lines_added, cu.lines_refused, u.display_name AS uploader
+       FROM class_upload cu JOIN user u ON u.id = cu.uploaded_by
+      WHERE cu.space_id = ?
+      ORDER BY cu.uploaded_at DESC, cu.id DESC
+      LIMIT ?`,
+    spaceId, UPLOADS_LISTED,
+  );
+}
+
+/** Whether `back` names an upload of this space that added this person (section 4 step 5): only then do
+ * the reset-link pages show "Back to the upload". One read; anything else is ignored. */
+export async function isBackFor(db: Db, spaceId: string, uploadId: string, userId: string): Promise<boolean> {
+  const row = await db.first<{ ok: number }>(
+    `SELECT 1 AS ok FROM membership m JOIN class_upload cu ON cu.id = m.class_upload_id AND cu.space_id = m.space_id
+      WHERE m.space_id = ? AND m.user_id = ? AND cu.id = ?`,
+    spaceId, userId, uploadId,
+  );
+  return !!row;
+}
+
 /** The columns' words in a language, for the how-to, the messages and the empty sheet. */
 export const columnWords = (lang: Lang) => COLUMNS.map((c) => UI[lang][c]);

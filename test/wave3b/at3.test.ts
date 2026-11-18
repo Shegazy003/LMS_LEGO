@@ -1,14 +1,16 @@
-// LMS wave 3b, W3b-1a (product-contract v2 on PIL-232, AT-3.1 and AT-3.3 to
-// AT-3.5): no password column; each new person sets their own password through
-// today's reset link. AT-3.2 and AT-3.6 belong to W3b-1b. One test per label;
-// each makes the people it needs (fresh usernames). Made-up data only.
+// LMS wave 3b, W3b-1 (product-contract v2 on PIL-232, AT-3): no password
+// column; each new person sets their own password through today's reset link.
+// AT-3.1 and AT-3.3 to AT-3.5 came with W3b-1a; AT-3.2 (the person-page line)
+// and AT-3.6 (the follow-up from the done page) with W3b-1b. One test per
+// label; each makes the people it needs (fresh usernames). Made-up data only.
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { chromium } from 'playwright';
 import {
-  ADMIN, END, HEADER_EN, NO_PASSWORD, as, carriedForm, checkFile, csv, donePath, pressAdd, snapshot, spied, uploadIdOf, wave3bWorld, writes, type Wave3aWorld,
+  ADMIN, END, HEADER_EN, NO_PASSWORD, SALMA, as, browserAs, carriedForm, checkFile, csv, donePath, pressAdd, snapshot, spied, uploadIdOf, wave3bWorld, writes, type Wave3aWorld,
 } from './world.ts';
 import { verifyPassword } from '../../src/auth/password.ts';
 import { UI } from '../../src/i18n/ui.ts';
@@ -99,6 +101,48 @@ describe('W3b AT-3', { concurrency: false }, () => {
     assert.ok(!/NO_PASSWORD_SALT|hasNoPassword/.test(readFileSync(join(root, 'src/auth/password.ts'), 'utf8')), 'nor does src/auth/password.ts');
   });
 
+  it('W3b AT-3.2 the person page says No password yet; today\'s reset link flow is unchanged and sets it; the tag and the line then go; Set a new password does the same', async () => {
+    const amal = await as(w, ADMIN, 'en');
+    const { ids } = await addRows([['Line One', 'line1.t', 'Student', '01046463401', END], ['Line Two', 'line2.t', 'Student', '01046463402', END]]);
+    const LINE = UI.en.noPasswordLine;
+    assert.equal(LINE, 'No password yet. Send a reset link, or set a first password below.');
+    const listed = async (id: string) => {
+      const html = await (await amal.get(`/s/${w.school.id}/admin/people`)).text();
+      const at = html.indexOf(`<li data-user="${id}">`);
+      assert.ok(at > 0, 'the person is on the people list');
+      return html.slice(at, html.indexOf('</li>', at));
+    };
+    for (const id of ids) {
+      const html = await (await amal.get(person(id))).text();
+      assert.equal(html.split(LINE).length - 1, 1, 'the person page shows the line once');
+      assert.ok(html.indexOf(LINE) < html.indexOf('id="send-link"'), 'above the reset link block');
+      assert.ok((await listed(id)).includes(UI.en.noPasswordTag), 'the people list shows the tag');
+    }
+    // A person with a password (Salma) has no line.
+    const salma = String((await w.p.sql(`SELECT id FROM user WHERE username = '${SALMA.username}'`))[0].id);
+    assert.ok(!(await (await amal.get(person(salma))).text()).includes(LINE), 'no line for a person with a password');
+    // Today's flow, unchanged: the confirmation with the last digits, then the link once.
+    const confirm = await amal.get(`${person(ids[0])}/link`);
+    assert.equal(confirm.status, 200);
+    const confirmHtml = await confirm.text();
+    assert.ok(confirmHtml.includes('3401') && confirmHtml.includes(UI.en.confirmSend), 'the confirmation with the last digits');
+    assert.ok(!confirmHtml.includes(UI.en.backToUpload), 'opened without back: no Back to the upload');
+    const token = await sendLink(amal, ids[0]);
+    assert.ok(!/\/r\/[A-Za-z0-9_-]{20,}/.test(await (await amal.get(person(ids[0]))).text()), 'the link is shown once (not on the person page)');
+    const set = await new Client(w.p.url).post(`/r/${token}`, { username: 'line1.t', new_password: 'line-one-pass' });
+    assert.equal(set.status, 200, 'the reset link sets the password');
+    await signedIn(w.p.url, 'line1.t', 'line-one-pass');
+    assert.ok(!(await (await amal.get(person(ids[0]))).text()).includes(LINE), 'the line is gone');
+    assert.ok(!(await listed(ids[0])).includes(UI.en.noPasswordTag), 'the tag is gone');
+    // "Set a new password" by Amal: the answer page already has no line; the person signs in.
+    const byAdmin = await amal.post(`${person(ids[1])}/password`, { new_password: 'line-two-pass' });
+    assert.equal(byAdmin.status, 200);
+    assert.ok(!(await byAdmin.text()).includes(LINE), 'no line on the answer page');
+    assert.ok(!(await (await amal.get(person(ids[1]))).text()).includes(LINE), 'the line is gone');
+    assert.ok(!(await listed(ids[1])).includes(UI.en.noPasswordTag), 'the tag is gone');
+    await signedIn(w.p.url, 'line2.t', 'line-two-pass');
+  });
+
   it('W3b AT-3.3 the upload makes no reset link and no password; no page, record or log line holds one; the upload code hashes nothing', async () => {
     const links = Number((await w.p.sql('SELECT COUNT(*) AS n FROM reset_link'))[0].n);
     w.p.faults!.clearLog();
@@ -153,6 +197,7 @@ describe('W3b AT-3', { concurrency: false }, () => {
       ['src/auth/password.ts', 'UPDATE user SET password_hash = ? WHERE id = ? AND password_hash = ?'], // the rehash after a sign-in
       // Wave 3b: the "No password yet" tag, only through hasNoPassword (contract section 6.1).
       ['src/admin.ts', 'SELECT u.id, u.username, u.display_name, u.mobile, m.role, m.valid_from, m.valid_until, m.ended_on, u.password_hash FROM membership m JOIN user u ON u.id = m.user_id'], // the people list
+      ['src/admin.ts', 'SELECT u.id, u.username, u.display_name, u.mobile, m.role, m.valid_from, m.valid_until, m.ended_on, u.password_hash FROM membership m JOIN user u ON u.id = m.user_id'], // the person page line (W3b-1b)
       ['src/upload.ts', 'SELECT u.id, u.display_name, u.username, m.role, u.password_hash FROM membership m JOIN user u ON u.id = m.user_id WHERE m.space_id = ? AND m.class_upload_id = ? ORDER BY u.display_name, u.username'], // the done page
     ].map(([f, s]) => `${f}: ${s}`).sort();
     const found: string[] = [];
@@ -204,5 +249,55 @@ describe('W3b AT-3', { concurrency: false }, () => {
     assert.doesNotMatch(await hashOf(ids[1]), NO_PASSWORD, 'a real hash after Set a new password');
     await signedIn(w.p.url, 'reader2.t', 'reader-two-pass');
     void snapshot;
+  });
+
+  it('W3b AT-3.6 the follow-up for a whole class: three people in turn from the done page, one tap, the link once, Back to the upload at their row; Password set after one sets it', async () => {
+    const rows: Row[] = [['Follow One', 'follow1.t', 'Student', '01046463601', END], ['Follow Two', 'follow2.t', 'Student', '01046463602', END], ['Follow Three', 'follow3.t', 'Parent', '01046463603', END]];
+    const { uploadId, ids } = await addRows(rows);
+    const done = donePath(w.school, uploadId);
+    const browser = await chromium.launch();
+    try {
+      const { page } = await browserAs(browser, w, ADMIN, { lang: 'en' });
+      await page.goto(w.p.url + done);
+      const tokens: string[] = [];
+      for (const [i, id] of ids.entries()) {
+        // One tap on the row's button opens today's confirmation for that person.
+        await Promise.all([page.waitForEvent('load'), page.click(`#p-${id} a.send-link`)]);
+        assert.equal(new URL(page.url()).pathname + new URL(page.url()).search, `${person(id)}/link?back=${uploadId}`, `${rows[i][1]}: one tap to the confirmation`);
+        assert.equal(await page.locator('main h1').innerText(), UI.en.sendResetLink, 'today\'s confirmation');
+        assert.equal(await page.locator('#confirm-digits').innerText(), rows[i][3].slice(-4), 'with the last digits');
+        assert.equal(await page.locator('#back-upload').innerText(), UI.en.backToUpload, 'Back to the upload on the confirmation');
+        // Confirming shows the link once, with Back to the upload.
+        await Promise.all([page.waitForEvent('load'), page.click('#confirm-link button')]);
+        assert.equal(await page.locator('main h1').innerText(), UI.en.linkReadyTitle, 'the link page');
+        const link = await page.locator('#reset-link').inputValue();
+        const m = /\/r\/([A-Za-z0-9_-]{20,})$/.exec(link);
+        assert.ok(m, 'the link is shown');
+        tokens.push(m[1]);
+        const back = page.locator('#back-upload');
+        assert.equal(await back.innerText(), UI.en.backToUpload);
+        assert.equal(await back.getAttribute('href'), `${done}#p-${id}`, 'to the done page at this person\'s row');
+        await Promise.all([page.waitForEvent('load'), back.click()]);
+        assert.equal(new URL(page.url()).pathname + new URL(page.url()).hash, `${done}#p-${id}`, 'back on the done page at the row');
+        const focus = await page.evaluate(() => {
+          const a = document.activeElement as HTMLElement | null;
+          return a ? { row: a.closest('li')?.id ?? '', person: a.classList.contains('person') } : null;
+        });
+        assert.deepEqual(focus, { row: `p-${id}`, person: true }, `${rows[i][1]}: focus on their name`);
+      }
+      assert.equal(new Set(tokens).size, 3, 'three different links');
+      // One of them sets a password through the link: the done page then shows "Password set" and no button for them.
+      const set = await new Client(w.p.url).post(`/r/${tokens[1]}`, { username: rows[1][1], new_password: 'follow-two-pass' });
+      assert.equal(set.status, 200);
+      await page.goto(w.p.url + done);
+      assert.equal(await page.locator(`#p-${ids[1]} .tag`).innerText(), UI.en.passwordSetTag, '"Password set"');
+      assert.equal(await page.locator(`#p-${ids[1]} a.send-link, #p-${ids[1]} a.button, #p-${ids[1]} button`).count(), 0, 'no button');
+      for (const id of [ids[0], ids[2]]) {
+        assert.equal(await page.locator(`#p-${id} .tag`).innerText(), UI.en.noPasswordTag, 'the others still have no password');
+        assert.equal(await page.locator(`#p-${id} a.send-link`).count(), 1, 'and keep their button');
+      }
+    } finally {
+      await browser.close();
+    }
   });
 });
