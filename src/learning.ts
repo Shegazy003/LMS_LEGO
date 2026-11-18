@@ -89,13 +89,15 @@ export interface LearnerCard {
   publisherName: string | null;
   count: number;
   first: { id: string; title: string } | null;
+  /** The subject's reading sequence (wave 1, section 5.1), from the same read: LMS wave 2 (W2-2) works out "Continue" from it. */
+  steps: SequenceStep[];
 }
 
 /** The learner home’s cards in one read, whatever the number of subjects
  * (section 4.5): exactly the subjects of subjectsForLearner, in its order. */
 export async function learnerCards(db: Db, spaceId: string, userId: string): Promise<LearnerCard[]> {
-  const rows = await db.all<{ subject_id: string; subject_title: string; publisher_name: string | null; lesson_id: string | null; lesson_title: string | null }>(
-    `SELECT s.id AS subject_id, s.title AS subject_title, u.display_name AS publisher_name, l.id AS lesson_id, l.title AS lesson_title
+  const rows = await db.all<CardRow>(
+    `SELECT s.id AS subject_id, s.title AS subject_title, u.display_name AS publisher_name, c.id AS chapter_id, c.title AS chapter_title, l.id AS lesson_id, l.title AS lesson_title
        FROM subject s
        LEFT JOIN user u ON u.id = s.publisher_user_id
        LEFT JOIN chapter c ON c.subject_id = s.id AND c.space_id = s.space_id AND c.removed_at IS NULL
@@ -112,7 +114,10 @@ export async function learnerCards(db: Db, spaceId: string, userId: string): Pro
   return cardsOf(rows);
 }
 
-type CardRow = { subject_id: string; subject_title: string; publisher_name: string | null; lesson_id: string | null; lesson_title: string | null };
+type CardRow = {
+  subject_id: string; subject_title: string; publisher_name: string | null;
+  chapter_id: string | null; chapter_title: string | null; lesson_id: string | null; lesson_title: string | null;
+};
 
 /** Who a preview is drawn for (LMS wave 3a, contract section 4.1): the admin
  * previews every subject of the space, a publisher (and not admin) the
@@ -129,7 +134,7 @@ export interface Previewer {
 export async function previewCards(db: Db, spaceId: string, previewer: Previewer): Promise<LearnerCard[]> {
   const rows = previewer.kind === 'admin'
     ? await db.all<CardRow>(
-      `SELECT s.id AS subject_id, s.title AS subject_title, u.display_name AS publisher_name, l.id AS lesson_id, l.title AS lesson_title
+      `SELECT s.id AS subject_id, s.title AS subject_title, u.display_name AS publisher_name, c.id AS chapter_id, c.title AS chapter_title, l.id AS lesson_id, l.title AS lesson_title
          FROM subject s
          LEFT JOIN user u ON u.id = s.publisher_user_id
          LEFT JOIN chapter c ON c.subject_id = s.id AND c.space_id = s.space_id AND c.removed_at IS NULL
@@ -139,7 +144,7 @@ export async function previewCards(db: Db, spaceId: string, previewer: Previewer
       spaceId,
     )
     : await db.all<CardRow>(
-      `SELECT s.id AS subject_id, s.title AS subject_title, u.display_name AS publisher_name, l.id AS lesson_id, l.title AS lesson_title
+      `SELECT s.id AS subject_id, s.title AS subject_title, u.display_name AS publisher_name, c.id AS chapter_id, c.title AS chapter_title, l.id AS lesson_id, l.title AS lesson_title
          FROM subject s
          LEFT JOIN user u ON u.id = s.publisher_user_id
          LEFT JOIN chapter c ON c.subject_id = s.id AND c.space_id = s.space_id AND c.removed_at IS NULL
@@ -166,13 +171,59 @@ function cardsOf(rows: CardRow[]): LearnerCard[] {
   for (const r of rows) {
     let card = cards.at(-1);
     if (!card || card.id !== r.subject_id) {
-      cards.push((card = { id: r.subject_id, title: r.subject_title, publisherName: r.publisher_name, count: 0, first: null }));
+      cards.push((card = { id: r.subject_id, title: r.subject_title, publisherName: r.publisher_name, count: 0, first: null, steps: [] }));
     }
     if (!r.lesson_id) continue;
     card.count++;
     card.first ??= { id: r.lesson_id, title: r.lesson_title ?? '' };
+    card.steps.push({ id: r.lesson_id, title: r.lesson_title ?? '', chapterId: r.chapter_id ?? '', chapterTitle: r.chapter_title ?? '' });
   }
   return cards;
+}
+
+/** A card's progress (LMS wave 2, W2-2, section 8.3): how many of its lessons
+ * the learner marked done, and where "Continue" leads (null when all are done). */
+export interface CardProgress {
+  done: number;
+  target: SequenceStep | null;
+}
+
+/** The home's "Continue where you stopped" area (section 8.3). */
+export type ContinueArea =
+  | { kind: 'first' }
+  | { kind: 'all-done' }
+  | { kind: 'target'; card: LearnerCard; done: number; target: SequenceStep };
+
+/** Where the learner continues (section 8.2), from their own marks only: `order`
+ * holds the lesson ids they marked done, newest first, lessons marked at the same
+ * time together (progress.ts markOrder). A mark counts only on a lesson of a card
+ * (published, assigned, not removed: section 6.3). Nothing else enters the rule:
+ * no lesson open, no activity setting, no notice. Pure, so no read is added. */
+export function continueWhere(cards: LearnerCard[], order: string[][]): { area: ContinueArea; progress: Map<string, CardProgress> } {
+  const progress = new Map<string, CardProgress>();
+  const started: { card: LearnerCard; newest: number; p: CardProgress }[] = [];
+  const marked = new Set(order.flat());
+  for (const card of cards) {
+    const pos = new Map(card.steps.map((s, i) => [s.id, i]));
+    const done = new Set(card.steps.filter((s) => marked.has(s.id)).map((s) => s.id));
+    if (done.size === 0) continue;
+    // Its newest marked lesson: the latest press; equal times go to the later lesson in reading order.
+    const group = order.findIndex((g) => g.some((id) => pos.has(id)));
+    const at = Math.max(...order[group].filter((id) => pos.has(id)).map((id) => pos.get(id)!));
+    // The first lesson not done after it; if none, the first not-done lesson from the start.
+    const target = card.steps.slice(at + 1).find((s) => !done.has(s.id)) ?? card.steps.find((s) => !done.has(s.id)) ?? null;
+    const p = { done: done.size, target };
+    progress.set(card.id, p);
+    started.push({ card, newest: group, p });
+  }
+  if (started.length === 0) return { area: { kind: 'first' }, progress };
+  // Subjects by their newest mark, newest first; equal times keep the home's order (a stable sort).
+  started.sort((a, b) => a.newest - b.newest);
+  const first = started.find((s) => s.p.target);
+  return {
+    area: first ? { kind: 'target', card: first.card, done: first.p.done, target: first.p.target! } : { kind: 'all-done' },
+    progress,
+  };
 }
 
 /** One lesson in a subject’s reading order, with its chapter. */

@@ -442,6 +442,12 @@ const en = {
   allDone: 'All done: {count}',
   doneCount: '{n} {lessonPlural}',
   chapterAllDone: 'All done',
+  // W2-2 (section 8): the learner home's continue area and the started card's action.
+  continueHeading: 'Continue where you stopped',
+  continueFirst: 'Mark a {lesson} as done at its end, and your next step shows here.',
+  continueLink: 'Continue: {title}',
+  everythingDone: 'Everything you started is done.',
+  readAgain: 'Read again: {title}',
 };
 
 export type UiKey = keyof typeof en;
@@ -877,6 +883,12 @@ const ar: Record<UiKey, string> = {
   allDone: 'اكتمل الكل، عدد {lessonPlural}: {total}',
   doneCount: 'عدد {lessonPlural}: {n}',
   chapterAllDone: 'تمّ الكل',
+  // W2-2: the ux-plan wording, noun phrases and passives only.
+  continueHeading: 'المتابعة من آخر موضع',
+  continueFirst: 'عند وضع علامة "تمّ" في نهاية أيّ {lesson} تظهر هنا الخطوة التالية.',
+  continueLink: 'المتابعة: {title}',
+  everythingDone: 'اكتمل كل ما بُدئ.',
+  readAgain: 'قراءة من جديد: {title}',
 };
 
 export const UI: Record<'ar' | 'en', Record<UiKey, string>> = { en, ar };

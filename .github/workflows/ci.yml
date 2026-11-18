@@ -906,6 +906,31 @@ jobs:
       - name: UX-33 no sideways scroll, sizes and contrast for done marks
         if: success() || failure()
         run: npm run test:wave3a -- --test-name-pattern='^UX-33 ' test/wave2/ux-outline.test.ts
+      # Task W2-2 (the last of wave 2): the learner home's "Continue where you
+      # stopped" area and the started cards, from the learner's own marks
+      # (section 8). Steps W2 AT-5.1 to AT-5.5 (test/wave2/at5.test.ts; AT-5.5
+      # prints the home's read count) and UX-34, UX-35 (test/wave2/ux-home.test.ts).
+      - name: W2 AT-5.1 first time the continue area says how it works with no link, and every card is exactly today's
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^W2 AT-5\.1 ' test/wave2/at5.test.ts
+      - name: W2 AT-5.2 with marks the area and each started card lead to the target of section 8.2, in three kits
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^W2 AT-5\.2 ' test/wave2/at5.test.ts
+      - name: W2 AT-5.3 when every subject with marks is all done the area says Everything you started is done, with no link
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^W2 AT-5\.3 ' test/wave2/at5.test.ts
+      - name: W2 AT-5.4 only the learner's own marks decide it, and no other home or preview home shows any of it
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^W2 AT-5\.4 ' test/wave2/at5.test.ts
+      - name: W2 AT-5.5 the home reads the database a fixed number of times with 4 or 8 subjects and 0 or 30 marks, no-store, no stored time (prints the read count)
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^W2 AT-5\.5 ' test/wave2/at5.test.ts
+      - name: UX-34 continue area states and card actions
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^UX-34 ' test/wave2/ux-home.test.ts
+      - name: UX-35 continue area keyboard, widths and language
+        if: success() || failure()
+        run: npm run test:wave3a -- --test-name-pattern='^UX-35 ' test/wave2/ux-home.test.ts
       - name: Upload evidence (wave 3a and wave 2 screenshots, the AT-3 journey record and the read count)
         if: always() && hashFiles('evidence/**') != ''
         uses: actions/upload-artifact@v4

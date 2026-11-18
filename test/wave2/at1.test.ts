@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { chromium, type Browser } from 'playwright';
 import type { Client } from '../support/http.ts';
 import {
-  MATH_ORDER, OMAR, SALMA, T1, T2, as, browserAs, home, lessonPath, markClock, markPath, marks, plain, press, salmaThreeMarks, subjectPath,
+  MATH_ORDER, OMAR, SALMA, T1, T2, as, browserAs, element, home, lessonPath, markClock, markPath, marks, plain, press, salmaThreeMarks, subjectPath,
   wave2World, words, type Wave1World,
 } from './world.ts';
 
@@ -125,7 +125,18 @@ describe('W2 AT-1.3 with three lessons done the outline ticks exactly those and 
     assert.equal(byId(outline, 'done-progress'), 'Done: 3 of 5 lessons', 'the progress line');
     assert.match(outline, /<h1 id="subject-title"[^>]*>[^<]*<\/h1>\s*(?:<style>[^<]*<\/style>)?<p id="done-progress"/, 'right under the title');
 
-    for (const [path, html] of pagesBefore) assert.equal(await page(salma, path), html, `${path} is exactly as before the marks`);
+    // The home changes in W2-2 (the contract's AT-1.3): its continue area and the Mathematics card, and nothing else.
+    const w22 = (path: string, html: string) => {
+      if (path !== home(w.school)) return html;
+      let out = html;
+      for (const open of [/<section\b[^>]*\bid="continue"[^>]*>/, new RegExp(`<li class="card" data-subject="${w.school.math}">`)]) {
+        const e = element(out, open);
+        assert.ok(e, `the home has ${open}`);
+        out = out.slice(0, e.start) + out.slice(e.end);
+      }
+      return out;
+    };
+    for (const [path, html] of pagesBefore) assert.equal(w22(path, await page(salma, path)), w22(path, html), `${path} is exactly as before the marks`);
   });
 });
 

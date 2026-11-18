@@ -93,3 +93,21 @@ export async function doneLessonIds(db: Db, who: Learner): Promise<Set<string>> 
   );
   return new Set(rows.map((r) => r.lesson_id));
 }
+
+/** The ids of every lesson this learner marked as done in this space, newest
+ * press first, lessons pressed at the same time in one group (LMS wave 2, W2-2,
+ * section 8.2): the order "Continue where you stopped" needs, for the learner's
+ * own home only. The time orders the rows inside the statement and never
+ * leaves it: only lesson ids and their rank come back (A4, AT-5.5). The caller
+ * keeps only the countable ones (section 6.3). */
+export async function markOrder(db: Db, who: Learner): Promise<string[][]> {
+  const rows = await db.all<{ lesson_id: string; recency: number }>(
+    `SELECT d.lesson_id, DENSE_RANK() OVER (ORDER BY d.marked_at DESC) AS recency
+       FROM done_mark d WHERE d.space_id = ? AND d.learner_user_id = ?
+      ORDER BY recency, d.lesson_id`,
+    who.spaceId, who.userId,
+  );
+  const groups: string[][] = [];
+  for (const r of rows) (groups[Number(r.recency) - 1] ??= []).push(r.lesson_id);
+  return groups.filter(Boolean);
+}
