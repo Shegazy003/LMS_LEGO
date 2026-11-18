@@ -217,6 +217,58 @@ export function doneWords(learnerToo: boolean): Map<string, string> {
   return words;
 }
 
+// ---------------------------------------- add from a spreadsheet (LMS wave 3b) ----
+// Product-contract v2 on PIL-232, AT-4.3 and section 10 item 3: the scans gain
+// the full numbers of people added from a spreadsheet, and the words of the
+// ui.ts keys W3b-1 added, and pass with an upload made through the real forms.
+
+/** Two made-up people the admin adds from a spreadsheet before the scans (0104 range, as the other made-up numbers). */
+export const UPLOADED = [
+  { display_name: 'Upload Test One', username: 'upload.one', mobile: '01046470001' },
+  { display_name: 'Upload Test Two', username: 'upload.two', mobile: '01046470002' },
+];
+
+/** The ui.ts keys W3b-1 added that a page shows as words (the column words are today's keys; a few keys whose
+ * longest fixed part is a single common word, such as "Role:" or "Row", are found through the others). */
+export const W3B_KEYS = [
+  'uploadEntry', 'uploadTitle', 'uploadStep1', 'uploadHow', 'uploadDateCol', 'uploadLimits', 'uploadSheet', 'uploadFile', 'uploadCheck',
+  'uploadCheckSaves', 'checkTitle', 'checkSummary', 'checkNothingSaved', 'checkSkip', 'checkRefused', 'checkWillAdd', 'checkAdd', 'checkAnother',
+  'checkNone', 'checkChanged', 'uploadFailed', 'rowName', 'rowUsername', 'rowUsernameTwice', 'rowUsernameTaken', 'rowRoleUnclear', 'rowMobile',
+  'rowEndDate', 'rowEndDateOwn', 'rowFields', 'fileNotCsv', 'fileNotUtf8', 'fileTooBig', 'fileEmpty', 'fileColumns', 'fileColumnsTwice',
+  'filePassword', 'doneTitle', 'doneMeta', 'doneAgain', 'doneNoPassword', 'noPasswordTag', 'passwordSetTag', 'addToGroup',
+] as const;
+
+/** The admin adds UPLOADED from a spreadsheet: the check, then Add (the real forms). Returns the upload's id. */
+export async function withUpload(w: PrivacyWorld): Promise<string> {
+  const text = ['Name,Username,Role,Mobile number,End date', ...UPLOADED.map((p) => `${p.display_name},${p.username},learner,${p.mobile},${utcDatePlusDays(20)}`), ''].join('\r\n');
+  const form = new FormData();
+  form.set('file', new Blob([text], { type: 'text/csv' }), 'class.csv');
+  const checked = await w.admin.post(`/s/${w.spaceId}/admin/upload/check`, form);
+  const page = await checked.text();
+  const hidden = (name: string) => new RegExp(`<input type="hidden" name="${name}" value="([^"]*)">`).exec(page)?.[1];
+  const carried = { text: (hidden('text') ?? '').replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&'), fp: hidden('fp') ?? '' };
+  if (checked.status !== 200 || !carried.fp) throw new Error(`the admin checks the file: ${checked.status}`);
+  const added = await w.admin.post(`/s/${w.spaceId}/admin/upload/add`, carried);
+  const id = /\/admin\/upload\/([0-9a-f-]{36})$/.exec(added.headers.get('location') ?? '')?.[1];
+  if (added.status !== 303 || !id) throw new Error(`the admin adds the people: ${added.status}`);
+  return id;
+}
+
+/** The upload words a guardian or learner must never meet, in both languages (the longest fixed part of each key). */
+export function uploadWords(): Map<string, string> {
+  const words = new Map<string, string>();
+  for (const lang of ['en', 'ar'] as const) {
+    for (const key of W3B_KEYS) words.set(`${lang} ${key}`, UI[lang][key].split(/{[^}]*}/).map((x) => x.trim()).sort((x, y) => y.length - x.length)[0]);
+  }
+  return words;
+}
+
+/** Every upload word in the text a person reads on a page. */
+export function uploadHits(body: string, words = uploadWords()): string[] {
+  const text = visible(body);
+  return [...words].filter(([, value]) => text.includes(value)).map(([name]) => name);
+}
+
 /** Every done-mark word or marker on a page (words in the text a person reads, the marker anywhere). */
 export function doneHits(body: string, words: Map<string, string>): string[] {
   const text = visible(body);

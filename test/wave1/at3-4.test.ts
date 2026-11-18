@@ -27,6 +27,8 @@ const BASE_MIGRATIONS: Record<string, string> = {
   '0010_lesson_views.sql': '5cced02b9b0d13259d7ce148d67cad742293d201122f98a490eb8dd9bd10b95e',
   // LMS wave 2 (contract on PIL-225, as section 11 item 2 for W3a AT-3.5): the done-mark table.
   '0011_done_marks.sql': '4feabd782aca26c332b2282d93744198411dbe20fdef5b201cf006cebf47ab15',
+  // LMS wave 3b (contract on PIL-232, as section 10 item 1 for W3a AT-3.5): the upload table and the membership column.
+  '0012_class_upload.sql': '2a5b44991ede382449b6ca26a28a81eef40a4c2545cbe376690b247ba41939c6',
 };
 
 const schemaQuery = "SELECT type, name, tbl_name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND name <> 'd1_migrations' ORDER BY type, name";

@@ -183,6 +183,11 @@ test('role guard: every route that changes data or serves an admin or publisher 
     assert.ok(routes.some((r) => isMiddleware(r, declared) && r.path === g.gate), `the gate ${g.gate} is registered`);
   }
   assert.ok(routes.filter((r) => r.method === 'ALL').every((r) => declared.has(r.handler)), 'every ALL route of the product is declared middleware');
+  // LMS wave 3b (product-contract v2 on PIL-232, AT-4.1): the upload addresses are in the table, so this check and the sweep cover them.
+  for (const [method, path] of [['GET', '/s/:spaceId/admin/upload'], ['GET', '/s/:spaceId/admin/upload/sheet.csv'], ['POST', '/s/:spaceId/admin/upload/check'],
+    ['POST', '/s/:spaceId/admin/upload/add'], ['GET', '/s/:spaceId/admin/upload/:uploadId']]) {
+    assert.ok(handlers.some((r) => r.method === method && r.path === path), `the upload address ${method} ${path} is a gated route`);
+  }
   assert.deepEqual(ungated(routes, declared), [], 'register role routes under their gated prefix, after the gate');
 });
 

@@ -29,7 +29,17 @@ const SPACE_TABLES = [
   'lesson_view_setting', 'lesson_view',
   // LMS wave 2, W2-1 (product-contract v2 on PIL-225, AT-3.4): done_mark, a learner's own done mark per lesson.
   'done_mark',
+  // LMS wave 3b, W3b-1 (product-contract v2 on PIL-232, AT-5.6): class_upload, one row per add from a spreadsheet.
+  'class_upload',
 ];
+// LMS wave 3b (section 6.2): membership.class_upload_id is a column added to an
+// existing table, and SQLite can add a column with a one-column reference only
+// (ALTER TABLE cannot add a reference on two columns), so the database alone
+// cannot tie it to the membership's own space. The code does instead: every
+// statement that writes it takes the upload from class_upload scoped by
+// space_id in the same statement (checked by the static scan below), and
+// every read of it is scoped by both space ids.
+const ONE_COLUMN_LINKS: Record<string, string> = { 'membership.class_upload_id': 'class_upload' };
 // Tables whose rows belong to a row of a space table and carry no space_id of
 // their own (R2-b: exam_result_history, per contract section 5). A statement
 // on one of them must reach it through its parent, scoped by the parent's
@@ -130,6 +140,24 @@ test('space guard: every query under src/ that touches a space table names its s
   assert.deepEqual(offences, [], 'scope every query on a space table by space_id');
 });
 
+test('space guard: a one-column link to a space table is written only from that table in the same space (wave 3b)', () => {
+  const writers: string[] = [];
+  for (const file of sourceFiles(join(root, 'src'))) {
+    for (const sql of sqlStatements(readFileSync(file, 'utf8'))) {
+      for (const [link, parent] of Object.entries(ONE_COLUMN_LINKS)) {
+        const [table, col] = link.split('.');
+        const writes = new RegExp(`\\b(INSERT INTO|UPDATE)\\s+${table}\\b[^;]*\\b${col}\\b`, 'i').test(sql);
+        if (!writes) continue;
+        writers.push(`${relative(root, file)}: ${sql.slice(0, 80)}`);
+        const from = new RegExp(`\\bFROM\\s+${parent}\\s+([a-z_]+)\\s+WHERE\\b.*\\b\\1\\.space_id = \\?`, 'i').exec(sql);
+        assert.ok(/^INSERT INTO/i.test(sql) && from, `${link} is taken from ${parent}, scoped by its space_id, in the same statement:\n    ${sql}`);
+        assert.ok(new RegExp(`SELECT .*\\b${from[1]}\\.space_id\\b.*\\b${from[1]}\\.id\\b`, 'i').test(sql), `${link}: the row's space_id and the link both come from ${parent}`);
+      }
+    }
+  }
+  assert.ok(writers.length >= 1, 'the writer of membership.class_upload_id is found (the check is meaningful)');
+});
+
 // --------------------------------------------- 2 and 3. database, product ----
 const SPACE_A = 'مدرسة مسك';
 const SPACE_B = 'Delta Logistics';
@@ -208,6 +236,8 @@ describe('space guard: the database and the running product keep spaces apart', 
       const fks = keys.filter((k) => k.tbl === t);
       const parents = fks.filter((f) => SPACE_TABLES.includes(String(f.parent)));
       for (const fk of parents) {
+        // The one-column link of wave 3b (above), held by the code and checked by the static scan.
+        if (ONE_COLUMN_LINKS[`${t}.${String(fk.col)}`] === String(fk.parent) && fks.filter((f) => f.id === fk.id).length === 1) continue;
         const cols = fks.filter((f) => f.id === fk.id).map((f) => String(f.col));
         assert.ok(cols.includes('space_id'), `${t} → ${fk.parent} includes space_id (has ${cols.join(', ')})`);
       }

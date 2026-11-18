@@ -18,7 +18,9 @@ import { Client } from '../support/http.ts';
 import { issueLink } from '../support/admin.ts';
 import { ADMIN, C, D, HADEER, KARIM, OTHER_ADMIN, SHIMAA, personPath } from '../at9/world.ts';
 import { OWNER } from '../support/seed.ts';
-import { A, B, G1, G2, crawl, doneHits, doneWords, guardianPaths, privacyWorld, resultPaths, useLanguage, withDoneMarks, type PrivacyWorld } from './pages.ts';
+import {
+  A, B, G1, G2, UPLOADED, crawl, doneHits, doneWords, guardianPaths, privacyWorld, resultPaths, uploadHits, useLanguage, withDoneMarks, withUpload, type PrivacyWorld,
+} from './pages.ts';
 import { corrected } from '../at12/corrections.ts';
 
 const EVERYONE = [ADMIN, OTHER_ADMIN, HADEER, SHIMAA, A, B, C, D, KARIM, G1, G2];
@@ -60,6 +62,7 @@ test('AT-13b done-mark scan self-check (LMS wave 2, AT-2.4): tags, done states a
 describe('AT-13b the forbidden-string scan finds nothing a guardian or learner can reach, in Arabic and English', { concurrency: false }, () => {
   let w: PrivacyWorld;
   const resetTokens: string[] = [];
+  let uploadId = '';
   before(async () => {
     w = await privacyWorld();
     // Reset links that exist while the viewers look around (their tokens must never reach a page).
@@ -71,6 +74,8 @@ describe('AT-13b the forbidden-string scan finds nothing a guardian or learner c
     await corrected(w, w.hadeer, w.exam, w.ids[A.username], { mark: '18', reason: REASON });
     // LMS wave 2 (W2-1, AT-2.4): A's done marks are present while the others look around.
     await withDoneMarks(w);
+    // LMS wave 3b (W3b-1, AT-4.3): people added from a spreadsheet are present too.
+    uploadId = await withUpload(w);
   });
   after(async () => {
     await w?.close();
@@ -92,8 +97,14 @@ describe('AT-13b the forbidden-string scan finds nothing a guardian or learner c
       forbidden.set('the session value', session);
       resetTokens.forEach((t, i) => forbidden.set(`reset token ${i}`, t));
       for (const [readers, score] of SCORES) if (!readers.includes(viewer.username)) forbidden.set(`"${score}", which ${readers.join(', ') || 'nobody'} may read`, score);
+      // LMS wave 3b (AT-4.3): the people added from a spreadsheet, their usernames and every form of their numbers.
+      for (const p of UPLOADED) {
+        forbidden.set(`username ${p.username}`, p.username);
+        mobileForms(p.mobile).forEach((f, i) => forbidden.set(`${p.username}'s mobile (${i === 4 ? 'last eight digits' : `form ${i}`})`, f));
+      }
 
       const typed = [
+        `/s/${w.spaceId}/admin/upload`, `/s/${w.spaceId}/admin/upload/sheet.csv`, `/s/${w.spaceId}/admin/upload/${uploadId}`,
         ...Object.values(w.ids).map((id) => `/s/${w.spaceId}/linked/${id}`),
         `/s/${w.spaceId}/learn/${w.content.arabic}`, `/s/${w.spaceId}/learn/${w.content.physics}`, `/s/${w.spaceId}/read/${w.content.lesson}`,
         `/s/${w.spaceId}/file/${w.content.pdf}`, `/s/${w.otherSpaceId}`, `/s/${w.otherSpaceId}/read/${w.content.otherLesson}`,
@@ -113,6 +124,8 @@ describe('AT-13b the forbidden-string scan finds nothing a guardian or learner c
           const hits = [...forbidden].filter(([name, value]) => value && (text || !name.includes('last eight')) && lower.includes(value.toLowerCase())).map(([name]) => name);
           assert.deepEqual(hits, [], `${lang} ${page.path} (${page.status})`);
           if (text && done) assert.deepEqual(doneHits(page.body, done), [], `done marks: ${lang} ${page.path} (${page.status})`);
+          // LMS wave 3b: nothing of an upload (no upload word, no "No password yet") on a guardian's or learner's page.
+          if (text) assert.deepEqual(uploadHits(page.body), [], `upload words: ${lang} ${page.path} (${page.status})`);
         }
       }
       assert.ok(scanned >= 30, `${viewer.username}: bodies scanned ${scanned}`);

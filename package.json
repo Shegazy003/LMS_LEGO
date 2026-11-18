@@ -81,7 +81,8 @@
     "measure:password-cost": "node scripts/measure-password-cost.mjs",
     "typecheck": "tsc --noEmit",
     "dev": "wrangler d1 migrations apply lms-lego --local && wrangler dev",
-    "dev:test": "wrangler d1 migrations apply lms-lego --local --env test && wrangler dev --env test"
+    "dev:test": "wrangler d1 migrations apply lms-lego --local --env test && wrangler dev --env test",
+    "test:wave3b": "node --test --test-concurrency=1 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./test/support/github-reporter.mjs --test-reporter-destination=stdout"
   },
   "engines": {
     "node": ">=22"
