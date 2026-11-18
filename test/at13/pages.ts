@@ -176,8 +176,9 @@ export function exemptRemoved(html: string): string {
 // words of every ui.ts key W2-1 added, and the tick's marker attribute, for
 // guardian pages and for other learners' reach, and pass with A's marks present.
 
-/** The ui.ts keys W2-1a added (a page shows each as words). */
-export const W2_KEYS = ['markDone', 'markNotDone', 'doneTag', 'markedDone', 'markedNotDone', 'markFailed'] as const;
+/** The ui.ts keys W2-1 (W2-1a and W2-1b) added that a page shows as words. (doneCount
+ * is only the number part inside doneProgress and allDone, so it is found through them.) */
+export const W2_KEYS = ['markDone', 'markNotDone', 'doneTag', 'markedDone', 'markedNotDone', 'markFailed', 'doneProgress', 'allDone', 'chapterAllDone'] as const;
 
 /** A's done marks while the viewers look around: A presses "Mark as done" on both
  * of her lessons (Mathematics, shared with B and C, and Arabic, hers alone). */

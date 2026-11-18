@@ -252,7 +252,7 @@ describe('W2 AT-2.6 (W2-e) Amal and Mona, each also a learner, mark only as them
     assert.deepEqual(mine(ADMIN.username), [s.lessons['Adding fractions']]);
     assert.deepEqual(mine(MONA.username), [s.lessons['Reading decimals']]);
 
-    // On /read each sees their own state only (the outline's ticks come in W2-1b; until then it shows none to anyone).
+    // On /read and on the outline each sees their own state only (W2-1b adds the outline's ticks and progress line).
     for (const [c, own] of [[amal, 'Adding fractions'], [mona, 'Reading decimals']] as const) {
       for (const title of MATH_ORDER) {
         const lesson = await (await c.get(lessonPath(s, s.lessons[title]))).text();
@@ -260,7 +260,10 @@ describe('W2 AT-2.6 (W2-e) Amal and Mona, each also a learner, mark only as them
         assert.equal(byId(lesson, 'done-control'), mineToo ? 'Mark as not done' : 'Mark as done', `${title}: ${mineToo ? 'their own mark' : 'not theirs (Salma\'s does not count)'}`);
         assert.equal(byId(lesson, 'done-tag') !== null, mineToo, `${title}: the Done tag only on their own mark`);
       }
-      assert.ok(!/data-done/.test(await (await c.get(subjectPath(s, s.math))).text()), 'no tick on the outline');
+      const outline = await (await c.get(subjectPath(s, s.math))).text();
+      const ticked = [...outline.matchAll(/data-done="lesson"[\s\S]*?<a data-lesson="([^"]+)"/g)].map((m) => m[1]);
+      assert.deepEqual(ticked, [s.lessons[own]], `the outline: only their own tick (${own})`);
+      assert.equal(byId(outline, 'done-progress'), 'Done: 1 of 5 lessons', 'the outline: their own count');
     }
     assert.equal((await press(amal, s, s.lessons['Adding fractions'], 'not-done')).status, 303, 'Amal undoes hers');
     assert.deepEqual((await marks(w)).filter((r) => r.learner_user_id === w.ids[ADMIN.username]), [], 'her row is gone');

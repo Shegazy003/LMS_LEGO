@@ -14,7 +14,7 @@ import type { LearnerCard, LessonRow, MaterialKind, MaterialRow, OutlineChapter,
 import { externalUrl } from '../links.ts';
 import type { NoticeForm } from '../notice.ts';
 import { activityNotice } from './activity.ts';
-import { layout, sentence, type Html } from './layout.ts';
+import { layout, marked, sentence, type Html } from './layout.ts';
 import { INERT, learnerUrl, spaceHeader, spaceNav, type NavCurrent, type SpaceView } from './space.ts';
 
 export function spacePage(t: Label, lang: Lang, space: SpaceView, title: string, body: Html, opts: { current?: NavCurrent; wide?: boolean } = {}): Html {
@@ -69,17 +69,48 @@ ${list}`;
   return spacePage(t, lang, space, space.name, body, { current: 'home', wide: true });
 }
 
-/** One chapter as a native disclosure (section 6.1, UX-6): the summary holds the title, the count and a decorative marker. */
-function chapterBlock(t: Label, lang: Lang, space: SpaceView, ch: OutlineChapter, open: boolean): Html {
+/** A tick (LMS wave 2, UX-28): a sign, never a control, with its words for screen readers; `data-done` marks it for the privacy scans. */
+function tick(t: Label, kind: 'lesson' | 'chapter'): Html {
+  return html`<span class="tick" data-done="${kind}"><span aria-hidden="true">✓</span><span class="sr-only">${t(kind === 'lesson' ? 'doneTag' : 'chapterAllDone')}</span></span>`;
+}
+
+/** One chapter as a native disclosure (section 6.1, UX-6): the summary holds the title, the count and a decorative marker.
+ * LMS wave 2 (section 5): a lesson the learner marked done has a tick before its title, and a chapter whose lessons are all done a tick after its title. */
+function chapterBlock(t: Label, lang: Lang, space: SpaceView, ch: OutlineChapter, open: boolean, done: Set<string>): Html {
   const entries = ch.lessons;
-  const rows = entries.map((l) => html`<li><a data-lesson="${l.id}" href="${lessonHref(space, l.id)}"><bdi>${l.title}</bdi></a></li>`);
+  const rows = entries.map((l) => {
+    const link = html`<a data-lesson="${l.id}" href="${lessonHref(space, l.id)}"><bdi>${l.title}</bdi></a>`;
+    return done.has(l.id) ? html`<li class="is-done">${tick(t, 'lesson')}${link}</li>` : html`<li>${link}</li>`;
+  });
   const list = entries.length
     ? html`<ol class="list">${rows}</ol>`
     : html`<p class="none muted">${t('noLessonsYet')}</p>`;
+  const allDone = entries.length > 0 && entries.every((l) => done.has(l.id)) ? html` ${tick(t, 'chapter')}` : '';
   return html`<details class="card fold" id="chapter-${ch.id}" data-chapter="${ch.id}"${open ? html` open` : ''}>
-  <summary><span class="mark" aria-hidden="true"></span><span class="head"><span class="muted">${t('chapter')}</span> <bdi class="title">${ch.title}</bdi></span> <span class="count muted">${lessonCount(t, lang, ch.lessons.length)}</span></summary>
+  <summary><span class="mark" aria-hidden="true"></span><span class="head"><span class="muted">${t('chapter')}</span> <bdi class="title">${ch.title}</bdi>${allDone}</span> <span class="count muted">${lessonCount(t, lang, ch.lessons.length)}</span></summary>
   ${list}
 </details>`;
+}
+
+/** The outline's done-mark style, drawn with the progress line (as the done
+ * block does), so an outline with no done lesson is exactly today's. */
+const OUTLINE_DONE_CSS = `.done-progress{margin:4px 0 12px;font-weight:600;color:#0f5132}
+.tick{flex:0 0 auto;color:#1a7f37;font-weight:700}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+details.fold .list li.is-done{display:flex;align-items:center;gap:8px}
+details.fold .list li.is-done>a{flex:1 1 auto;min-width:0}`;
+
+/** The progress line under a subject's title (LMS wave 2, section 5, UX-29): "Done: N of M <lessons>", or "All done: M <lessons>"; nothing while N = 0. Numbers in the digits of the place line. */
+function progressLine(t: Label, lang: Lang, n: number, total: number): Html | string {
+  if (n === 0) return '';
+  const digits = (v: number) => html`<bdi dir="ltr" class="nowrap">${String(v)}</bdi>`;
+  // The total with the plural kit word (AT-1.6); for one, the count line of today.
+  const count = html`${total === 1 ? lessonCount(t, lang, 1) : sentence(t, 'doneCount', { n: String(total) })}`;
+  const line = n >= total
+    ? marked(t, 'allDone', { count, total: digits(total) })
+    : marked(t, 'doneProgress', { n: digits(n), count, total: digits(total) });
+  return html`
+<style>${raw(OUTLINE_DONE_CSS)}</style><p id="done-progress" class="done-progress">${line}</p>`;
 }
 
 /** Which chapters open (sections 6.1 to 6.3): three or fewer, all; more, none,
@@ -91,15 +122,20 @@ export function openChapters(parts: OutlineChapter[], open: string | undefined):
   return new Set(one ? [one.id] : []);
 }
 
-/** A subject: its chapters in order, each with its lessons in order, folded when there are more than three. */
-export function subjectPage(t: Label, lang: Lang, space: SpaceView, head: { id: string; title: string }, parts: OutlineChapter[], open?: string): Html {
+/** A subject: its chapters in order, each with its lessons in order, folded when there are more than three.
+ * LMS wave 2: `marks` holds the ids of the lessons the person reading as a learner marked done (empty for anyone else and in a preview); only lessons of this outline count (AT-3.6). */
+export function subjectPage(
+  t: Label, lang: Lang, space: SpaceView, head: { id: string; title: string }, parts: OutlineChapter[], open?: string, marks: Set<string> = new Set(),
+): Html {
   const opened = openChapters(parts, open);
-  const blocks = parts.length ? parts.map((ch) => chapterBlock(t, lang, space, ch, opened.has(ch.id))) : html`<p class="card muted">${t('nothingHere')}</p>`;
+  const ids = parts.flatMap((ch) => ch.lessons.map((l) => l.id));
+  const done = new Set(ids.filter((id) => marks.has(id)));
+  const blocks = parts.length ? parts.map((ch) => chapterBlock(t, lang, space, ch, opened.has(ch.id), done)) : html`<p class="card muted">${t('nothingHere')}</p>`;
   const fold = parts.length > 3
     ? html`<p id="fold-all" class="fold-all"><a id="expand-all" class="button plain" href="${learnerUrl(space, `/learn/${head.id}?open=all`)}">${t('expandAll')}</a><a id="collapse-all" class="button plain" href="${learnerUrl(space, `/learn/${head.id}?open=none`)}">${t('collapseAll')}</a></p>`
     : '';
   const body = html`<p class="muted">${t('subject')}</p>
-<h1 id="subject-title" dir="auto">${head.title}</h1>
+<h1 id="subject-title" dir="auto">${head.title}</h1>${progressLine(t, lang, done.size, ids.length)}
 ${fold}
 <div id="outline">${blocks}</div>`;
   return spacePage(t, lang, space, head.title, body);

@@ -437,6 +437,11 @@ const en = {
   markedDone: 'Marked as done.',
   markedNotDone: 'Done mark removed.',
   markFailed: 'Not saved. Please try again.',
+  // W2-1b: the progress line on the outline, and the hidden words of the tick after a title.
+  doneProgress: 'Done: {n} of {count}',
+  allDone: 'All done: {count}',
+  doneCount: '{n} {lessonPlural}',
+  chapterAllDone: 'All done',
 };
 
 export type UiKey = keyof typeof en;
@@ -866,6 +871,12 @@ const ar: Record<UiKey, string> = {
   markedDone: 'وُضعت علامة "تمّ".',
   markedNotDone: 'أُزيلت علامة "تمّ".',
   markFailed: 'لم يُحفظ. يُرجى المحاولة مرة أخرى.',
+  // W2-1b. The progress lines name the plural kit word as the card count does ("عدد <lessons>: M"),
+  // inside the noun phrase rather than as a second "عدد ...:" (an improvement within the ux-plan rule).
+  doneProgress: 'المُنجَز من {lessonPlural}: {n} من {total}',
+  allDone: 'اكتمل الكل، عدد {lessonPlural}: {total}',
+  doneCount: 'عدد {lessonPlural}: {n}',
+  chapterAllDone: 'تمّ الكل',
 };
 
 export const UI: Record<'ar' | 'en', Record<UiKey, string>> = { en, ar };

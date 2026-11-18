@@ -19,8 +19,11 @@ export type Concept = (typeof CONCEPTS)[number];
  * supervisor / employee). Like a concept, each is
  * read from the space's kit; a kit made before release 2 has none, so its seed
  * kit's word is used (SEED_KIT_WORDS). The owner's names form edits the nine
- * concepts only. */
-export const KIT_WORDS = ['guardian', 'exam', 'lessonActivity', 'lessons', 'yourGuardian', 'child'] as const;
+ * concepts only.
+ * LMS wave 2 (product-contract v2 on PIL-225, AT-1.6 and UX-32): lessonPlural,
+ * the plural of the kit lesson word in a progress line ("Done: 3 of 5
+ * <lessonPlural>"). The R2-d word "lessons" stays as it is. */
+export const KIT_WORDS = ['guardian', 'exam', 'lessonActivity', 'lessons', 'yourGuardian', 'child', 'lessonPlural'] as const;
 export type KitWord = (typeof KIT_WORDS)[number];
 
 export interface KitJson {

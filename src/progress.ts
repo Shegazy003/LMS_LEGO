@@ -84,3 +84,12 @@ export async function isDone(db: Db, who: Learner, lessonId: string): Promise<bo
   );
   return row !== null;
 }
+
+/** The ids of every lesson this learner marked as done in this space (never the time). The caller keeps only the countable ones (section 6.3, AT-3.6). */
+export async function doneLessonIds(db: Db, who: Learner): Promise<Set<string>> {
+  const rows = await db.all<{ lesson_id: string }>(
+    'SELECT d.lesson_id FROM done_mark d WHERE d.space_id = ? AND d.learner_user_id = ?',
+    who.spaceId, who.userId,
+  );
+  return new Set(rows.map((r) => r.lesson_id));
+}

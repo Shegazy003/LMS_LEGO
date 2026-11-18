@@ -67,17 +67,18 @@ export const SEED_KITS: readonly KitJson[] = [
 const ACTIVITY = { en: { lessonActivity: 'Lesson activity', lessons: 'lessons' }, ar: { lessonActivity: 'نشاط الدروس', lessons: 'الدروس' } };
 
 export const SEED_KIT_WORDS: Record<string, Record<'ar' | 'en', Record<KitWord, string>>> = {
+  // LMS wave 2: lessonPlural, the plural of each kit lesson word (progress lines, AT-1.6).
   school: {
-    en: { guardian: 'Parent', exam: 'Exam', ...ACTIVITY.en, yourGuardian: 'Your parent', child: 'child' },
-    ar: { guardian: 'ولي أمر', exam: 'امتحان', ...ACTIVITY.ar, yourGuardian: 'ولي أمرك', child: 'الطفل' },
+    en: { guardian: 'Parent', exam: 'Exam', ...ACTIVITY.en, yourGuardian: 'Your parent', child: 'child', lessonPlural: 'lessons' },
+    ar: { guardian: 'ولي أمر', exam: 'امتحان', ...ACTIVITY.ar, yourGuardian: 'ولي أمرك', child: 'الطفل', lessonPlural: 'الدروس' },
   },
   company: {
-    en: { guardian: 'Supervisor', exam: 'Assessment', ...ACTIVITY.en, yourGuardian: 'Your supervisor', child: 'employee' },
-    ar: { guardian: 'مشرف', exam: 'تقييم', ...ACTIVITY.ar, yourGuardian: 'مشرفك', child: 'الموظّف' },
+    en: { guardian: 'Supervisor', exam: 'Assessment', ...ACTIVITY.en, yourGuardian: 'Your supervisor', child: 'employee', lessonPlural: 'sessions' },
+    ar: { guardian: 'مشرف', exam: 'تقييم', ...ACTIVITY.ar, yourGuardian: 'مشرفك', child: 'الموظّف', lessonPlural: 'الجلسات' },
   },
   university: {
-    en: { guardian: 'Guardian', exam: 'Exam', ...ACTIVITY.en, yourGuardian: 'Your guardian', child: 'student' },
-    ar: { guardian: 'ولي أمر', exam: 'امتحان', ...ACTIVITY.ar, yourGuardian: 'ولي أمرك', child: 'الطالب' },
+    en: { guardian: 'Guardian', exam: 'Exam', ...ACTIVITY.en, yourGuardian: 'Your guardian', child: 'student', lessonPlural: 'lectures' },
+    ar: { guardian: 'ولي أمر', exam: 'امتحان', ...ACTIVITY.ar, yourGuardian: 'ولي أمرك', child: 'الطالب', lessonPlural: 'المحاضرات' },
   },
 };
 
