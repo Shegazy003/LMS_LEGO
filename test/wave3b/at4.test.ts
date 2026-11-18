@@ -227,14 +227,17 @@ describe('W3b AT-4', { concurrency: false }, () => {
 
   it('W3b AT-4.5 the server holds the limits, re-runs every rule, and makes at most 2 round trips besides the gate\'s', async (t) => {
     const amal = await as(w, ADMIN, 'en');
-    const gate = (await roundTrips(() => amal.get(uploadPath(w.school)))).trips;
+    // The gate's own round trips, from a request that does no upload work (the empty sheet; from W3b-1b
+    // the upload page also reads Earlier uploads, so it no longer measures the gate alone).
+    const gate = (await roundTrips(() => amal.get(sheetPath(w.school)))).trips;
+    assert.ok(!gate.some((s) => /class_upload/.test(s)), 'the gate baseline reads no upload');
     const file = csv([HEADER_EN, ...Array.from({ length: 100 }, (_, i) => [`Trip Test ${i}`, `trip${i}.t`, 'Student', `010464650${String(i).padStart(2, '0')}`, END])]);
     const check = await roundTrips(() => checkFile(amal, w.school, file));
     assert.equal(check.res.status, 200);
     const html = await check.res.text();
     const add = await roundTrips(() => pressAdd(amal, w.school, carriedForm(html)!));
     assert.equal(add.res.status, 303);
-    t.diagnostic(`gate round trips (upload page GET): ${gate.length} ${JSON.stringify(gate)}`);
+    t.diagnostic(`gate round trips (empty sheet GET): ${gate.length} ${JSON.stringify(gate)}`);
     t.diagnostic(`check round trips: ${check.trips.length} ${JSON.stringify(check.trips)}`);
     t.diagnostic(`add round trips: ${add.trips.length} ${JSON.stringify(add.trips)}`);
     assert.ok(check.trips.length - gate.length <= 2, `the check: at most 2 plus the gate's (${check.trips.length - gate.length})`);

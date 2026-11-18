@@ -88,9 +88,12 @@ export function hasNoPassword(storedHash: string): boolean {
 
 /** A person this space's admin may manage: a publisher, learner or guardian
  * of this space who is not also an admin here, and not the owner. Otherwise null. */
-export function managedPerson(db: Db, spaceId: string, userId: string): Promise<PersonRow | null> {
-  return db.first<PersonRow>(
-    `SELECT u.id, u.username, u.display_name, u.mobile, m.role, m.valid_from, m.valid_until, m.ended_on
+// LMS wave 3b, W3b-1b: the person page's "No password yet" line (section 6.1).
+// As on the people list, the stored value only answers hasNoPassword and is
+// dropped at once.
+export async function managedPerson(db: Db, spaceId: string, userId: string): Promise<(PersonRow & { no_password: boolean }) | null> {
+  const row = await db.first<PersonRow & { password_hash: string }>(
+    `SELECT u.id, u.username, u.display_name, u.mobile, m.role, m.valid_from, m.valid_until, m.ended_on, u.password_hash
        FROM membership m JOIN user u ON u.id = m.user_id
       WHERE m.space_id = ? AND m.user_id = ? AND m.role IN ('publisher', 'learner', 'guardian') AND u.is_owner = 0
         AND NOT EXISTS (SELECT 1 FROM membership a WHERE a.space_id = m.space_id AND a.user_id = m.user_id AND a.role = 'admin')
@@ -98,6 +101,9 @@ export function managedPerson(db: Db, spaceId: string, userId: string): Promise<
       LIMIT 1`,
     spaceId, userId,
   );
+  if (!row) return null;
+  const { password_hash, ...person } = row;
+  return { ...person, no_password: hasNoPassword(password_hash) };
 }
 
 /** An admin of this space (whom the owner manages). Otherwise null. */

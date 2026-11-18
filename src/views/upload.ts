@@ -78,6 +78,9 @@ form.upload-form button[type=submit],#add{min-height:48px}
 .tag{display:inline-block;padding:0 8px;border:1px solid #57606a;border-radius:999px;font-size:.875rem;font-weight:600;color:#1b1f24;background:#fff}
 #added li{display:flex;flex-wrap:wrap;gap:4px 12px;align-items:center}
 #added a.person{display:inline-flex;align-items:center;min-height:44px;font-weight:600}
+#added a.button.send-link{display:inline-flex;align-items:center;justify-content:center;min-height:44px;min-width:44px}
+#uploads ul{list-style:none;margin:0;padding:0}
+#uploads a{display:flex;align-items:center;min-height:44px;overflow-wrap:anywhere}
 </style>`;
 
 // ---------------------------------------------------------------- step 1 ----
@@ -87,6 +90,24 @@ export interface UploadView {
   ownEnd: string;
   /** A whole-file refusal to show at the top (status 400). */
   refusal?: string;
+  /** W3b-1b (UX-40): this space's latest uploads, newest first (src/upload.ts uploadsOf). */
+  uploads: readonly UploadRow[];
+}
+
+/** The day of an upload, with the month as a word. */
+const uploadDay = (t: Label, row: UploadRow) => monthDate(t, new Date(row.uploaded_at).toISOString().slice(0, 10));
+
+/** "Earlier uploads" (UX-40): each a link to its done page, or "No uploads yet.". */
+function earlierUploads(t: Label, space: SpaceView, uploads: readonly UploadRow[]): Html {
+  const list = uploads.length
+    ? html`<ul>${uploads.map((u) => html`<li><a id="u-${u.id}" href="${base(space)}/upload/${u.id}"><span>${sentence(t, 'uploadsRow', {
+      date: uploadDay(t, u), name: u.uploader, added: String(u.lines_added), refused: String(u.lines_refused),
+    })}</span></a></li>`)}</ul>`
+    : html`<p id="uploads-none">${t('uploadsNone')}</p>`;
+  return html`<section id="uploads" class="card" aria-labelledby="uploads-title">
+  <h2 id="uploads-title">${t('uploadsHeading')}</h2>
+  ${list}
+</section>`;
 }
 
 /** Step 1 (UX-36): the how-to with the five columns, the limits, the empty sheet, the file field and "Check the file". */
@@ -112,7 +133,8 @@ ${alert}
   <input id="upload-file" name="file" type="file" accept=".csv,text/csv" required>
   <button id="check-file" type="submit">${t('uploadCheck')}</button>
   <p class="muted" id="upload-saves">${t('uploadCheckSaves')}</p>
-</form>`;
+</form>
+${earlierUploads(t, space, v.uploads)}`;
   return spacePage(t, lang, space, t('uploadTitle'), body);
 }
 
@@ -197,7 +219,13 @@ export interface DoneView {
   again: boolean;
 }
 
-/** The done page (UX-39, without the follow-up of W3b-1b): who was added, and who has no password yet. */
+// With script: back from a reset-link page at #p-<userId>, focus lands on that person's name link
+// (a page opened at an existing fragment skips autofocus, so the h1 does not take it). The browser clears
+// focus when it scrolls to the fragment after loading, so the focus is set after the load event.
+const DONE_SCRIPT = raw(`<script>(function(){function go(){var h=location.hash.slice(1);if(!/^p-[0-9a-f-]{36}$/.test(h))return;var r=document.getElementById(h);var a=r&&r.querySelector('a.person');if(a)a.focus();}
+if(document.readyState==='complete')setTimeout(go,0);else window.addEventListener('load',function(){setTimeout(go,0);});})();</script>`);
+
+/** The done page (UX-39, UX-43): who was added, who has no password yet, and for each of them "Send reset link by WhatsApp". */
 export function donePage(t: Label, lang: Lang, space: SpaceView, v: DoneView): Html {
   const day = new Date(v.upload.uploaded_at).toISOString().slice(0, 10);
   const again = v.again ? html`<div id="again" class="done" role="status" tabindex="-1" autofocus>${t('doneAgain')}</div>` : '';
@@ -207,14 +235,16 @@ export function donePage(t: Label, lang: Lang, space: SpaceView, v: DoneView): H
   ${ltr(p.username)}
   <span class="muted">${t(p.role === 'publisher' ? 'publisher' : p.role === 'guardian' ? 'guardian' : 'learner')}</span>
   <span class="tag" data-tag="${p.no_password ? 'no-password' : 'password-set'}">${t(p.no_password ? 'noPasswordTag' : 'passwordSetTag')}</span>
+  ${p.no_password ? html`<a id="send-${p.id}" class="button send-link" href="${base(space)}/people/${p.id}/link?back=${v.upload.id}">${t('sendResetLink')}</a>` : ''}
 </li>`);
   const body = html`${STYLE}${again}<h1 id="done-title" tabindex="-1"${v.again ? '' : raw(' autofocus')}>${sentence(t, 'doneTitle', { n: String(v.people.length) })}</h1>
-<p id="done-meta">${sentence(t, 'doneMeta', { date: monthDate(t, day), name: v.upload.uploader, n: String(v.upload.lines_refused) })}</p>
+<p id="done-meta">${sentence(t, 'doneMeta', { date: uploadDay(t, v.upload), name: v.upload.uploader, n: String(v.upload.lines_refused) })}</p>
 ${anyWithout ? html`<p id="done-no-password">${t('doneNoPassword')}</p>` : ''}
 <ul id="added" class="list card">${rows}</ul>
 <div class="upload-actions">
   <a id="back-people" class="button plain secondary-link" href="${base(space)}/people">${t('backToPeople')}</a>
   <a id="to-group" class="button plain secondary-link" href="${base(space)}/sets">${t('addToGroup')}</a>
-</div>`;
+</div>
+${DONE_SCRIPT}`;
   return spacePage(t, lang, space, t('doneTitle', { n: String(v.people.length) }), body);
 }

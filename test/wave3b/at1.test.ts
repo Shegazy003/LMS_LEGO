@@ -198,10 +198,12 @@ describe('W3b AT-1', { concurrency: false }, () => {
       assert.deepEqual([...dom.names].sort(), [...TRICKY_NAMES].sort(), 'every name literally as typed');
       // After the add: the done page and the people list show them literally, and the add saved exactly those names.
       await Promise.all([tab.page.waitForEvent('load'), tab.page.click('#add')]);
-      const done = await tab.page.evaluate(() => ({ names: [...document.querySelectorAll('#added a.person bdi')].map((e) => e.textContent), bold: document.querySelectorAll('main b, main script').length }));
+      // From W3b-1b the done page has one script of its own (focus on the row after "Back to the upload"), as the check page has.
+      const done = await tab.page.evaluate(() => ({ names: [...document.querySelectorAll('#added a.person bdi')].map((e) => e.textContent), bold: document.querySelectorAll('main b').length, scripts: document.querySelectorAll('main script').length }));
       const added = TRICKY_NAMES.filter((n) => !n.includes('‮'));
       assert.deepEqual([...done.names].sort(), [...added].sort(), 'the done page');
       assert.equal(done.bold, 0, 'the done page gains no element');
+      assert.equal(done.scripts, 1, 'the done page gains no script: only its own');
       await tab.page.goto(`${w.p.url}/s/${w.school.id}/admin/people`);
       const listed = await tab.page.evaluate(() => [...document.querySelectorAll('#people a.person bdi')].map((e) => e.textContent ?? ''));
       for (const n of added) assert.ok(listed.includes(n), `the people list shows ${JSON.stringify(n)}`);

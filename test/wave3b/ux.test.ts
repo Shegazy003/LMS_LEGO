@@ -1,7 +1,8 @@
-// LMS wave 3b, W3b-1a: the UX floor items of ux-plan v2 on PIL-232 for the
-// upload, check and done pages and the people-list tag (UX-36, UX-37, UX-38,
-// UX-39 without the send button and the person-page line, UX-41 and UX-42 for
-// those pages). Each CI step selects its item by name ("^UX-<n> ") and saves
+// LMS wave 3b, W3b-1: the UX floor items of ux-plan v2 on PIL-232, UX-36 to
+// UX-43. W3b-1a: the upload, check and done pages and the people-list tag;
+// W3b-1b: the send buttons, the person-page line, Earlier uploads (UX-40), the
+// reset-link round trip (UX-43), and UX-41 and UX-42 for those pages. Each CI
+// step selects its item by name ("^UX-<n> ") and saves
 // only the screenshots the ux-plan names, under evidence/ux/. Playwright
 // (Chromium), script on unless stated. Made-up data only.
 import { describe, it, before, after } from 'node:test';
@@ -10,10 +11,11 @@ import { chromium, type Browser, type Page } from 'playwright';
 import { UI, type UiKey } from '../../src/i18n/ui.ts';
 import { measure, overflow, tab, type Focused } from '../wave1/ux.ts';
 import {
-  ADMIN, COMPANY_ADMIN, END, HEADER_EN, MIXED_NUMBERS, UNIVERSITY_ADMIN, browserAs, classMixed, csv, uploadPath, uxShot, wave3bWorld, word,
-  type Tab, type Wave3aWorld, type Width,
+  ADMIN, COMPANY_ADMIN, END, HEADER_EN, MIXED_NUMBERS, NOUR, SALMA, UNIVERSITY_ADMIN, as, browserAs, carriedForm, checkFile, classMixed, csv, pressAdd, uploadIdOf, uploadPath,
+  uxShot, wave3bWorld, withNile, word, type Tab, type Wave3aWorld, type Width,
 } from './world.ts';
 import { WHOLE_FILES } from './pages.ts';
+import { Client, utcDatePlusDays } from '../support/http.ts';
 
 type Lang = 'ar' | 'en';
 type Who = { username: string; password: string };
@@ -27,6 +29,8 @@ const W3B_KEYS: UiKey[] = [
   'checkTitle', 'checkNothingSaved', 'checkSkip', 'checkRefused', 'checkWillAdd', 'checkRowHead', 'checkReasons', 'checkAnother', 'checkNone', 'checkChanged',
   'uploadFailed', 'rowName', 'rowUsername', 'rowUsernameTaken', 'rowMobile', 'rowEndDate', 'fileNotCsv', 'fileNotUtf8', 'fileEmpty', 'filePassword',
   'doneAgain', 'doneNoPassword', 'noPasswordTag', 'passwordSetTag',
+  // W3b-1b: the person-page line, the back link, Earlier uploads.
+  'noPasswordLine', 'backToUpload', 'uploadsHeading', 'uploadsNone',
 ];
 const ALLOWED = ['CSV', 'UTF-8', 'Excel', 'Google Sheets', 'WhatsApp'];
 
@@ -307,15 +311,23 @@ describe('UX-39 done page and no-password tag', { concurrency: false }, () => {
     const done = page.url();
     await assertOrder(page, ['done-title', 'done-meta', 'done-no-password', 'added', 'back-people', 'to-group'], 'done page');
     assert.equal(await focusedId(page), 'done-title', 'the h1 has focus on arrival');
-    const rows = await page.evaluate(() => [...document.querySelectorAll('#added > li')].map((li) => ({
-      anchor: li.id, link: li.querySelector('a.person')?.getAttribute('href') ?? '', tag: li.querySelector('.tag')?.textContent ?? '', buttons: li.querySelectorAll('button, a.button').length,
-    })));
+    const rows = await page.evaluate(() => [...document.querySelectorAll('#added > li')].map((li) => {
+      const send = li.querySelector('a.send-link') as HTMLElement | null;
+      return {
+        anchor: li.id, link: li.querySelector('a.person')?.getAttribute('href') ?? '', tag: li.querySelector('.tag')?.textContent ?? '', buttons: li.querySelectorAll('button, a.button').length,
+        send: send ? { href: send.getAttribute('href'), text: send.innerText.trim(), height: send.getBoundingClientRect().height, afterName: !!(li.querySelector('a.person')!.compareDocumentPosition(send) & 4) } : null,
+      };
+    }));
     assert.equal(rows.length, 3);
+    const uploadId = new URL(done).pathname.split('/').pop();
     for (const r of rows) {
       assert.match(r.anchor, /^p-[0-9a-f-]{36}$/, 'anchor p-<userId>');
       assert.equal(r.link, `/s/${w.school.id}/admin/people/${r.anchor.slice(2)}`, 'the name links to the person page');
       assert.equal(r.tag, UI.en.noPasswordTag);
-      assert.equal(r.buttons, 0, 'no send button in W3b-1a (W3b-1b adds it)');
+      assert.equal(r.buttons, 1, 'one button: Send reset link by WhatsApp');
+      assert.deepEqual(r.send && { href: r.send.href, text: r.send.text, afterName: r.send.afterName },
+        { href: `/s/${w.school.id}/admin/people/${r.anchor.slice(2)}/link?back=${uploadId}`, text: UI.en.sendResetLink, afterName: true }, 'the send button opens today\'s confirmation with back');
+      assert.ok(r.send!.height >= 44, `the send button is 44 px tall or more (${r.send!.height})`);
     }
     const border = async (sel: string) => page.evaluate((s) => {
       const el = document.querySelector(s)!;
@@ -335,6 +347,10 @@ describe('UX-39 done page and no-password tag', { concurrency: false }, () => {
     }, sel);
     const tagBorder = await border('#added .tag');
     assert.ok(tagBorder.width >= 1 && tagBorder.ratio >= 3, `the tag has a border of 3:1 or more (${tagBorder.ratio.toFixed(2)})`);
+    // The person page: the line above the reset link block.
+    await visit(page, `/s/${w.school.id}/admin/people/${rows[0].anchor.slice(2)}`);
+    assert.equal(await page.locator('#no-password-line').innerText(), UI.en.noPasswordLine);
+    await assertOrder(page, ['no-password-line', 'send-link'], 'person page: the line above the reset link block');
     // The people list shows the tag next to the person.
     const firstId = rows[0].anchor.slice(2);
     await visit(page, `/s/${w.school.id}/admin/people`);
@@ -346,6 +362,7 @@ describe('UX-39 done page and no-password tag', { concurrency: false }, () => {
     await amal.goto(`${w.p.url}/s/${w.school.id}/admin/people/${firstId}`);
     await amal.fill('input[name=new_password]', 'ux-thirty-nine-pass');
     await Promise.all([amal.waitForEvent('load'), amal.locator('form:has(input[name=new_password]) button[type=submit]').click()]);
+    assert.equal(await amal.locator('#no-password-line').count(), 0, 'the person page line is gone');
     await visit(amal, `/s/${w.school.id}/admin/people`);
     assert.equal(await amal.locator(`li[data-user="${firstId}"] [data-tag="no-password"]`).count(), 0, 'the tag is gone from the people list');
     await amal.goto(w.p.url + new URL(done).pathname);
@@ -353,14 +370,143 @@ describe('UX-39 done page and no-password tag', { concurrency: false }, () => {
     assert.equal(await amal.locator(`#p-${firstId} button, #p-${firstId} a.button`).count(), 0, 'no button');
   });
 
-  it('UX-39 screenshots: the standard set of the done page', async () => {
+  it('UX-39 screenshots: the standard set of the done page, a person page with the line', async () => {
+    let someone = '';
     for (const [width, lang, kit] of STANDARD) {
       const page = await open(ADMINS[kit], lang, width);
       const end = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
       await checkIn(page, kit, passing(uniq(), 3, end));
       assert.equal(await add(page), 200, `${width} ${lang} ${kit}: the done page`);
       await uxShot(page, `UX-39-${width}-${lang}${kit === 'school' ? '' : `-${kit}`}`);
+      if (kit === 'school') someone ||= (await page.locator('#added a.person').first().getAttribute('href'))!;
     }
+    const ar = await open(ADMIN, 'ar');
+    await visit(ar, someone);
+    assert.equal(await ar.locator('#no-password-line').innerText(), UI.ar.noPasswordLine);
+    await uxShot(ar, 'UX-39-phone-ar-person');
+  });
+});
+
+// ------------------------------------------------------------------ UX-40 ----
+describe('UX-40 earlier uploads list', { concurrency: false }, () => {
+  it('UX-40 earlier uploads list: the heading, newest first, at most 10, link targets, the empty state, only this space\'s uploads', async () => {
+    const { id: nileId, nour } = await withNile(w);
+    const nile = { id: nileId };
+    const page = await open(NOUR, 'en');
+    await visit(page, uploadPath(nile));
+    await assertOrder(page, ['upload', 'uploads-title', 'uploads-none'], 'Earlier uploads below the form');
+    assert.equal(await page.locator('#uploads-title').innerText(), UI.en.uploadsHeading);
+    assert.equal(await page.locator('#uploads-none').innerText(), UI.en.uploadsNone, 'the empty state');
+    assert.equal(await page.locator('#uploads a').count(), 0);
+    // Eleven Nile uploads, on eleven days.
+    void (await nour.post('/account/language', { lang: 'en' }));
+    const ids: string[] = [];
+    for (let i = 0; i < 11; i++) {
+      const html = await (await checkFile(nour, nile, csv([HEADER_EN, [`Forty ${i} Test`, `${uniq()}.t`, 'Student', `010464640${String(i).padStart(2, '0')}`, utcDatePlusDays(30)]]))).text();
+      ids.push(uploadIdOf((await pressAdd(nour, nile, carriedForm(html)!)).headers.get('location')));
+    }
+    for (const [i, id] of ids.entries()) await w.p.sql(`UPDATE class_upload SET uploaded_at = ${Date.UTC(2026, 9, 1 + i, 8)} WHERE id = '${id}'`);
+    await visit(page, uploadPath(nile));
+    const links = await page.evaluate(() => [...document.querySelectorAll('#uploads a')].map((a) => ({ id: a.id, href: a.getAttribute('href'), text: (a as HTMLElement).innerText.trim(), h: a.getBoundingClientRect().height })));
+    const months = UI.en.monthWords.split(',');
+    assert.deepEqual(links.map((l) => l.href), ids.slice(1).reverse().map((id) => `/s/${nileId}/admin/upload/${id}`), 'newest first, at most 10, each to its done page');
+    assert.deepEqual(links.map((l) => l.text), ids.slice(1).reverse().map((_, k) => `${11 - k} ${months[9]} 2026, ${NOUR.display_name}: added 1, refused 0`), 'the row text');
+    assert.ok(links.every((l) => l.h >= 44), 'each link 44 px tall or more');
+    assert.equal(await page.locator('#uploads-none').count(), 0, 'no empty state');
+    await Promise.all([page.waitForEvent('load'), page.click(`#${links[0].id}`)]);
+    assert.equal(await page.locator('#done-title').innerText(), UI.en.doneTitle.replace('{n}', '1'), 'the link opens the done page');
+    // Only this space's: Amal's list has none of Nile's.
+    const amal = await open(ADMIN, 'en');
+    await visit(amal, uploadPath(w.school));
+    const meskHrefs = await amal.evaluate(() => [...document.querySelectorAll('#uploads a')].map((a) => a.getAttribute('href') ?? ''));
+    assert.ok(meskHrefs.length > 0 && meskHrefs.every((h) => h.startsWith(`/s/${w.school.id}/admin/upload/`)), 'Mesk\'s list holds only Mesk\'s uploads');
+  });
+
+  it('UX-40 screenshots: the Arabic upload page with earlier uploads', async () => {
+    const page = await open(ADMIN, 'ar');
+    await checkIn(page, 'school', passing(uniq(), 1));
+    await add(page);
+    await visit(page, uploadPath(w.school));
+    assert.ok((await page.locator('#uploads a').count()) > 0);
+    await uxShot(page, 'UX-40-phone-ar');
+  });
+});
+
+// ------------------------------------------------------------------ UX-43 ----
+describe('UX-43 reset link round trip from the done page', { concurrency: false }, () => {
+  it('UX-43 reset link round trip from the done page: three people in turn, the back link, focus on the row, Password set; a foreign or forged back changes nothing', async () => {
+    const page = await open(ADMIN, 'en');
+    const prefix = uniq();
+    await checkIn(page, 'school', passing(prefix, 3));
+    assert.equal(await add(page), 200);
+    const done = new URL(page.url()).pathname;
+    const uploadId = done.split('/').pop()!;
+    const people = await page.evaluate(() => [...document.querySelectorAll('#added > li')].map((li) => li.id.slice(2)));
+    const tokens: string[] = [];
+    for (const id of people) {
+      await visit(page, done);
+      let navigations = 0;
+      const count = () => void navigations++;
+      page.on('framenavigated', count);
+      await Promise.all([page.waitForEvent('load'), page.click(`#p-${id} a.send-link`)]);
+      page.off('framenavigated', count);
+      assert.equal(navigations, 1, 'one tap to the confirmation');
+      assert.ok(page.url().endsWith(`/people/${id}/link?back=${uploadId}`));
+      await assertOrder(page, ['confirm-link', 'back-upload'], 'confirmation: Back to the upload after today\'s action');
+      for (const m of await measure(page, '#back-upload')) assert.ok(m.height >= 44 && m.width >= 44, `confirmation back link ${m.width}x${m.height}`);
+      assert.equal(await page.getAttribute('#back-upload', 'href'), `${done}#p-${id}`);
+      await Promise.all([page.waitForEvent('load'), page.click('#confirm-link button')]);
+      await assertOrder(page, ['copy', 'reset-link', 'back-upload'], 'link page: Back to the upload after today\'s actions');
+      for (const m of await measure(page, '#back-upload')) assert.ok(m.height >= 44 && m.width >= 44, `link page back link ${m.width}x${m.height}`);
+      assert.equal(await page.getAttribute('#back-upload', 'class'), 'button plain secondary-link', 'a secondary link');
+      tokens.push(/\/r\/([A-Za-z0-9_-]+)$/.exec(await page.locator('#reset-link').inputValue())![1]);
+      await Promise.all([page.waitForEvent('load'), page.click('#back-upload')]);
+      assert.equal(new URL(page.url()).hash, `#p-${id}`, 'back at the row');
+      const focused = await page.evaluate(() => {
+        const a = document.activeElement as HTMLElement;
+        return { row: a.closest('li')?.id, person: a.matches('a.person') };
+      });
+      assert.deepEqual(focused, { row: `p-${id}`, person: true }, 'focus on the person\'s name link');
+    }
+    // One sets a password: the button is gone and "Password set" is shown.
+    const c = await as(w, ADMIN, 'en');
+    const set = await new Client(w.p.url).post(`/r/${tokens[1]}`, { username: `${prefix}2.t`, new_password: 'ux-forty-three-pass' });
+    assert.equal(set.status, 200);
+    await visit(page, done);
+    assert.equal(await page.locator(`#p-${people[1]} .tag`).innerText(), UI.en.passwordSetTag);
+    assert.equal(await page.locator(`#p-${people[1]} a.button, #p-${people[1]} button`).count(), 0, 'the button is gone');
+    // Without back, or with a back that is not an upload of this space that added this person: exactly today's pages.
+    const { id: nileId, nour } = await withNile(w);
+    void (await nour.post('/account/language', { lang: 'en' }));
+    const nileHtml = await (await checkFile(nour, { id: nileId }, csv([HEADER_EN, [`Nile Back Test`, `${uniq()}.t`, 'Student', '01046464399', utcDatePlusDays(30)]]))).text();
+    const nileUpload = uploadIdOf((await pressAdd(nour, { id: nileId }, carriedForm(nileHtml)!)).headers.get('location'));
+    const other = await checkFile(c, w.school, passing(uniq(), 1));
+    const otherUpload = uploadIdOf((await pressAdd(c, w.school, carriedForm(await other.text())!)).headers.get('location'));
+    const salma = String((await w.p.sql(`SELECT id FROM user WHERE username = '${SALMA.username}'`))[0].id);
+    const main = (html: string) => (html.match(/<main[\s\S]*<\/main>/)?.[0] ?? html).replace(/(\/|%2F)r(\/|%2F)[A-Za-z0-9_-]+/g, '/r/<token>');
+    for (const [who, person] of [['a new person', people[0]], ['Salma (added by hand)', salma]] as const) {
+      const base = `/s/${w.school.id}/admin/people/${person}/link`;
+      const today = main(await (await c.get(base)).text());
+      const todayLink = main(await (await c.post(base, {})).text());
+      assert.ok(!today.includes(UI.en.backToUpload) && !todayLink.includes(UI.en.backToUpload), `${who}: no back link without back`);
+      const forged = [nileUpload, otherUpload, crypto.randomUUID(), 'x"><a href=//other.example>', `${uploadId}/../../`];
+      if (who === 'Salma (added by hand)') forged.push(uploadId);
+      for (const back of forged) {
+        const q = `?back=${encodeURIComponent(back)}`;
+        assert.equal(main(await (await c.get(base + q)).text()), today, `${who}, back=${back}: today's confirmation, unchanged`);
+        assert.equal(main(await (await c.post(base + q, {})).text()), todayLink, `${who}, back=${back}: today's link page, unchanged`);
+      }
+    }
+  });
+
+  it('UX-43 screenshots: the Arabic link page with Back to the upload', async () => {
+    const page = await open(ADMIN, 'ar');
+    await checkIn(page, 'school', passing(uniq(), 1));
+    await add(page);
+    await Promise.all([page.waitForEvent('load'), page.click('#added a.send-link')]);
+    await Promise.all([page.waitForEvent('load'), page.click('#confirm-link button')]);
+    assert.equal(await page.locator('#back-upload').innerText(), UI.ar.backToUpload);
+    await uxShot(page, 'UX-43-phone-ar-link');
   });
 });
 
@@ -378,6 +524,22 @@ describe('UX-41 Arabic, mixed text and kit words for the upload (three kits)', {
         ['done page', async () => {
           await checkIn(page, 'school', passing(uniq(), 2));
           await add(page);
+        }],
+        // W3b-1b: Earlier uploads, the person-page line, the reset-link pages with back.
+        ['upload page with earlier uploads', () => visit(page, uploadPath(w.school))],
+        ['person page with the line', async () => {
+          await Promise.all([page.waitForEvent('load'), page.click('#uploads a')]);
+          await Promise.all([page.waitForEvent('load'), page.click('#added a.person')]);
+          assert.equal(await page.locator('#no-password-line').count(), 1);
+        }],
+        ['confirmation with back', async () => {
+          await page.goBack();
+          await Promise.all([page.waitForEvent('load'), page.click('#added a.send-link')]);
+          assert.equal(await page.locator('#back-upload').count(), 1);
+        }],
+        ['link page with back', async () => {
+          await Promise.all([page.waitForEvent('load'), page.click('#confirm-link button')]);
+          assert.equal(await page.locator('#back-upload').count(), 1);
         }],
       ];
       for (const [name, go] of pages) {
@@ -398,6 +560,10 @@ describe('UX-41 Arabic, mixed text and kit words for the upload (three kits)', {
     }));
     assert.ok(iso.length === 8 && iso.every((r) => r.row && r.user && r.mobile && r.date), `row numbers, usernames, mobile digits and dates are isolated: ${JSON.stringify(iso[0])}`);
     assert.ok(iso.every((r) => r.right), 'the row number is at the right in Arabic');
+    // Earlier uploads: the date, the admin's name and the counts each in their own bdi.
+    await visit(ar, uploadPath(w.school));
+    const rowsIso = await ar.evaluate(() => [...document.querySelectorAll('#uploads a')].map((a) => a.querySelectorAll('bdi').length));
+    assert.ok(rowsIso.length > 0 && rowsIso.every((n) => n === 4), `each earlier upload row isolates its date, name and two counts: ${JSON.stringify(rowsIso)}`);
     // Kit words: the role line and the role refusal in each kit and language.
     for (const kit of ['school', 'company', 'university'] as const) {
       for (const lang of ['ar', 'en'] as const) {
@@ -450,7 +616,8 @@ describe('UX-42 keyboard, widths, sizes and contrast for the upload', { concurre
     // Tab order: upload page.
     await visit(page, uploadPath(w.school));
     let s = (await stops(page)).filter((f) => f.region === 'content');
-    assert.deepEqual(s.map((f) => f.id), ['upload-sheet', 'upload-file', 'check-file'], 'upload page: empty sheet, file field, Check the file');
+    const earlier = await page.evaluate(() => [...document.querySelectorAll('#uploads a')].map((a) => a.id));
+    assert.deepEqual(s.map((f) => f.id), ['upload-sheet', 'upload-file', 'check-file', ...earlier], 'upload page: empty sheet, file field, Check the file, earlier uploads');
     for (const f of s) assert.ok(f.visible && f.ringPx >= 2 && f.ringContrast >= 3, `upload page ${f.id}: ring ${f.ringPx} px, ${f.ringContrast.toFixed(2)}`);
     // Check page: skip link, no stop inside a row, Add, Choose another file.
     await checkIn(page, 'school', passing(uniq(), 11));
@@ -460,8 +627,8 @@ describe('UX-42 keyboard, widths, sizes and contrast for the upload', { concurre
     // Done page: each name in order, then Back to people, Add people to a group.
     await add(page);
     s = (await stops(page)).filter((f) => f.region === 'content');
-    const names = await page.evaluate(() => [...document.querySelectorAll('#added a.person')].map((a) => (a as HTMLElement).innerText.trim()));
-    assert.deepEqual(s.map((f) => f.id || f.text), [...names, 'back-people', 'to-group'], 'done page: each name, then Back to people, Add people to a group');
+    const names = await page.evaluate(() => [...document.querySelectorAll('#added > li')].flatMap((li) => [(li.querySelector('a.person') as HTMLElement).innerText.trim(), li.querySelector('a.send-link')?.id ?? '']));
+    assert.deepEqual(s.map((f) => f.id || f.text), [...names, 'back-people', 'to-group'], 'done page: each name, then their button, then Back to people, Add people to a group');
     for (const f of s) assert.ok(f.ringPx >= 2 && f.ringContrast >= 3, `done page ${f.id || f.text}: ring ${f.ringPx} px`);
     // The focused h1 and alert blocks carry the ring too.
     for (const sel of ['#done-title']) {
@@ -473,7 +640,23 @@ describe('UX-42 keyboard, widths, sizes and contrast for the upload', { concurre
       }, sel);
       assert.ok(ring >= 2, `${sel}: a focus ring of 2 px or more`);
     }
-
+    // With uploads made, the upload page's last stops are the earlier uploads, newest first.
+    await visit(page, uploadPath(w.school));
+    s = (await stops(page)).filter((f) => f.region === 'content');
+    const listed = await page.evaluate(() => [...document.querySelectorAll('#uploads a')].map((a) => a.id));
+    assert.ok(listed.length > 0, 'earlier uploads listed');
+    assert.deepEqual(s.map((f) => f.id), ['upload-sheet', 'upload-file', 'check-file', ...listed], 'upload page with earlier uploads');
+    for (const f of s) assert.ok(f.ringPx >= 2 && f.ringContrast >= 3, `upload page ${f.id}: ring ${f.ringPx} px`);
+    // The reset-link pages with back: Back to the upload after today's actions, with the ring.
+    await Promise.all([page.waitForEvent('load'), page.click('#uploads a')]);
+    await Promise.all([page.waitForEvent('load'), page.click('#added a.send-link')]);
+    s = (await stops(page)).filter((f) => f.region === 'content');
+    assert.equal(s.at(-1)?.id, 'back-upload', 'confirmation: Back to the upload is the last stop');
+    assert.ok(s.at(-1)!.ringPx >= 2 && s.at(-1)!.ringContrast >= 3, 'confirmation back link ring');
+    await Promise.all([page.waitForEvent('load'), page.click('#confirm-link button')]);
+    s = (await stops(page)).filter((f) => f.region === 'content');
+    assert.equal(s.at(-1)?.id, 'back-upload', 'link page: Back to the upload is the last stop');
+    assert.ok(s.at(-1)!.ringPx >= 2 && s.at(-1)!.ringContrast >= 3, 'link page back link ring');
     // Widths: 100 rows of 100-character names and 32-character usernames, Arabic and English, at 320, 390, 768 and 1280 px.
     const long = csv([HEADER_EN, ...Array.from({ length: 100 }, (_, i) => [('اسم طويل جدا للاختبار ' + 'Long Name ').repeat(4).slice(0, 96) + String(i).padStart(4, '0'),
       `w${String(i).padStart(3, '0')}.${'u'.repeat(27)}`, 'Student', `010464690${String(i).padStart(2, '0')}`, END])]);
@@ -488,6 +671,14 @@ describe('UX-42 keyboard, widths, sizes and contrast for the upload', { concurre
             await checkIn(p, 'school', passing(uniq(), 3));
             await add(p);
           }],
+          // W3b-1b: the person page with the line, the reset-link pages with back, the upload page with earlier uploads.
+          ['person', () => Promise.all([p.waitForEvent('load'), p.click('#added a.person')])],
+          ['confirmation with back', async () => {
+            await p.goBack();
+            await Promise.all([p.waitForEvent('load'), p.click('#added a.send-link')]);
+          }],
+          ['link with back', () => Promise.all([p.waitForEvent('load'), p.click('#confirm-link button')])],
+          ['upload with earlier uploads', () => visit(p, uploadPath(w.school))],
         ] as const) {
           await go();
           const o = await overflow(p);
@@ -519,6 +710,16 @@ describe('UX-42 keyboard, widths, sizes and contrast for the upload', { concurre
       for (const sel of ['#done-meta', '#done-no-password', '#added .tag']) {
         for (const m of await measure(p, sel)) assert.ok(m.fontPx >= 14 && m.contrast >= 4.5, `${lang} ${sel}: ${m.fontPx} px, ${m.contrast.toFixed(2)}`);
       }
+      // W3b-1b: the send buttons, the person-page line, the back link, Earlier uploads.
+      for (const m of await measure(p, '#added a.send-link')) assert.ok(m.height >= 44 && m.width >= 44 && m.fontPx >= 14 && m.contrast >= 4.5, `${lang} send button: ${m.width}x${m.height}, ${m.fontPx} px, ${m.contrast.toFixed(2)}`);
+      await Promise.all([p.waitForEvent('load'), p.click('#added a.person')]);
+      for (const m of await measure(p, '#no-password-line')) assert.ok(m.fontPx >= 14 && m.contrast >= 4.5, `${lang} person-page line: ${m.fontPx} px, ${m.contrast.toFixed(2)}`);
+      await p.goBack();
+      await Promise.all([p.waitForEvent('load'), p.click('#added a.send-link')]);
+      for (const m of await measure(p, '#back-upload')) assert.ok(m.height >= 44 && m.width >= 44 && m.fontPx >= 14 && m.contrast >= 4.5, `${lang} back link: ${m.width}x${m.height}`);
+      await visit(p, uploadPath(w.school));
+      for (const m of await measure(p, '#uploads a')) assert.ok(m.height >= 44 && m.width >= 44 && m.fontPx >= 14 && m.contrast >= 4.5, `${lang} earlier upload "${m.text}": ${m.width}x${m.height}, ${m.fontPx} px`);
+      for (const m of await measure(p, '#uploads-title')) assert.ok(m.fontPx >= 14 && m.contrast >= 4.5, `${lang} Earlier uploads heading`);
     }
   });
 });

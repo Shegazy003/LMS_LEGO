@@ -236,6 +236,8 @@ export const W3B_KEYS = [
   'checkNone', 'checkChanged', 'uploadFailed', 'rowName', 'rowUsername', 'rowUsernameTwice', 'rowUsernameTaken', 'rowRoleUnclear', 'rowMobile',
   'rowEndDate', 'rowEndDateOwn', 'rowFields', 'fileNotCsv', 'fileNotUtf8', 'fileTooBig', 'fileEmpty', 'fileColumns', 'fileColumnsTwice',
   'filePassword', 'doneTitle', 'doneMeta', 'doneAgain', 'doneNoPassword', 'noPasswordTag', 'passwordSetTag', 'addToGroup',
+  // W3b-1b: the person-page line, the way back from the reset-link pages, Earlier uploads.
+  'noPasswordLine', 'backToUpload', 'uploadsHeading', 'uploadsNone',
 ] as const;
 
 /** The admin adds UPLOADED from a spreadsheet: the check, then Add (the real forms). Returns the upload's id. */

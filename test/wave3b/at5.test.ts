@@ -1,7 +1,7 @@
-// LMS wave 3b, W3b-1a (product-contract v2 on PIL-232, AT-5.1, AT-5.3, AT-5.4
-// and AT-5.6): the upload is recorded with no more personal data than today;
-// the migration, its down path, isolation and deletion. AT-5.5 is in
-// test/rollback/old-code.test.ts (the rollback job); AT-5.2 belongs to W3b-1b.
+// LMS wave 3b, W3b-1 (product-contract v2 on PIL-232, AT-5.1 to AT-5.4 and
+// AT-5.6): the upload is recorded with no more personal data than today;
+// Earlier uploads (AT-5.2, W3b-1b); the migration, its down path, isolation
+// and deletion. AT-5.5 is in test/rollback/old-code.test.ts (the rollback job).
 // Made-up data only.
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -11,8 +11,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  ADMIN, END, HEADER_EN, as, carriedForm, checkFile, csv, pressAdd, snapshot, uploadIdOf, wave3bWorld, withNile, type Wave3aWorld,
+  ADMIN, END, HEADER_EN, NOUR, as, carriedForm, checkFile, csv, pressAdd, snapshot, uploadIdOf, wave3bWorld, withNile, type Wave3aWorld,
 } from './world.ts';
+import { UI } from '../../src/i18n/ui.ts';
 import { utcDatePlusDays } from '../support/http.ts';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
@@ -56,6 +57,73 @@ describe('W3b AT-5 the upload record, isolation and deletion', { concurrency: fa
     const members = await w.p.sql(`SELECT u.username, m.class_upload_id FROM membership m JOIN user u ON u.id = m.user_id WHERE u.username LIKE 'trail%' ORDER BY u.username`);
     assert.deepEqual(members.map((r) => [r.username, r.class_upload_id]), [['trail1.t', id], ['trail2.t', id]], 'each new membership carries the upload id');
     assert.equal(Number((await w.p.sql("SELECT COUNT(*) AS n FROM membership WHERE class_upload_id IS NOT NULL AND user_id NOT IN (SELECT id FROM user WHERE username LIKE '%.t')"))[0].n), 0, 'appointing by hand leaves it NULL');
+  });
+
+  it('W3b AT-5.2 the upload page lists Earlier uploads, newest first, at most 10, each linking to its done page; each admin sees only their space\'s; no owner page shows an upload', async () => {
+    const amal = await as(w, ADMIN, 'en');
+    const { id: nileId, nour } = await withNile(w);
+    assert.equal((await nour.post('/account/language', { lang: 'en' })).status, 303);
+    const nile = { id: nileId };
+    const listOf = async (c: typeof amal, space: { id: string }) => {
+      const html = await (await c.get(`/s/${space.id}/admin/upload`)).text();
+      const at = html.indexOf('id="uploads"');
+      assert.ok(at > 0, 'the Earlier uploads section');
+      const section = html.slice(at, html.indexOf('</section>', at));
+      return {
+        section,
+        heading: /<h2[^>]*>([^<]*)<\/h2>/.exec(section)?.[1] ?? '',
+        rows: [...section.matchAll(/<a [^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g)].map((m) => ({ href: m[1], text: m[2].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim() })),
+      };
+    };
+    // Nile before its first upload: the empty state.
+    const empty = await listOf(nour, nile);
+    assert.equal(empty.heading, 'Earlier uploads');
+    assert.deepEqual(empty.rows, [], 'no rows');
+    assert.ok(empty.section.includes('No uploads yet.'), 'the empty state');
+    // Twelve Mesk uploads by Amal (one with a refused row), on twelve days, and one Nile upload by Nour.
+    const mesk: string[] = [];
+    for (let i = 0; i < 12; i++) {
+      const rows = [[`List ${i} Test`, `list${i}.t`, 'Student', `010464652${String(i).padStart(2, '0')}`, END]];
+      if (i === 11) rows.push([`List Bad Test`, 'listbad.t', 'Administrator', '01046465299', END]);
+      mesk.push(await add(w, amal, w.school, rows));
+    }
+    const nileUpload = await add(w, nour, nile, [['Nile List Test', 'nilelist.t', 'Student', '01046465298', utcDatePlusDays(30)]]);
+    // Fixed days, in the order made (12 to 23 October 2026), after every earlier upload of the file.
+    const day = (i: number) => Date.UTC(2026, 9, 12 + i, 9, 0, 0);
+    await w.p.sql(`UPDATE class_upload SET uploaded_at = ${Date.UTC(2026, 0, 1)} WHERE space_id = '${w.school.id}'`);
+    for (const [i, id] of mesk.entries()) await w.p.sql(`UPDATE class_upload SET uploaded_at = ${day(i)} WHERE id = '${id}'`);
+    const months = UI.en.monthWords.split(',');
+    const date = (i: number) => `${12 + i} ${months[9]} 2026`;
+    const amalList = await listOf(amal, w.school);
+    assert.equal(amalList.heading, 'Earlier uploads');
+    const expected = [11, 10, 9, 8, 7, 6, 5, 4, 3, 2].map((i) => ({
+      href: `/s/${w.school.id}/admin/upload/${mesk[i]}`, text: `${date(i)}, ${ADMIN.display_name}: added 1, refused ${i === 11 ? 1 : 0}`,
+    }));
+    assert.deepEqual(amalList.rows, expected, 'newest first, at most 10, each "<date>, <admin name>: added <n>, refused <n>" linking to its done page');
+    assert.ok(!amalList.section.includes(nileUpload) && !amalList.section.includes('No uploads yet.'), 'Amal sees only Mesk\'s');
+    for (const r of amalList.rows.slice(0, 2)) assert.equal((await amal.get(r.href)).status, 200, 'the link opens the done page');
+    const nourList = await listOf(nour, nile);
+    assert.equal(nourList.rows.length, 1, 'Nour sees only Nile\'s');
+    assert.equal(nourList.rows[0].href, `/s/${nileId}/admin/upload/${nileUpload}`);
+    assert.match(nourList.rows[0].text, new RegExp(`^\\d{1,2} [A-Z][a-z]+ \\d{4}, ${NOUR.display_name}: added 1, refused 0$`));
+    for (const id of mesk) assert.ok(!nourList.section.includes(id), 'nothing of Mesk\'s');
+    // The owner: a crawl of every page the owner reaches shows nothing of an upload.
+    const forbidden = [...mesk, nileUpload, '/admin/upload', UI.en.uploadsHeading, UI.ar.uploadsHeading, UI.en.uploadsNone, UI.ar.uploadsNone, 'List 1 Test', 'Nile List Test'];
+    const seen = new Set<string>();
+    const queue = ['/', '/owner'];
+    while (queue.length && seen.size < 80) {
+      const path = queue.shift()!;
+      if (seen.has(path)) continue;
+      seen.add(path);
+      const r = await w.owner.get(path);
+      const loc = r.headers.get('location');
+      if (loc && loc.startsWith('/')) queue.push(loc);
+      if (!(r.headers.get('content-type') ?? '').includes('text/html')) continue;
+      const body = await r.text();
+      for (const f of forbidden) assert.ok(!body.includes(f), `owner ${path}: nothing of an upload (${f})`);
+      for (const m of body.matchAll(/href="(\/[^"#?]*)"/g)) if (!/signout|\/r\//.test(m[1])) queue.push(m[1]);
+    }
+    assert.ok(seen.size > 3, `owner pages crawled (${seen.size})`);
   });
 
   it('W3b AT-5.6 class_upload is a space table; deleting space W3b-a child-first removes its upload rows and leaves Mesk School\'s; the README gives the statement', async () => {

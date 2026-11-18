@@ -60,7 +60,7 @@ import {
 } from './views/owner.ts';
 import {
   confirmLinkPage, endConfirmPage, linkReadyPage, personPage, unlinkConfirmPage, type CorrectionValues, type LinksView, type PersonFrame,
-  type PersonNotice, type PersonView,
+  type PersonNotice, type PersonView, type UploadBack,
 } from './views/people.ts';
 import { guardianHome, guardianLearnerPage, type GlanceCard } from './views/guardian.ts';
 import {
@@ -80,7 +80,7 @@ import {
 import { accessEndedPage, adminHome, membershipsPage, type MembershipItem, type SpaceView } from './views/space.ts';
 import { isSameOrigin } from './origin.ts';
 import {
-  UPLOAD_MAX_BODY, UPLOAD_MAX_ROWS, addPeople, check as checkUpload, fileText, repeatOf, uploadOf, type FileRefusal, type Place as UploadPlace,
+  UPLOAD_MAX_BODY, UPLOAD_MAX_ROWS, addPeople, check as checkUpload, fileText, isBackFor, repeatOf, uploadOf, uploadsOf, type FileRefusal, type Place as UploadPlace,
 } from './upload.ts';
 import { checkPage, donePage, emptySheet, refusalText, uploadPage } from './views/upload.ts';
 import { logoKey, saveTheme, storedLogoKey } from './theme.ts';
@@ -1278,9 +1278,10 @@ function uploadPlace(c: C): UploadPlace {
 }
 
 /** A whole file refused: the upload page again with the message at the top (400), nothing listed, nothing saved. */
-function refuseFile(c: C, refusal: FileRefusal) {
+async function refuseFile(c: C, refusal: FileRefusal) {
   const { t, lang, view } = spaceLabel(c);
-  return page(c, uploadPage(t, lang, view, { ownEnd: c.get('space').validUntil, refusal: refusalText(t, lang, refusal) }), 400);
+  const uploads = await uploadsOf(c.get('db'), view.id);
+  return page(c, uploadPage(t, lang, view, { ownEnd: c.get('space').validUntil, refusal: refusalText(t, lang, refusal), uploads }), 400);
 }
 
 /** The body of an upload form, unless it is too large to read at all. */
@@ -1290,10 +1291,12 @@ async function uploadBody(c: C): Promise<Record<string, unknown> | null> {
 }
 const TOO_BIG: FileRefusal = { kind: 'tooBig', people: `${UPLOAD_MAX_ROWS}+` };
 
-app.get('/s/:spaceId/admin/upload', (c) => {
+// The upload page, with this space's earlier uploads below the form (W3b-1b, AT-5.2).
+app.get('/s/:spaceId/admin/upload', async (c) => {
   uploadHeaders(c);
   const { t, lang, view } = spaceLabel(c);
-  return page(c, uploadPage(t, lang, view, { ownEnd: c.get('space').validUntil }));
+  const uploads = await uploadsOf(c.get('db'), view.id);
+  return page(c, uploadPage(t, lang, view, { ownEnd: c.get('space').validUntil, uploads }));
 });
 
 // The empty sheet: the header line in the space's first language, UTF-8 with a byte-order mark (Excel then shows Arabic).
@@ -1363,10 +1366,10 @@ app.get('/s/:spaceId/admin/upload/:uploadId', async (c) => {
 // mobile number and the end date, end access now, and restore access. The
 // same pages serve the owner for the admins they appointed (AMBER: the owner
 // already had this page for them; the owner has no end date of their own).
-function personView(p: PersonRow, roleLabel: string): PersonView {
+function personView(p: PersonRow & { no_password?: boolean }, roleLabel: string): PersonView {
   return {
     id: p.id, username: p.username, display_name: p.display_name, roleLabel, valid_until: p.valid_until, digits: lastDigits(p.mobile),
-    ended: hasEnded(p), endedDate: endedDate(p.valid_until, p.ended_on),
+    ended: hasEnded(p), endedDate: endedDate(p.valid_until, p.ended_on), noPassword: p.no_password === true,
   };
 }
 
@@ -1538,10 +1541,20 @@ function personRoutes(path: string, place: (c: C) => Promise<PersonPlace | null>
   const endedRefusal = (c: C, p: PersonPlace) =>
     page(c, personPage(p.frame, p.view, { links: p.links, error: p.frame.t('endedNoReset', { name: p.person.display_name }) }), 400);
 
+  // W3b-1b (section 4 step 5): opened from an upload's done page with `back`,
+  // both steps also show "Back to the upload", to that person's row. `back` is
+  // used only when it names an upload of this space that added this person;
+  // anything else is ignored and the pages are exactly today's.
+  const uploadBack = async (c: C, p: PersonPlace): Promise<UploadBack | undefined> => {
+    const back = c.req.query('back');
+    if (!back || p.roles !== ADMIN_MANAGES || !(await isBackFor(c.get('db'), p.spaceId, back, p.person.id))) return undefined;
+    return { uploadId: back, href: `/s/${p.spaceId}/admin/upload/${back}#p-${p.person.id}` };
+  };
+
   app.get(`${path}/link`, async (c) => {
     const p = await place(c);
     if (!p) return refuse(c, 403, 'noAccess');
-    return p.view.ended ? endedRefusal(c, p) : page(c, confirmLinkPage(p.frame, p.view));
+    return p.view.ended ? endedRefusal(c, p) : page(c, confirmLinkPage(p.frame, p.view, await uploadBack(c, p)));
   });
 
   // The confirming tap: kills every earlier link of this person, makes a new
@@ -1559,7 +1572,7 @@ function personRoutes(path: string, place: (c: C) => Promise<PersonPlace | null>
       space: p.message.spaceName, sender: sender.display_name, role: p.message.role, name: p.person.display_name, address, link,
     });
     c.header('referrer-policy', 'no-referrer');
-    return page(c, linkReadyPage(p.frame, p.view, { link, whatsapp: whatsappHref(p.person.mobile, message) }));
+    return page(c, linkReadyPage(p.frame, p.view, { link, whatsapp: whatsappHref(p.person.mobile, message), back: await uploadBack(c, p) }));
   });
 
   app.post(`${path}/password`, async (c) => {
@@ -1570,7 +1583,8 @@ function personRoutes(path: string, place: (c: C) => Promise<PersonPlace | null>
     const password = typeof body.new_password === 'string' ? body.new_password : '';
     if (password.length < MIN_PASSWORD) return page(c, personPage(p.frame, p.view, { links: p.links, error: p.frame.t('passwordTooShort') }), 400);
     await setPassword(c.get('db'), p.person.id, await hashPassword(password, c.get('iterations')));
-    return page(c, personPage(p.frame, p.view, { links: p.links, notice: 'setPasswordDone' }));
+    // The person now has a password: the "No password yet" line is gone from this answer too.
+    return page(c, personPage(p.frame, { ...p.view, noPassword: false }, { links: p.links, notice: 'setPasswordDone' }));
   });
 }
 

@@ -20,6 +20,24 @@ export interface PersonView {
   /** Whether access has ended (by its end date, or with "End access now"), and on which day. */
   ended: boolean;
   endedDate: string;
+  /** LMS wave 3b (W3b-1b): added from a spreadsheet and no password yet; the page then says so above the reset link. */
+  noPassword?: boolean;
+}
+
+/** LMS wave 3b (W3b-1b): the way back to an upload's done page, when the
+ * reset-link pages were opened from it with a valid `back` (product-contract v2
+ * on PIL-232, section 4 step 5). Without it the pages are exactly today's. */
+export interface UploadBack {
+  uploadId: string;
+  /** The done page at this person's row: /s/<space>/admin/upload/<uploadId>#p-<userId>. */
+  href: string;
+}
+
+// The secondary "Back to the upload" link: 44 px tall at least, after today's actions.
+const BACK_STYLE = html`<style>a.button.plain.secondary-link{display:inline-flex;align-items:center;justify-content:center;min-height:44px;min-width:44px;margin-top:12px}</style>`;
+
+function backToUpload(f: PersonFrame, back: UploadBack | undefined): Html | string {
+  return back ? html`${BACK_STYLE}<p><a id="back-upload" class="button plain secondary-link" href="${back.href}">${f.t('backToUpload')}</a></p>` : '';
 }
 
 /** Where the person's pages live, and how a page is framed (space or owner layout). */
@@ -149,7 +167,8 @@ export function unlinkConfirmPage(f: PersonFrame, p: PersonView, learner: { id: 
 
 function activeActions(f: PersonFrame, p: PersonView): Html {
   const { t } = f;
-  return html`<h2>${t('sendResetLink')}</h2>
+  const line = p.noPassword ? html`<p id="no-password-line" class="message"><strong>${t('noPasswordLine')}</strong></p>` : '';
+  return html`${line}<h2>${t('sendResetLink')}</h2>
 <form id="send-link" class="stack card" method="get" action="${f.base}/link">
   <p class="muted">${t('resetLinkNote')}</p>
   <button type="submit">${t('sendResetLink')}</button>
@@ -185,7 +204,7 @@ export function endConfirmPage(f: PersonFrame, p: PersonView): Html {
 }
 
 /** Step one: the last digits, and one confirming tap. */
-export function confirmLinkPage(f: PersonFrame, p: PersonView): Html {
+export function confirmLinkPage(f: PersonFrame, p: PersonView, back?: UploadBack): Html {
   const { t } = f;
   const body = html`${backLink(f)}
 <h1>${t('sendResetLink')}</h1>
@@ -193,8 +212,8 @@ export function confirmLinkPage(f: PersonFrame, p: PersonView): Html {
   <p class="message"><bdi dir="auto">${p.display_name}</bdi></p>
   <p class="message">${t('confirmDigits')} <bdi id="confirm-digits" dir="ltr" class="nowrap">${p.digits}</bdi></p>
   <p class="muted">${t('confirmNote')}</p>
-  <form id="confirm-link" method="post" action="${f.base}/link"><button type="submit">${t('confirmSend')}</button></form>
-</div>`;
+  <form id="confirm-link" method="post" action="${f.base}/link${back ? `?back=${back.uploadId}` : ''}"><button type="submit">${t('confirmSend')}</button></form>
+</div>${backToUpload(f, back)}`;
   return f.frame(t('sendResetLink'), body);
 }
 
@@ -218,7 +237,7 @@ const COPY_SCRIPT = html`<script>
 </script>`;
 
 /** Step two: the link, as a WhatsApp button (wa.me with the fixed message) and a Copy button. */
-export function linkReadyPage(f: PersonFrame, p: PersonView, v: { link: string; whatsapp: string | null }): Html {
+export function linkReadyPage(f: PersonFrame, p: PersonView, v: { link: string; whatsapp: string | null; back?: UploadBack }): Html {
   const { t } = f;
   const body = html`${backLink(f)}
 <h1>${t('linkReadyTitle')}</h1>
@@ -231,6 +250,6 @@ export function linkReadyPage(f: PersonFrame, p: PersonView, v: { link: string; 
   </div>
   <label>${t('theLink')}<input id="reset-link" readonly dir="ltr" value="${v.link}"></label>
 </div>
-${COPY_SCRIPT}`;
+${backToUpload(f, v.back)}${COPY_SCRIPT}`;
   return f.frame(t('linkReadyTitle'), body);
 }
