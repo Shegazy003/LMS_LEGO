@@ -19,7 +19,7 @@ import { UI } from '../../src/i18n/ui.ts';
 import type { World } from '../at9/world.ts';
 import {
   A, B, G1, G2, EXEMPT_KEYS, UPLOADED, activityIn, as, crawl, doneHits, doneWords, exemptRemoved, guardianPaths, isExemptPage, privacyWorld, resultsSection,
-  uploadHits, useLanguage, visible, withDoneMarks, withUpload,
+  lockHits, uploadHits, useLanguage, visible, withDoneMarks, withLocks, withUpload,
 } from './pages.ts';
 import { HADEER } from '../at9/world.ts';
 
@@ -71,6 +71,8 @@ describe('AT-13a the running product: guardian pages carry no activity, and open
     await withDoneMarks(w as Parameters<typeof withDoneMarks>[0]);
     // LMS wave 3b (W3b-1, AT-4.3): people added from a spreadsheet are present too.
     await withUpload(w as Parameters<typeof withUpload>[0]);
+    // LMS wave 4 (W4-1a, AT-4.5): A's locks are present too (Arabic in order, its second chapter locked for A).
+    await withLocks(w as Parameters<typeof withLocks>[0]);
   });
   after(async () => {
     await w?.close();
@@ -108,6 +110,8 @@ describe('AT-13a the running product: guardian pages carry no activity, and open
             }
           }
           assert.deepEqual(uploadHits(p.body), [], `${person.username} ${lang} ${p.path}: no upload word`);
+          // LMS wave 4 (AT-4.5): no lock word, reason, order line, Go to or lock marker on any guardian page.
+          assert.deepEqual(lockHits(p.body), [], `${person.username} ${lang} ${p.path}: no lock state`);
         }
       }
     }

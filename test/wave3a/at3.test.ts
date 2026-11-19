@@ -32,6 +32,8 @@ const BASE_MIGRATIONS: Record<string, string> = {
   '0011_done_marks.sql': '4feabd782aca26c332b2282d93744198411dbe20fdef5b201cf006cebf47ab15',
   // LMS wave 3b (contract on PIL-232, section 10 item 1): the upload table and the membership column.
   '0012_class_upload.sql': '2a5b44991ede382449b6ca26a28a81eef40a4c2545cbe376690b247ba41939c6',
+  // LMS wave 4 (contract on PIL-238, section 11 item 1): the subject's "open in order" column.
+  '0013_chapters_in_order.sql': '51bae431600df24960efe0049a0430f7e68b8892b5aaa628ecf4e4dd3f71e242',
 };
 /** The cookie names src/ sets today: the session, the device language and the learner's notice. */
 const BASE_COOKIES = ['lms_lang', 'lms_notice_', 'lms_session'];

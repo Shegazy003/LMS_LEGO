@@ -7,7 +7,7 @@ import { checkTypedEndDate, endedDate, isIsoDate, membershipStatus, utcDate } fr
 import {
   ADMIN_MANAGES, OWNER_MANAGES, appoint, correctPerson, createSet, createTopic, endAccess, findSet, findTopic, isAppointable, learnersOf,
   managedPerson, peopleOf, publishersOf, renameSet, renameTopic, restoreAccess, saveSetMembers, saveTopic, searchText, setPassword, setsOf,
-  spaceAdmin, topicReaders, topicsOf, type ManagedRoles, type PersonRow,
+  setTopicOrder, spaceAdmin, topicReaders, topicsOf, type ManagedRoles, type PersonRow,
 } from './admin.ts';
 import { attemptBlock, clearUser, minutesUntil, openDoor, recordFailure } from './auth/limits.ts';
 import { dummyHash, hashPassword, passwordIterations, rehashIfNeeded, verifyPassword } from './auth/password.ts';
@@ -22,8 +22,8 @@ import { LANGS, LANG_COOKIE, deviceLang, langChoice, makeLabel, type Concept, ty
 import { cleanDisplayName, cleanItemName, isUsername, typedUsername } from './names.ts';
 import { readLabels, switchedKit } from './kits/edit.ts';
 import {
-  continueWhere, findFile, findLesson, learnerCards, lessonMaterials, lessonSequence, outline, previewCards, previewableSubject, readableSubject,
-  subjectsForPublisher, type Previewer, type SubjectRow,
+  chapterLocks, continueWhere, findFile, findLesson, learnerCards, lessonMaterials, lessonSequence, outline, previewCards, previewableSubject, readableSubject,
+  subjectsForPublisher, type ChapterLocks, type OutlineChapter, type Previewer, type SubjectRow,
 } from './learning.ts';
 import { doneLessonIds, isDone, markDone, markNotDone, markOrder, readsAsLearner, signedInLearner } from './progress.ts';
 import { previewFrame, type PreviewScope } from './views/preview.ts';
@@ -36,7 +36,7 @@ import { logError } from './log.ts';
 import { normaliseCountryCode, normaliseMobile } from './phone.ts';
 import {
   addChapter, addLesson, addMaterial, editableChapter, editableLesson, editableMaterial, editableSubject, isDirection,
-  moveChapter, moveLesson, moveMaterial, renameChapter, renameLesson, renameMaterial, replacementKey, setPublished, switchFile,
+  moveChapter, moveLesson, moveMaterial, renameChapter, renameLesson, renameMaterial, replacementKey, setChaptersInOrder, setPublished, switchFile,
   type EditableChapter, type EditableLesson, type EditableMaterial, type NewMaterial,
 } from './publishing.ts';
 import {
@@ -51,10 +51,10 @@ import {
 import { registerTestHooks } from './test-hooks.ts';
 import { FREE_PLAN, UsageMeter, type FlushBatch } from './usage.ts';
 import { accountPage, languagePage } from './views/account.ts';
-import { peoplePage, setPage, setsPage, topicPage, topicsPage, type AppointForm, type ItemNotice } from './views/admin.ts';
+import { peoplePage, setPage, setsPage, topicPage, topicsPage, type AppointForm, type ItemNotice, type OrderStatus } from './views/admin.ts';
 import { recoverPage, recoveryCodePage, setupPage, signInPage } from './views/auth.ts';
 import { layout, messagePage, type Html } from './views/layout.ts';
-import { learnerHome, lessonPage, spacePage, subjectPage, type DoneBlock } from './views/learn.ts';
+import { learnerHome, lessonPage, lockedLessonPage, spacePage, subjectPage, type DoneBlock } from './views/learn.ts';
 import {
   kitConfirmPage, newSpacePage, ownerHome, ownerSpacePage, type AdminRow, type AppointValues, type NewSpaceValues, type OwnerSpaceExtra,
 } from './views/owner.ts';
@@ -1050,8 +1050,14 @@ app.get('/s/:spaceId/preview/learn/:subjectId', async (c) => {
   if (!subject) return refuse(c, 403, 'noAccess');
   const { t, lang } = spaceLabel(c);
   const view = await previewView(c, previewer, 'one', subject.is_published !== 1);
-  return page(c, subjectPage(t, lang, view, subject, await outline(db, space.id, subject.id), c.req.query('open')));
+  const parts = await outline(db, space.id, subject.id);
+  // LMS wave 4 (section 5.5): a subject in order shows a new learner's locks (no marks); no done mark is read.
+  return page(c, subjectPage(t, lang, view, subject, parts, c.req.query('open'), undefined, newLearnerLocks(subject, parts)));
 });
+
+/** LMS wave 4 (section 5.5): the locks a new learner with no marks meets in a subject in order (the preview's made-up learner); null with the setting off. */
+const newLearnerLocks = (subject: SubjectRow, parts: OutlineChapter[]): ChapterLocks | null =>
+  (subject.chapters_in_order === 1 ? chapterLocks(parts, new Set()) : null);
 
 app.get('/s/:spaceId/preview/read/:lessonId', async (c) => {
   const previewer = previewerOf(c)!;
@@ -1068,11 +1074,16 @@ app.get('/s/:spaceId/preview/read/:lessonId', async (c) => {
   if (!subject) return refuse(c, 403, 'noAccess');
   const { t, lang } = spaceLabel(c);
   const view = await previewView(c, previewer, 'one', subject.is_published !== 1);
+  const parts = await outline(db, space.id, subject.id);
+  // LMS wave 4 (section 5.5): in a subject in order, a lesson a new learner cannot open yet is the locked page, with preview addresses.
+  const locks = newLearnerLocks(subject, parts);
+  const reason = locks?.locked.get(lesson.chapter_id);
+  if (locks && reason) return page(c, lockedLessonPage(t, lang, view, { subject, lesson, reason, locks }));
   const materials = await lessonMaterials(db, space.id, lesson.id);
-  const steps = lessonSequence(await outline(db, space.id, subject.id));
+  const steps = lessonSequence(parts);
   const place = { steps, index: Math.max(0, steps.findIndex((s) => s.id === lesson.id)) };
   // LMS wave 2 (UX-31): the made-up learner has no marks; the done block is "Mark as done", inert, and no done mark is read.
-  return page(c, lessonPage(t, lang, view, { subject, lesson, materials, place, notice: await previewNotice(c, previewer), done: { kind: 'inert' } }));
+  return page(c, lessonPage(t, lang, view, { subject, lesson, materials, place, notice: await previewNotice(c, previewer), done: { kind: 'inert' }, locks }));
 });
 
 // Reading: a subject, a lesson, a stored file. Anything the person may not
@@ -1094,9 +1105,28 @@ app.get('/s/:spaceId/learn/:subjectId', async (c) => {
   const { t, lang, view } = spaceLabel(c);
   // LMS wave 2 (section 5): ticks and the progress line, from this person's own marks, only when they read it as a learner.
   const marks = (await readsAsLearner(db, space, c.get('user')!.id, subject)) ? await doneLessonIds(db, signedInLearner(c)) : undefined;
+  const parts = await outline(db, space.id, subject.id);
+  // LMS wave 4 (section 5.1): the locks, from the same outline and marks, only for a subject in order read as a learner.
+  const locks = subject.chapters_in_order === 1 && marks ? chapterLocks(parts, marks) : null;
   // Wave 1 (section 6): ?open=all, ?open=none or one chapter of this subject; any other value is ignored.
-  return page(c, subjectPage(t, lang, view, subject, await outline(db, space.id, subject.id), c.req.query('open'), marks));
+  return page(c, subjectPage(t, lang, view, subject, parts, c.req.query('open'), marks, locks));
 });
+
+/** LMS wave 4 (sections 5.1 to 5.4): for a subject in order read as a learner,
+ * the outline, this learner's marks and the locks they give (two reads: the
+ * outline and the marks); null with the setting off or for anyone not reading
+ * it as a learner, who never meets a lock. */
+async function learnerLocks(c: C, subject: SubjectRow): Promise<{ parts: OutlineChapter[]; marks: Set<string>; locks: ChapterLocks } | null> {
+  const db = c.get('db');
+  const space = c.get('space');
+  if (subject.chapters_in_order !== 1 || !(await readsAsLearner(db, space, c.get('user')!.id, subject))) return null;
+  const marks = await doneLessonIds(db, signedInLearner(c));
+  const parts = await outline(db, space.id, subject.id);
+  return { parts, marks, locks: chapterLocks(parts, marks) };
+}
+
+/** The chapter a lesson sits in, on an outline. */
+const chapterOfLesson = (parts: OutlineChapter[], lessonId: string) => parts.find((ch) => ch.lessons.some((l) => l.id === lessonId))?.id ?? null;
 
 app.get('/s/:spaceId/read/:lessonId', async (c) => {
   const db = c.get('db');
@@ -1106,9 +1136,13 @@ app.get('/s/:spaceId/read/:lessonId', async (c) => {
   const subject = await readableSubject(db, space, c.get('user')!.id, lesson.subject_id);
   if (!subject) return refuse(c, 403, 'noAccess');
   const { t, lang, view } = spaceLabel(c);
+  // LMS wave 4 (section 5.4): a lesson of a locked chapter is the locked page (200): no material is read, no open recorded, no done block.
+  const order = await learnerLocks(c, subject);
+  const reason = order?.locks.locked.get(lesson.chapter_id);
+  if (order && reason) return page(c, lockedLessonPage(t, lang, view, { subject, lesson, reason, locks: order.locks }));
   const materials = await lessonMaterials(db, space.id, lesson.id);
   // Wave 1 (section 5.1): where the lesson sits in the sequence of its subject, from the outline the subject page shows.
-  const steps = lessonSequence(await outline(db, space.id, subject.id));
+  const steps = lessonSequence(order?.parts ?? (await outline(db, space.id, subject.id)));
   const place = { steps, index: Math.max(0, steps.findIndex((s) => s.id === lesson.id)) };
   // R2-d (AT-15d, 15f): a learner opening their own lesson is told while lesson
   // activity is on, and the day is kept (one statement that checks the setting
@@ -1127,13 +1161,14 @@ app.get('/s/:spaceId/read/:lessonId', async (c) => {
   // LMS wave 2 (section 4): the done block, only for a person reading this lesson as a learner, with their own state.
   // The status line of a press shows only when it matches the stored state; a failed save always says so.
   let done: DoneBlock | null = null;
-  if (await readsAsLearner(db, space, c.get('user')!.id, subject)) {
-    const isMarked = await isDone(db, signedInLearner(c), lesson.id);
+  // In order, the marks already read give this lesson's state (no further read); otherwise wave 2's one read.
+  if (order || (await readsAsLearner(db, space, c.get('user')!.id, subject))) {
+    const isMarked = order ? order.marks.has(lesson.id) : await isDone(db, signedInLearner(c), lesson.id);
     const asked = c.req.query('marked');
     const status = asked === 'failed' || (asked === 'done' && isMarked) || (asked === 'not-done' && !isMarked) ? asked : null;
     done = { kind: 'learner', done: isMarked, status };
   }
-  return page(c, lessonPage(t, lang, view, { subject, lesson, materials, place, notice, done }));
+  return page(c, lessonPage(t, lang, view, { subject, lesson, materials, place, notice, done, locks: order?.locks ?? null }));
 });
 
 // LMS wave 2 (section 4): "Mark as done" and "Mark as not done", a plain form
@@ -1153,6 +1188,9 @@ app.post('/s/:spaceId/read/:lessonId/done', async (c) => {
   if (!lesson) return removedOrRefused(c, await removedLessonSubject(db, space.id, c.req.param('lessonId')));
   const subject = await readableSubject(db, space, c.get('user')!.id, lesson.subject_id);
   if (!subject || !(await readsAsLearner(db, space, c.get('user')!.id, subject))) return refuse(c, 403, 'noAccess');
+  // LMS wave 4 (section 5.4): a lesson of a locked chapter accepts no press (done or not-done); nothing is stored.
+  const order = await learnerLocks(c, subject);
+  if (order?.locks.locked.has(lesson.chapter_id)) return refuse(c, 403, 'noAccess');
   const state = field(await c.req.parseBody(), 'state');
   if (state !== 'done' && state !== 'not-done') {
     const t = label(c, space.kit);
@@ -1176,6 +1214,10 @@ app.get('/s/:spaceId/file/:materialId', async (c) => {
   if (!file) return removedOrRefused(c, await removedMaterialSubject(db, space.id, c.req.param('materialId')));
   const subject = await readableSubject(db, space, c.get('user')!.id, file.subject_id);
   if (!subject) return refuse(c, 403, 'noAccess');
+  // LMS wave 4 (section 5.4): a file of a lesson in a locked chapter answers 403, with no bytes.
+  const order = await learnerLocks(c, subject);
+  const chapterId = order && chapterOfLesson(order.parts, file.lesson_id);
+  if (order && chapterId && order.locks.locked.has(chapterId)) return refuse(c, 403, 'noAccess');
   const obj = await c.env.FILES.get(file.storage_key);
   if (!obj) return refuse(c, 404, 'notFound');
   const headers = materialFileHeaders(file.kind, obj.httpMetadata?.contentType ?? '', obj.httpEtag);
@@ -1755,6 +1797,8 @@ async function renderTopic(
     sets: (await setsOf(db, view.id)).map((s) => ({ id: s.id, display_name: s.name })),
     learners: await learnersOf(db, view.id),
     readers: await topicReaders(db, view.id, topic.id),
+    // LMS wave 4 (section 4.2): the setting card's status line after a press.
+    order: orderStatus(c, topic.chapters_in_order),
     ...extra,
   });
   return page(c, body, status);
@@ -1905,8 +1949,59 @@ const editorNotice = (c: C): EditorNotice | undefined => DONE[c.req.query('done'
 async function renderSubjectEditor(c: C, subject: SubjectRow, error?: LabelKey, notice?: EditorNotice) {
   const { t, lang, view } = spaceLabel(c);
   const parts = await outline(c.get('db'), view.id, subject.id);
-  return page(c, subjectEditor(t, lang, view, subject, parts, error && t(error), notice), error ? 400 : 200);
+  return page(c, subjectEditor(t, lang, view, subject, parts, error && t(error), notice, orderStatus(c, subject.chapters_in_order)), error ? 400 : 200);
 }
+
+// LMS wave 4 (product-contract v2 on PIL-238, section 4): the subject's "open
+// in order" setting. A plain form with one field, state = on or off (a set,
+// not a switch), from the responsible publisher's editor or the admin's
+// subject page, each behind its own gate (publisher, admin; access ended and
+// another site refused before any lookup). A subject that is not theirs here
+// answers 403 and nothing is stored; any other state 400 (today's plain error
+// page). Then back to the same page at the setting block, whose status line
+// says the new value only when it matches the stored one. A failed write keeps
+// the value and says so; its log line is the fixed event alone. GET and HEAD
+// have no route here (404). Only the subject row changes: no mark, no lesson.
+type OrderWrite = (on: boolean) => Promise<boolean>;
+
+async function orderPost(c: C, write: OrderWrite, back: string) {
+  const state = field(await c.req.parseBody(), 'state');
+  if (state !== 'on' && state !== 'off') {
+    const t = label(c, c.get('space').kit);
+    return page(c, messagePage(t, c.get('lang'), t('choiceInvalid'), true), 400);
+  }
+  let said: string = state;
+  try {
+    if (!(await write(state === 'on'))) return refuse(c, 403, 'noAccess');
+  } catch {
+    logError('order write failed');
+    said = 'failed';
+  }
+  return c.redirect(`${back}?order=${said}#order-state`, 303);
+}
+
+/** The setting card's status line (section 4.2): ?order=on or off only when it matches the stored value; failed always; anything else none. */
+function orderStatus(c: C, stored: number): OrderStatus {
+  const asked = c.req.query('order');
+  return asked === 'failed' || (asked === 'on' && stored === 1) || (asked === 'off' && stored === 0) ? asked : null;
+}
+
+app.post('/s/:spaceId/publish/edit/:subjectId/order', async (c) => {
+  const db = c.get('db');
+  const spaceId = c.get('space').id;
+  const userId = c.get('user')!.id;
+  const subject = await editableSubject(db, spaceId, userId, c.req.param('subjectId'));
+  if (!subject) return refuse(c, 403, 'noAccess');
+  return orderPost(c, (on) => setChaptersInOrder(db, spaceId, userId, subject.id, on), subjectEditorPath(spaceId, subject.id));
+});
+
+app.post('/s/:spaceId/admin/topics/:subjectId/order', async (c) => {
+  const db = c.get('db');
+  const spaceId = c.get('space').id;
+  const topic = await findTopic(db, spaceId, c.req.param('subjectId'));
+  if (!topic) return refuse(c, 403, 'noAccess');
+  return orderPost(c, (on) => setTopicOrder(db, spaceId, topic.id, on), `/s/${spaceId}/admin/topics/${topic.id}`);
+});
 
 /** The add-material chooser's state as the editor is asked for it (LMS wave 1, L2, section 8.2). */
 interface AddAsked {

@@ -1091,6 +1091,142 @@ jobs:
         with:
           name: evidence-wave-3b
           path: evidence/
+  # LMS wave 4, task W4-1a (product-contract v2 on PIL-238, sections 3 and
+  # 12): chapters in order. One job of its own, one step per labelled
+  # expectation (`W4 AT-...`) and per UX item (`UX-44` to `UX-50`), each run
+  # even after an earlier failure. The product runs in this process
+  # (LMS_TEST_RUNTIME=in-process, as wave-3a and wave-3b), so the statement spy
+  # counts the reads; AT-5.1 and AT-5.2 apply the migrations with Wrangler on a
+  # fresh local D1. The generic runner script `test:wave3b` (node --test, one
+  # file at a time) runs every file. AT-5.3's old-code case is in the rollback job.
+  wave-4:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      WRANGLER_SEND_METRICS: "false"
+      LMS_TEST_RUNTIME: in-process
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install (lockfile only, when present)
+        run: if [ -f package-lock.json ]; then npm ci; fi
+      - name: Read the Playwright version
+        id: playwright
+        run: |
+          echo "version=$(node -p "require('playwright/package.json').version")" >> "$GITHUB_OUTPUT"
+          echo "image=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
+      - name: Cache Chromium for the browser test
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.image }}-${{ steps.playwright.outputs.version }}-chromium
+      - name: Install Chromium for the browser test
+        timeout-minutes: 10
+        run: |
+          npx playwright install-deps chromium
+          for attempt in 1 2 3; do
+            timeout 180 npx playwright install chromium && exit 0
+            echo "::warning::Chromium install attempt $attempt did not finish; retrying"
+            sleep 10
+          done
+          exit 1
+      - name: W4 AT-1.1 every subject starts off, also one created later; the editor and the subject admin page show the setting card
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W4 AT-1\.1 ' test/wave4/at1.test.ts
+      - name: W4 AT-1.2 Switch on and Switch off from the editor and the subject admin page, a set, 303 to #order-state, script on and off
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W4 AT-1\.2 ' test/wave4/at1.test.ts
+      - name: W4 AT-1.3 every refused case stores nothing (other publisher, learner, guardian, owner, ended access, cross-site, other space, made-up id, bad state, GET and HEAD)
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W4 AT-1\.3 ' test/wave4/at1.test.ts
+      - name: W4 AT-1.4 with the setting off no page makes more reads than main's (d); every existing step passes (a, the rest of this run)
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W4 AT-1\.4 ' test/wave4/at1.test.ts
+      - name: W4 AT-2.1 first look, the order box, Go to, the locked chapters with their reasons
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W4 AT-2\.1 ' test/wave4/at2.test.ts
+      - name: W4 AT-2.2 what done means, every shown lesson of every earlier chapter, the learner's own marks
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W4 AT-2\.2 ' test/wave4/at2.test.ts
+      - name: W4 AT-2.3 a locked lesson by its address, the locked page, HEAD, its file and its mark POST refused
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W4 AT-2\.3 ' test/wave4/at2.test.ts
+      - name: W4 AT-2.4 the lesson end around a lock (W4-1a, without the status sentence)
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W4 AT-2\.4 ' test/wave4/at2.test.ts
+      - name: W4 AT-2.5 home never leads into a lock
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W4 AT-2\.5 ' test/wave4/at2.test.ts
+      - name: W4 AT-2.6 kits and languages for the order line, the reasons and the counts
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W4 AT-2\.6 ' test/wave4/at2.test.ts
+      - name: W4 AT-2.7 every lesson-keyed learner route is gated (the route table)
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W4 AT-2\.7 ' test/wave4/at2.test.ts
+      - name: W4 AT-4.1 no page of Amal, Hadeer, Mona or the owner shows a lock; only the setting card and the change note are new
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W4 AT-4\.1 ' test/wave4/at4.test.ts
+      - name: W4 AT-4.2 each learner's locks come from their own marks only
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W4 AT-4\.2 ' test/wave4/at4.test.ts
+      - name: W4 AT-4.3 two roles, locks only where the person reads as a learner
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W4 AT-4\.3 ' test/wave4/at4.test.ts
+      - name: W4 AT-4.4 the preview shows a new learner's locks, reads no done mark and writes nothing
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W4 AT-4\.4 ' test/wave4/at4.test.ts
+      - name: W4 AT-4.5 the privacy scans AT-13a and AT-13b with the wave 4 words and Salma's locks present; no new cookie; no-store
+        if: success() || failure()
+        run: |
+          npm run test:wave3b -- --test-name-pattern='^W4 AT-4\.5 ' test/wave4/at4.test.ts
+          npm run test:wave3b -- test/at13/at13a.test.ts test/at13/at13b.test.ts
+      - name: W4 AT-4.6 reads, off exactly main's, on at most one or two more (prints the counts)
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W4 AT-4\.6 ' test/wave4/at4.test.ts
+      - name: W4 AT-5.1 the forward migration adds exactly subject.chapters_in_order; a second apply is a no-op
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W4 AT-5\.1 ' test/wave4/at5.test.ts
+      - name: W4 AT-5.2 the down script brings the schema and the applied-migrations record back to main's
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W4 AT-5\.2 ' test/wave4/at5.test.ts
+      - name: W4 AT-5.3 the README's rollback text (the old-code case is in the rollback job)
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W4 AT-5\.3 ' test/wave4/at5.test.ts
+      - name: W4 AT-5.4 the setting is deleted with its subject and its space; no lock state is stored
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W4 AT-5\.4 ' test/wave4/at5.test.ts
+      - name: W4 AT-5.5 no route returns the setting but where allowed; the README and Later on export and backup
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W4 AT-5\.5 ' test/wave4/at5.test.ts
+      - name: UX-44 setting card and change note
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-44 ' test/wave4/ux.test.ts
+      - name: UX-45 locked chapters on the outline
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-45 ' test/wave4/ux.test.ts
+      - name: UX-46 locked lesson page
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-46 ' test/wave4/ux.test.ts
+      - name: UX-47 lesson end and status lines around a lock (W4-1a, the locked Next)
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-47 ' test/wave4/ux.test.ts
+      - name: UX-48 home actions lead to open lessons
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-48 ' test/wave4/ux.test.ts
+      - name: UX-49 Arabic, mixed text and kit words for chapters in order (three kits)
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-49 ' test/wave4/ux.test.ts
+      - name: UX-50 widths, sizes, contrast and keyboard for chapters in order
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-50 ' test/wave4/ux.test.ts
+      - name: Upload evidence (wave 4 screenshots)
+        if: always() && hashFiles('evidence/**') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-wave-4
+          path: evidence/
   # AT-14a: rollback holds. The code live before release 2 (main at f3b1fa7,
   # the H-1 version 528786a4, the rollback target) is checked out beside this
   # commit and given this commit's migrations, so the old code runs on a
@@ -1156,6 +1292,10 @@ jobs:
         if: success() || failure()
         working-directory: release-1.1
         run: node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./test/support/github-reporter.mjs --test-reporter-destination=stdout --test-name-pattern='^W3b AT-5\.5 ' test/rollback/old-code.test.ts
+      - name: W4 AT-5.3 release 1.1 code on the database with a subject set in order opens every lesson (no lock) and writes nothing to the setting
+        if: success() || failure()
+        working-directory: release-1.1
+        run: node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./test/support/github-reporter.mjs --test-reporter-destination=stdout --test-name-pattern='^W4 AT-5\.3 ' test/rollback/old-code.test.ts
       - name: AT-14a release 1.1 suite on the release 2 database - AT-1
         if: success() || failure()
         working-directory: release-1.1

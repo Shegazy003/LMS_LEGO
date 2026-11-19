@@ -26,6 +26,34 @@ export interface AppointForm {
   valid_until?: string;
 }
 
+/** What the setting card says after a press (LMS wave 4, section 4.2): the new value, only when it matches the stored one; a failed save always. */
+export type OrderStatus = 'on' | 'off' | 'failed' | null;
+
+const ORDER_CARD_CSS = `#order-state{display:flex;flex-direction:column;gap:8px;margin:12px 0;border-radius:8px}
+#order-state:focus{outline:3px solid #1b1f24;outline-offset:4px}
+#order-state>*{margin:0}
+#order-state .order-value{font-weight:700}
+#order-state .order-explain{color:#57606a;font-size:.9rem;overflow-wrap:anywhere}
+#order-state form{display:flex}
+#order-state button.order-switch{min-height:44px;min-width:44px;background:#fff;color:#1a5fd0;border:2px solid #1a5fd0}`;
+
+/** The setting card (LMS wave 4, section 4.2, UX-44) of the publisher's editor
+ * (inside the card of Publish and Preview) and of the admin's subject page (a
+ * card of its own): the value as text, the explanation and one button in the
+ * secondary style, a plain form with one field (a set, not a switch). The
+ * block takes focus when the page opens at #order-state after a press. It
+ * names no learner, count or total. */
+export function orderCard(t: Label, lang: Lang, v: { action: string; on: boolean; status: OrderStatus; own: boolean }): Html {
+  const kit = { chapter: t('chapter').toLocaleLowerCase(lang), lesson: t('lesson').toLocaleLowerCase(lang), learner: t('learner').toLocaleLowerCase(lang) };
+  const said = v.status === 'failed' ? 'markFailed' : v.status === 'on' ? 'orderNowOn' : 'orderNowOff';
+  const status = v.status ? html`<p id="order-status" class="${v.status === 'failed' ? 'error' : 'done'}" role="status">${t(said)}</p>` : '';
+  return html`<section id="order-state" class="order-card${v.own ? ' card' : ''}" tabindex="-1" data-order="${v.on ? 1 : 0}"><style>${raw(ORDER_CARD_CSS)}</style>
+  ${status}<p id="order-value" class="order-value">${t(v.on ? 'orderStateOn' : 'orderStateOff')}</p>
+  <p class="order-explain">${t('orderExplain', kit)}</p>
+  <form id="order-form" method="post" action="${v.action}"><input type="hidden" name="state" value="${v.on ? 'off' : 'on'}"><button type="submit" class="order-switch">${t(v.on ? 'orderSwitchOff' : 'orderSwitchOn')}</button></form>
+</section>`;
+}
+
 /** A person on the people list: their row, whether their access has ended, and (wave 3b) whether they have no password yet. */
 export type ListedPerson = PersonRow & { ended: boolean; no_password?: boolean };
 
@@ -182,6 +210,7 @@ export function topicPage(
     notice?: ItemNotice;
     error?: string;
     typedName?: string;
+    order?: OrderStatus;
   },
 ): Html {
   const action = `${base(space)}/topics/${v.topic.id}`;
@@ -199,6 +228,7 @@ ${errorBox(v.error)}
   <fieldset class="checks"><legend>${t('learner')}</legend>${memberChoices('learner', v.learners, v.readers.learners, t)}</fieldset>
   <button type="submit">${t('save')}</button>
 </form>
-${renameForm(t, { id: 'rename-topic', heading: t('renameItem', { item: t('subject') }), action: `${action}/name`, field: 'title', value: v.typedName ?? v.topic.title })}`;
+${renameForm(t, { id: 'rename-topic', heading: t('renameItem', { item: t('subject') }), action: `${action}/name`, field: 'title', value: v.typedName ?? v.topic.title })}
+${orderCard(t, lang, { action: `${action}/order`, on: v.topic.chapters_in_order === 1, status: v.order ?? null, own: true })}`;
   return spacePage(t, lang, space, v.topic.title, body);
 }

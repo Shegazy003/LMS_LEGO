@@ -271,11 +271,13 @@ export interface TopicRow {
   is_published: number;
   publisher_user_id: string | null;
   publisher_name: string | null;
+  /** LMS wave 4 (section 4.1): the subject's "open in order" setting, read with the row. */
+  chapters_in_order: number;
 }
 
 export function topicsOf(db: Db, spaceId: string): Promise<TopicRow[]> {
   return db.all<TopicRow>(
-    `SELECT s.id, s.title, s.is_published, s.publisher_user_id, u.display_name AS publisher_name
+    `SELECT s.id, s.title, s.is_published, s.publisher_user_id, u.display_name AS publisher_name, s.chapters_in_order
        FROM subject s LEFT JOIN user u ON u.id = s.publisher_user_id
       WHERE s.space_id = ? ORDER BY s.title, s.id`,
     spaceId,
@@ -284,7 +286,7 @@ export function topicsOf(db: Db, spaceId: string): Promise<TopicRow[]> {
 
 export function findTopic(db: Db, spaceId: string, subjectId: string): Promise<TopicRow | null> {
   return db.first<TopicRow>(
-    `SELECT s.id, s.title, s.is_published, s.publisher_user_id, u.display_name AS publisher_name
+    `SELECT s.id, s.title, s.is_published, s.publisher_user_id, u.display_name AS publisher_name, s.chapters_in_order
        FROM subject s LEFT JOIN user u ON u.id = s.publisher_user_id
       WHERE s.id = ? AND s.space_id = ?`,
     subjectId, spaceId,
@@ -315,6 +317,15 @@ export async function createTopic(db: Db, spaceId: string, title: string, publis
  * read it and its chapters, lessons and materials are untouched. */
 export async function renameTopic(db: Db, spaceId: string, subjectId: string, title: string): Promise<void> {
   await db.run('UPDATE subject SET title = ? WHERE id = ? AND space_id = ?', title, subjectId, spaceId);
+}
+
+/** LMS wave 4 (section 4.1): sets a subject's "open in order" setting, as an
+ * admin of this space (a set, not a switch). Only the setting changes: the
+ * subject's content, publisher, readers and every done mark are untouched.
+ * Returns whether the subject is in this space. */
+export async function setTopicOrder(db: Db, spaceId: string, subjectId: string, on: boolean): Promise<boolean> {
+  const changed = await db.run('UPDATE subject SET chapters_in_order = ? WHERE id = ? AND space_id = ?', on ? 1 : 0, subjectId, spaceId);
+  return changed === 1;
 }
 
 /** Sets a subject's responsible publisher and replaces who may read it. The

@@ -106,9 +106,10 @@ describe('AT-13c numbers stay masked on the new pages', { concurrency: false }, 
         for (const p of await crawl(c, guardianPaths(w))) {
           if (!p.contentType.startsWith('text/')) continue;
           for (const other of [G1, G2, A, B]) {
-            for (const form of [...full(other.mobile), other.mobile.slice(-4)]) {
-              assert.ok(!p.body.includes(form), `${person.username} ${lang} ${p.path}: no number of ${other.username}`);
-            }
+            // LMS wave 4, HK-1 (product-contract v2 on PIL-238, section 8): the full number forms on the raw page; the last four
+            // digits on the visible text only, as the R2-b and R2-c check above does (random ids in the markup can hold any four digits).
+            for (const form of full(other.mobile)) assert.ok(!p.body.includes(form), `${person.username} ${lang} ${p.path}: no number of ${other.username}`);
+            assert.ok(!visible(p.body).includes(other.mobile.slice(-4)), `${person.username} ${lang} ${p.path}: not even the last digits of ${other.username}`);
           }
         }
       }

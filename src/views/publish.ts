@@ -10,7 +10,7 @@ import type { Label, LabelKey, Lang } from '../labels.ts';
 import type { MaterialRow, OutlineChapter, SubjectItem, SubjectRow } from '../learning.ts';
 import type { EditableChapter, EditableLesson, EditableMaterial } from '../publishing.ts';
 import type { ContentKind, RemovedItem } from '../removal.ts';
-import { renameForm } from './admin.ts';
+import { orderCard, renameForm, type OrderStatus } from './admin.ts';
 import { errorBox, ltrSentence, sentence, type Html } from './layout.ts';
 import { KIND_LABEL, materialItem, spacePage } from './learn.ts';
 import { previewPath, viewAsLink } from './preview.ts';
@@ -51,6 +51,13 @@ function removeEntry(t: Label, action: string): Html {
 </form>`;
 }
 
+/** The change note (LMS wave 4, section 4.2, UX-44): with the subject in order, one plain line directly above each add-lesson and restore button; it names no learner and no count. */
+function orderNote(t: Label, lang: Lang, on: boolean): Html | string {
+  if (!on) return '';
+  const text = t('orderAddNote', { chapter: t('chapter').toLocaleLowerCase(lang), lesson: t('lesson').toLocaleLowerCase(lang) });
+  return html`<p class="order-note" data-order-note><style>.order-note{margin:0;color:#57606a;font-size:.9rem;overflow-wrap:anywhere}</style>${text}</p>`;
+}
+
 const recentlyRemovedLink = (t: Label, space: SpaceView, subjectId: string) =>
   html`<p><a id="recently-removed" href="${base(space)}/edit/${subjectId}/removed">${t('recentlyRemoved')}</a></p>`;
 
@@ -72,7 +79,7 @@ function entryRow(t: Label, space: SpaceView, entry: { id: string; title: string
   return html`<li class="row"><a data-lesson="${entry.id}" href="${base(space)}/compose/${entry.id}"><bdi>${entry.title}</bdi></a>${move}</li>`;
 }
 
-function chapterEditor(t: Label, space: SpaceView, ch: OutlineChapter, i: number, count: number): Html {
+function chapterEditor(t: Label, lang: Lang, space: SpaceView, ch: OutlineChapter, i: number, count: number, inOrder: boolean): Html {
   const entries = ch.lessons;
   const rows = entries.map((e, j) => entryRow(t, space, e, j === 0, j === entries.length - 1));
   const list = rows.length ? html`<ol class="list">${rows}</ol>` : html`<p class="muted">${t('nothingHere')}</p>`;
@@ -83,7 +90,7 @@ function chapterEditor(t: Label, space: SpaceView, ch: OutlineChapter, i: number
   ${list}
   <form class="add-lesson inline-add" method="post" action="${base(space)}/part/${ch.id}/add">
     <label>${t('add')} ${t('lesson')}<input name="title" required maxlength="${TITLE_MAX}"></label>
-    <button type="submit">${t('add')}</button>
+    ${orderNote(t, lang, inOrder)}<button type="submit">${t('add')}</button>
   </form>
 </section>`;
 }
@@ -97,7 +104,9 @@ export function subjectEditor(
   parts: OutlineChapter[],
   error?: string,
   notice?: EditorNotice,
+  order: OrderStatus = null,
 ): Html {
+  const inOrder = subject.chapters_in_order === 1;
   const published = subject.is_published === 1;
   const action = `${base(space)}/edit/${subject.id}`;
   const body = html`<p class="muted">${t('subject')}</p>
@@ -109,10 +118,11 @@ ${errorBox(error)}
   ${published
     ? html`<form id="unpublish" method="post" action="${action}/unpublish"><button type="submit" class="secondary">${t('unpublish')}</button></form>`
     : html`<form id="publish" method="post" action="${action}/publish"><button type="submit">${t('publish')}</button></form>`}
+  ${orderCard(t, lang, { action: `${action}/order`, on: inOrder, status: order, own: false })}
   <p><a id="preview-subject" href="${previewPath(space.id, `/learn/${subject.id}`, `subject:${subject.id}`)}">${t('preview')}</a></p>
 </div>
 <h2>${t('chapter')} <span class="muted">· ${t('lesson')}</span></h2>
-<div id="outline">${parts.map((ch, i) => chapterEditor(t, space, ch, i, parts.length))}</div>
+<div id="outline">${parts.map((ch, i) => chapterEditor(t, lang, space, ch, i, parts.length, inOrder))}</div>
 ${parts.length ? '' : html`<p class="card muted">${t('nothingHere')}</p>`}
 <form id="add-chapter" class="stack card" method="post" action="${action}/add">
   <label>${t('add')} ${t('chapter')}<input name="title" required maxlength="${TITLE_MAX}"></label>
@@ -352,12 +362,12 @@ export function removeConfirmPage(
 
 const removedDate = (ms: number) => new Date(ms).toISOString().slice(0, 10);
 
-function removedEntry(t: Label, space: SpaceView, item: RemovedItem): Html {
+function removedEntry(t: Label, lang: Lang, space: SpaceView, item: RemovedItem, inOrder: boolean): Html {
   const where = item.kind === 'lesson' ? 'chapter' : item.kind === 'material' ? 'lesson' : null;
   const kindWord = item.material_kind ? html`${t('material')} · ${t(KIND_LABEL[item.material_kind])}` : t(item.kind);
   const restore = item.blocked_by
     ? html`<p class="muted parent-first">${sentence(t, 'restoreParentFirst', { name: item.blocked_by })}</p>`
-    : html`<form class="restore" method="post" action="${base(space)}/${SEGMENT[item.kind]}/${item.id}/restore"><button type="submit">${t('restore')}</button></form>`;
+    : html`${orderNote(t, lang, inOrder)}<form class="restore" method="post" action="${base(space)}/${SEGMENT[item.kind]}/${item.id}/restore"><button type="submit">${t('restore')}</button></form>`;
   return html`<li data-removed="${item.id}" data-kind="${item.kind}">
   <div><span class="muted">${kindWord}</span> <bdi class="entry-title">${item.title}</bdi></div>
   <div class="muted">${where && item.parent_title ? html`${t(where)}: <bdi>${item.parent_title}</bdi> · ` : ''}${sentence(t, 'removedOn', { date: removedDate(item.removed_at) })}</div>
@@ -370,10 +380,11 @@ export function removedPage(
   t: Label,
   lang: Lang,
   space: SpaceView,
-  v: { subject: { id: string; title: string }; items: RemovedItem[]; error?: string },
+  v: { subject: { id: string; title: string; chapters_in_order?: number }; items: RemovedItem[]; error?: string },
 ): Html {
+  const inOrder = v.subject.chapters_in_order === 1;
   const list = v.items.length
-    ? html`<ul id="removed" class="list card">${v.items.map((item) => removedEntry(t, space, item))}</ul>`
+    ? html`<ul id="removed" class="list card">${v.items.map((item) => removedEntry(t, lang, space, item, inOrder))}</ul>`
     : html`<p id="removed" class="card muted">${t('nothingHere')}</p>`;
   const body = html`<nav id="trail" class="trail muted">
   <span>${t('subject')}: <a id="back" href="${base(space)}/edit/${v.subject.id}"><bdi>${v.subject.title}</bdi></a></span>
