@@ -279,7 +279,8 @@ describe('AT-14a old code on a release 2 database shows a guardian nothing, expo
     const setting = async () => (await worker.sql('SELECT id, chapters_in_order AS v FROM subject ORDER BY id')).map((r) => [r.id, Number(r.v)]);
     const before = await setting();
     assert.ok(before.some(([id, v]) => id === content.subject && v === 1), 'Mathematics is set in order');
-    const lockSigns = ['Locked', 'data-locked', 'order-box', 'order-state', 'Open in order', 'Opens when', 'Go to:', 'مغلق', 'تُفتح', 'بالترتيب'];
+    // Wave 4's markup by its ids (a bare "order-box" also matches today's CSS "border-box").
+    const lockSigns = ['Locked', 'data-locked', 'id="order-box"', 'id="locked-lesson"', 'id="order-state"', 'Open in order', 'Opens when', 'Go to:', 'مغلق', 'تُفتح', 'بالترتيب'];
     // Fractions is not done by Salma: wave 4 code would lock Decimals; old code opens it.
     const salma = await signedIn(worker.url, SALMA.username, SALMA.password);
     const outline = await salma.get(`/s/${spaceId}/learn/${content.subject}`);
@@ -297,7 +298,7 @@ describe('AT-14a old code on a release 2 database shows a guardian nothing, expo
     const admin = await signedIn(worker.url, ADMIN.username, ADMIN.password);
     for (const [c, path] of [[hadeer, `/s/${spaceId}/publish/edit/${content.subject}`], [admin, `/s/${spaceId}/admin/topics/${content.subject}`]] as const) {
       const body = await (await c.get(path)).text();
-      assert.ok(!body.includes('order-state'), `${path}: no setting card in old code`);
+      assert.ok(!body.includes('id="order-state"'), `${path}: no setting card in old code`);
       // Wave 4's setting addresses do not exist in old code: nothing is written.
       const res = await c.post(`${path}/order`, { state: 'off' });
       assert.ok(res.status >= 400, `${path}/order is not an address of old code (${res.status})`);
