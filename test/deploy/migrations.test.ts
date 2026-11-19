@@ -13,6 +13,7 @@ import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { retryD1Sync } from '../support/busy.ts';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 const wrangler = join(root, 'node_modules', '.bin', 'wrangler');
@@ -31,7 +32,8 @@ function wranglerOut(args: string[]): string {
 const apply = () => wranglerOut(['d1', 'migrations', 'apply', 'lms-lego', '--local', '--persist-to', persist]);
 
 function query(sql: string): Record<string, unknown>[] {
-  const out = wranglerOut(['d1', 'execute', 'lms-lego', '--local', '--persist-to', persist, '--json', '--command', sql]);
+  // Retried on SQLITE_BUSY / ECONNRESET only (test/support/busy.ts).
+  const out = retryD1Sync(() => wranglerOut(['d1', 'execute', 'lms-lego', '--local', '--persist-to', persist, '--json', '--command', sql]), { label: sql });
   return JSON.parse(out.slice(out.search(/^\[/m)))[0].results;
 }
 

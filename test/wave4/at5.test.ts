@@ -11,6 +11,7 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdir
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { retryD1Sync } from '../support/busy.ts';
 import { OWNER, signedIn } from '../support/seed.ts';
 import { crawl } from '../at13/pages.ts';
 import { ADMIN, HADEER, MONA, OMAR, SALMA, as, setOrder, stored, wave4World, withNile4, type Wave1World } from './world.ts';
@@ -41,13 +42,13 @@ describe('W4 AT-5 the migration and its down path', { concurrency: false }, () =
   const mainFiles = readdirSync(join(root, 'migrations')).filter((f) => f.endsWith('.sql') && f !== NEW_MIGRATION).sort();
   const allFiles = [...mainFiles, NEW_MIGRATION];
   const run = (sqlFile: string, config?: string) =>
-    wrangler(['d1', 'execute', 'lms-lego', '--local', '--persist-to', persist, ...(config ? ['--config', config] : []), '--file', sqlFile, '--yes']);
+    retryD1Sync(() => wrangler(['d1', 'execute', 'lms-lego', '--local', '--persist-to', persist, ...(config ? ['--config', config] : []), '--file', sqlFile, '--yes']), { label: sqlFile });
   const apply = (config?: string) => wrangler(['d1', 'migrations', 'apply', 'lms-lego', '--local', '--persist-to', persist, ...(config ? ['--config', config] : [])]);
   let n = 0;
   const queries = (sqls: string[]): Row[][] => {
     const file = join(dir, `q${++n}.sql`);
     writeFileSync(file, sqls.map((s) => s + ';').join('\n'));
-    const out = wrangler(['d1', 'execute', 'lms-lego', '--local', '--persist-to', persist, '--json', '--file', file]);
+    const out = retryD1Sync(() => wrangler(['d1', 'execute', 'lms-lego', '--local', '--persist-to', persist, '--json', '--file', file]), { label: file });
     const parsed = JSON.parse(out.slice(out.search(/^\[/m))) as { results: Row[] }[];
     assert.equal(parsed.length, sqls.length, 'one result per statement');
     return parsed.map((p) => p.results);
