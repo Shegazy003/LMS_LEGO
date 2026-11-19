@@ -135,7 +135,10 @@ describe('W2 AT-2.2 no page the admin, the publisher, the guardian or the owner 
             assert.fail(`${v.name} ${lang} ${p.path}: the same page as before Salma's marks; was "${was.slice(i - 60, i + 60)}", now "${is.slice(i - 60, i + 60)}"`);
           }
           // The preview draws "Mark as done" inert (AT-4.3); nothing else of a done mark anywhere.
-          assert.deepEqual(doneHits(p.body, doneWords(p.path.includes('/preview'))), [], `${v.name} ${lang} ${p.path}: no done word or marker`);
+          // LMS wave 4 (product-contract v2 on PIL-238, section 4.2): the setting card and the change note explain the rule by
+          // naming the done mark (Arabic «علامة "تمّ"»); they show no learner's mark, so they are taken out before this scan.
+          const withoutOrder = p.body.replace(/<section id="order-state"[\s\S]*?<\/section>/g, ' ').replace(/<p class="order-note" data-order-note>[\s\S]*?<\/p>/g, ' ');
+          assert.deepEqual(doneHits(withoutOrder, doneWords(p.path.includes('/preview'))), [], `${v.name} ${lang} ${p.path}: no done word or marker`);
           if (/\/(learn|read)\//.test(p.path) && !p.path.includes('/preview')) {
             assert.ok(!/id="done-(state|progress|tag)"/.test(p.body), `${v.name} ${lang} ${p.path}: no done block, tag or progress line`);
           }

@@ -10,7 +10,7 @@
 // notice is told in full once, then folded.
 import { html, raw } from 'hono/html';
 import type { Label, Lang, LabelKey } from '../labels.ts';
-import type { CardProgress, ContinueArea, LearnerCard, LessonRow, MaterialKind, MaterialRow, OutlineChapter, SequenceStep } from '../learning.ts';
+import type { CardProgress, ChapterLocks, ContinueArea, LearnerCard, LessonRow, LockReason, MaterialKind, MaterialRow, OutlineChapter, SequenceStep } from '../learning.ts';
 import { externalUrl } from '../links.ts';
 import type { NoticeForm } from '../notice.ts';
 import { activityNotice } from './activity.ts';
@@ -119,20 +119,81 @@ function tick(t: Label, kind: 'lesson' | 'chapter'): Html {
 
 /** One chapter as a native disclosure (section 6.1, UX-6): the summary holds the title, the count and a decorative marker.
  * LMS wave 2 (section 5): a lesson the learner marked done has a tick before its title, and a chapter whose lessons are all done a tick after its title. */
-function chapterBlock(t: Label, lang: Lang, space: SpaceView, ch: OutlineChapter, open: boolean, done: Set<string>): Html {
+function chapterBlock(t: Label, lang: Lang, space: SpaceView, ch: OutlineChapter, open: boolean, done: Set<string>, lock?: LockReason): Html {
   const entries = ch.lessons;
   const rows = entries.map((l) => {
-    const link = html`<a data-lesson="${l.id}" href="${lessonHref(space, l.id)}"><bdi>${l.title}</bdi></a>`;
+    // LMS wave 4 (section 5.4, UX-45): a locked chapter lists its lessons as plain text (no link, not focusable), each with the hidden tag.
+    const link = lock
+      ? html`<span class="lock-item" data-lesson="${l.id}"><span class="sr-only">${t('lockedTag')}</span><bdi>${l.title}</bdi></span>`
+      : html`<a data-lesson="${l.id}" href="${lessonHref(space, l.id)}"><bdi>${l.title}</bdi></a>`;
     return done.has(l.id) ? html`<li class="is-done">${tick(t, 'lesson')}${link}</li>` : html`<li>${link}</li>`;
   });
   const list = entries.length
     ? html`<ol class="list">${rows}</ol>`
     : html`<p class="none muted">${t('noLessonsYet')}</p>`;
   const allDone = entries.length > 0 && entries.every((l) => done.has(l.id)) ? html` ${tick(t, 'chapter')}` : '';
-  return html`<details class="card fold" id="chapter-${ch.id}" data-chapter="${ch.id}"${open ? html` open` : ''}>
-  <summary><span class="mark" aria-hidden="true"></span><span class="head"><span class="muted">${t('chapter')}</span> <bdi class="title">${ch.title}</bdi>${allDone}</span> <span class="count muted">${lessonCount(t, lang, ch.lessons.length)}</span></summary>
+  // Inside the summary, so it shows while folded: the tag and the reason with its count. No control inside a summary.
+  const lockLine = lock ? html`<span class="lock-line">${lockTag(t)} <span class="lock-reason">${lockReasonText(t, lang, lock)}</span></span>` : '';
+  return html`<details class="card fold${lock ? ' locked' : ''}" id="chapter-${ch.id}" data-chapter="${ch.id}"${lock ? html` data-locked` : ''}${open ? html` open` : ''}>
+  <summary><span class="mark" aria-hidden="true"></span><span class="head"><span class="muted">${t('chapter')}</span> <bdi class="title">${ch.title}</bdi>${allDone}</span> <span class="count muted">${lessonCount(t, lang, ch.lessons.length)}</span>${lockLine}</summary>
   ${list}
 </details>`;
+}
+
+// ------------------------------------------------------ chapters in order ----
+// LMS wave 4, W4-1a (product-contract v2 on PIL-238, section 5.4; ux-plan
+// UX-45 to UX-47). Drawn only for a person reading a subject in order as a
+// learner (or a preview's made-up learner): with the setting off, or for
+// anyone else, every page is exactly today's, style included.
+
+/** The style of the order box, the tag, the reasons, the locked lessons, the locked page and the locked Next (UX-45 to UX-47, UX-50). */
+const ORDER_CSS = `.order-box{display:flex;flex-direction:column;gap:8px;margin:8px 0 12px}
+.order-box p{margin:0}
+a.button.go-to{display:flex;align-items:center;justify-content:center;width:100%;min-height:48px;min-width:44px;box-sizing:border-box;text-align:center;background:#1a5fd0;overflow-wrap:anywhere}
+@media (min-width:700px){a.button.go-to{width:auto;align-self:flex-start;max-width:100%}}
+.lock-tag{display:inline-flex;align-items:center;gap:6px;padding:2px 10px;border:1px solid #57606a;border-radius:999px;background:#f6f8fa;color:#24292f;font-weight:600;font-size:.9rem}
+.lock-reason{color:#424a53;font-size:.9rem;font-weight:400;overflow-wrap:anywhere;min-width:0}
+details.fold.locked>summary{flex-wrap:wrap}
+details.fold .lock-line{flex:1 0 100%;display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;min-width:0}
+details.fold .list .lock-item{display:flex;align-items:center;min-height:44px;color:#424a53;overflow-wrap:anywhere;min-width:0}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+.locked-page{display:flex;flex-direction:column;gap:12px;margin:12px 0}
+.locked-page>*{margin:0}
+.locked-page .lock-tag{align-self:flex-start}
+.next-locked{display:flex;flex-direction:column;gap:4px;padding:12px 0;border:0;background:none;color:#24292f;overflow-wrap:anywhere;min-width:0}
+.next-locked .lock-tag{align-self:flex-start}
+@media (min-width:700px){.pager>.next-locked{flex:1 1 0}}`;
+const orderStyle = html`<style>${raw(ORDER_CSS)}</style>`;
+
+/** The tag "Locked": text, with a decorative lock glyph. */
+const lockTag = (t: Label) => html`<span class="lock-tag"><span aria-hidden="true">&#x1F512;</span><span>${t('lockedTag')}</span></span>`;
+
+/** A product sentence whose values are ready markup (each already isolated). */
+function withMarkup(t: Label, key: LabelKey, values: Record<string, Html | (Html | string)[]>): (Html | string | (Html | string)[])[] {
+  const names = Object.keys(values);
+  const markers = Object.fromEntries(names.map((n, i) => [n, `\u0001${i}\u0002`]));
+  return t(key, markers).split(/\u0001(\d+)\u0002/).map((part, i) => (i % 2 === 1 ? values[names[Number(part)]] : part));
+}
+
+/** A chapter's reason (section 5.4): the first locked chapter names the blocking chapter, every later one says "everything before it"; each with the count left. */
+function lockReasonText(t: Label, lang: Lang, r: LockReason): (Html | string | (Html | string)[])[] {
+  const count = r.left === 1
+    ? sentence(t, 'lockedCountOne', { lesson: t('lesson').toLocaleLowerCase(lang) })
+    : sentence(t, 'lockedCount', { n: String(r.left) });
+  return r.kind === 'first'
+    ? withMarkup(t, 'lockedReason', { title: html`<bdi>${r.blocking.title}</bdi>`, count: [...count] })
+    : withMarkup(t, 'lockedLater', { count: [...count] });
+}
+
+/** "Go to: <title>": the one lesson to do now, a button-styled link (UX-45, UX-46). */
+const goToLink = (t: Label, space: SpaceView, target: { id: string; title: string }) =>
+  html`<a id="go-to" class="button go-to" href="${lessonHref(space, target.id)}"><span>${sentence(t, 'goTo', { title: target.title })}</span></a>`;
+
+/** The order box under the title (section 5.4, UX-45), outside the folds: the order line and, while any chapter is locked, "Go to". */
+function orderBox(t: Label, lang: Lang, space: SpaceView, locks: ChapterLocks): Html {
+  const line = t('orderLine', { chapter: t('chapter').toLocaleLowerCase(lang), lesson: t('lesson').toLocaleLowerCase(lang) });
+  return html`
+<section id="order-box" class="order-box">${orderStyle}<p id="order-line">${line}</p>${locks.goTo ? goToLink(t, space, locks.goTo) : ''}</section>`;
 }
 
 /** The outline's done-mark style, drawn with the progress line (as the done
@@ -173,16 +234,18 @@ export function openChapters(parts: OutlineChapter[], open: string | undefined):
  * LMS wave 2: `marks` holds the ids of the lessons the person reading as a learner marked done (empty for anyone else and in a preview); only lessons of this outline count (AT-3.6). */
 export function subjectPage(
   t: Label, lang: Lang, space: SpaceView, head: { id: string; title: string }, parts: OutlineChapter[], open?: string, marks: Set<string> = new Set(),
+  locks: ChapterLocks | null = null,
 ): Html {
   const opened = openChapters(parts, open);
   const ids = parts.flatMap((ch) => ch.lessons.map((l) => l.id));
   const done = new Set(ids.filter((id) => marks.has(id)));
-  const blocks = parts.length ? parts.map((ch) => chapterBlock(t, lang, space, ch, opened.has(ch.id), done)) : html`<p class="card muted">${t('nothingHere')}</p>`;
+  // LMS wave 4: `locks` only for a subject in order read as a learner (or a preview's made-up learner); null draws today's outline.
+  const blocks = parts.length ? parts.map((ch) => chapterBlock(t, lang, space, ch, opened.has(ch.id), done, locks?.locked.get(ch.id))) : html`<p class="card muted">${t('nothingHere')}</p>`;
   const fold = parts.length > 3
     ? html`<p id="fold-all" class="fold-all"><a id="expand-all" class="button plain" href="${learnerUrl(space, `/learn/${head.id}?open=all`)}">${t('expandAll')}</a><a id="collapse-all" class="button plain" href="${learnerUrl(space, `/learn/${head.id}?open=none`)}">${t('collapseAll')}</a></p>`
     : '';
   const body = html`<p class="muted">${t('subject')}</p>
-<h1 id="subject-title" dir="auto">${head.title}</h1>${progressLine(t, lang, done.size, ids.length)}
+<h1 id="subject-title" dir="auto">${head.title}</h1>${progressLine(t, lang, done.size, ids.length)}${locks ? orderBox(t, lang, space, locks) : ''}
 ${fold}
 <div id="outline">${blocks}</div>`;
   return spacePage(t, lang, space, head.title, body);
@@ -230,15 +293,19 @@ export interface LessonPlace {
  * on the first lesson; on the last lesson the end sentence, the outline and
  * Home. Every way back to the outline opens this lesson’s chapter. Plain
  * links only: nothing is prefetched, because opening a lesson may record it. */
-function lessonNav(t: Label, lang: Lang, space: SpaceView, subject: { id: string; title: string }, lesson: LessonRow, place: LessonPlace): Html {
+function lessonNav(t: Label, lang: Lang, space: SpaceView, subject: { id: string; title: string }, lesson: LessonRow, place: LessonPlace, locks: ChapterLocks | null = null): Html {
   const next = place.steps[place.index + 1];
+  // LMS wave 4 (section 5.4, UX-47): when Next leads into a locked chapter, a plain block in its place (not a link, not focusable).
+  const nextLock = next && locks?.locked.get(next.chapterId);
   const previous = place.steps[place.index - 1];
   const forward = lang === 'ar' ? '←' : '→';
   const backward = lang === 'ar' ? '→' : '←';
   const outline = html`<a id="back-to-outline" class="go back" href="${subjectHref(space, subject.id, lesson.chapter_id)}">${t('backToOutline')}</a>`;
   // When Next crosses into another chapter, that chapter goes on a second line of the same link.
   const crossing = next && next.chapterId !== lesson.chapter_id ? html`<span class="line2">${sentence(t, 'chapterLine', { title: next.chapterTitle })}</span>` : '';
-  const nextLink = next
+  const nextLink = nextLock
+    ? html`<div id="next-locked" class="next-locked">${orderStyle}<span class="line1">${sentence(t, 'nextLesson', { title: next.title })}</span>${lockTag(t)}<span class="lock-reason">${lockReasonText(t, lang, nextLock)}</span></div>`
+    : next
     ? html`<a id="next-lesson" class="go next" href="${lessonHref(space, next.id)}"><span class="line1">${sentence(t, 'nextLesson', { title: next.title })}</span>${crossing}<span class="arrow" aria-hidden="true">${forward}</span></a>`
     : '';
   const previousLink = previous
@@ -306,7 +373,7 @@ export function lessonPage(
   t: Label,
   lang: Lang,
   space: SpaceView,
-  v: { subject: { id: string; title: string }; lesson: LessonRow; materials: MaterialRow[]; place: LessonPlace; notice?: NoticeForm | null; done?: DoneBlock | null },
+  v: { subject: { id: string; title: string }; lesson: LessonRow; materials: MaterialRow[]; place: LessonPlace; notice?: NoticeForm | null; done?: DoneBlock | null; locks?: ChapterLocks | null },
 ): Html {
   const { title, body_text: intro, chapter_title: part } = v.lesson;
   const top = { id: v.subject.id, title: v.subject.title };
@@ -333,6 +400,34 @@ ${v.notice ? activityNotice(t, v.notice, lessonHref(space, v.lesson.id), Boolean
 ${introBlock}
 <h2>${t('material')}</h2>
 ${list}${v.done ? doneBlock(t, space, v.lesson.id, v.done) : ''}
-${lessonNav(t, lang, space, top, v.lesson, v.place)}`;
+${lessonNav(t, lang, space, top, v.lesson, v.place, v.locks)}`;
   return spacePage(t, lang, space, title, body);
+}
+
+/** A locked lesson opened by its address (LMS wave 4, section 5.4, UX-46): in
+ * DOM order the trail, the title, the tag, the reason of the lesson's own
+ * chapter (exactly as on the outline), "Go to" and "Back to the outline"
+ * (which opens the blocking chapter). Nothing of the lesson's content: no
+ * intro, materials, done block, Next or Previous. Nothing is recorded. */
+export function lockedLessonPage(
+  t: Label,
+  lang: Lang,
+  space: SpaceView,
+  v: { subject: { id: string; title: string }; lesson: LessonRow; reason: LockReason; locks: ChapterLocks },
+): Html {
+  const top = { id: v.subject.id, title: v.subject.title };
+  const back = subjectHref(space, top.id, v.locks.blocking ?? v.lesson.chapter_id);
+  const body = html`<nav id="trail" class="trail muted">
+  <span>${t('subject')}: <a href="${subjectHref(space, top.id, v.lesson.chapter_id)}"><bdi>${top.title}</bdi></a></span> ·
+  <span>${t('chapter')}: <bdi>${v.lesson.chapter_title}</bdi></span> ·
+  <span>${t('lesson')}</span>
+</nav>
+<section id="locked-lesson" class="locked-page" data-locked>${orderStyle}
+<h1 id="lesson-title" dir="auto">${v.lesson.title}</h1>
+<p id="lock-tag">${lockTag(t)}</p>
+<p id="lock-reason" class="lock-reason">${lockReasonText(t, lang, v.reason)}</p>
+${v.locks.goTo ? html`<p>${goToLink(t, space, v.locks.goTo)}</p>` : ''}
+<p><a id="back-to-outline" class="go back" href="${back}">${t('backToOutline')}</a></p>
+</section>`;
+  return spacePage(t, lang, space, v.lesson.title, body);
 }

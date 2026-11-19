@@ -188,6 +188,11 @@ test('role guard: every route that changes data or serves an admin or publisher 
     ['POST', '/s/:spaceId/admin/upload/add'], ['GET', '/s/:spaceId/admin/upload/:uploadId']]) {
     assert.ok(handlers.some((r) => r.method === method && r.path === path), `the upload address ${method} ${path} is a gated route`);
   }
+  // LMS wave 4 (product-contract v2 on PIL-238, AT-1.3): the two setting addresses are in the table, so this check and the sweep cover them.
+  for (const path of ['/s/:spaceId/publish/edit/:subjectId/order', '/s/:spaceId/admin/topics/:subjectId/order']) {
+    assert.ok(handlers.some((r) => r.method === 'POST' && r.path === path), `the setting address POST ${path} is a gated route`);
+    assert.ok(!handlers.some((r) => r.method !== 'POST' && r.path === path), `${path} answers POST only (GET and HEAD have no route)`);
+  }
   assert.deepEqual(ungated(routes, declared), [], 'register role routes under their gated prefix, after the gate');
 });
 

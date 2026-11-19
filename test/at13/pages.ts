@@ -278,3 +278,45 @@ export function doneHits(body: string, words: Map<string, string>): string[] {
   if (/\bdata-done\b/.test(body)) hits.push('the tick marker data-done');
   return hits;
 }
+
+// ------------------------------------------------- chapters in order (LMS wave 4) ----
+// Product-contract v2 on PIL-238, AT-4.5 and section 11 item 3: the scans gain
+// the English and Arabic words of every ui.ts key W4-1a added for learners, and
+// the locked chapter's marker attribute, for guardian pages and for other
+// learners' reach, and pass with A's locks present.
+
+/** The ui.ts keys W4-1a added that a learner's page shows as words (lockedCount and lockedCountOne are only the count inside the reasons, found through them). */
+export const W4_KEYS = ['orderLine', 'lockedTag', 'lockedReason', 'lockedLater', 'goTo'] as const;
+
+/** A's locks while the viewers look around: Arabic (assigned to A alone) gains a lesson A has not marked in its first chapter
+ * and a second chapter, and is set in order, so its second chapter is locked for A. Call after withDoneMarks. */
+export async function withLocks(w: PrivacyWorld): Promise<void> {
+  const grammar = await w.p.sql(`SELECT id, space_id FROM chapter WHERE subject_id = '${w.content.arabic}'`);
+  if (grammar.length !== 1) throw new Error(`Arabic has one chapter: ${grammar.length}`);
+  const space = String(grammar[0].space_id);
+  await w.p.sql(`INSERT INTO lesson (id, space_id, chapter_id, title, body_text, position) VALUES ('w4-nahw-more', '${space}', '${grammar[0].id}', 'Nahw more', '', 50)`);
+  await w.p.sql(`INSERT INTO chapter (id, space_id, subject_id, title, position) VALUES ('w4-morphology', '${space}', '${w.content.arabic}', 'Morphology', 50)`);
+  await w.p.sql(`INSERT INTO lesson (id, space_id, chapter_id, title, body_text, position) VALUES ('w4-word-forms', '${space}', 'w4-morphology', 'Word forms', '', 1)`);
+  await w.p.sql(`UPDATE subject SET chapters_in_order = 1 WHERE id = '${w.content.arabic}'`);
+  const a = new Client(w.p.url);
+  if ((await a.post('/signin', { username: A.username, password: A.password })).status !== 302) throw new Error('A signs in');
+  const outline = await (await a.get(`/s/${w.spaceId}/learn/${w.content.arabic}`)).text();
+  if (lockHits(outline).length === 0) throw new Error('A sees her locks on Arabic');
+}
+
+/** The lock words a guardian or another learner must never meet, in both languages (the longest fixed part of each key). */
+export function lockWords(): Map<string, string> {
+  const words = new Map<string, string>();
+  for (const lang of ['en', 'ar'] as const) {
+    for (const key of W4_KEYS) words.set(`${lang} ${key}`, UI[lang][key].split(/{[^}]*}/).map((x) => x.trim()).sort((x, y) => y.length - x.length)[0]);
+  }
+  return words;
+}
+
+/** Every lock word or marker on a page (words in the text a person reads, the marker anywhere). */
+export function lockHits(body: string, words = lockWords()): string[] {
+  const text = visible(body);
+  const hits = [...words].filter(([, value]) => text.includes(value)).map(([name]) => name);
+  if (/\bdata-locked\b/.test(body)) hits.push('the lock marker data-locked');
+  return hits;
+}

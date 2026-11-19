@@ -1,0 +1,13 @@
+-- LMS Lego, wave 4 task W4-1: chapters in order (product-contract v2 on
+-- PIL-238, section 6). Additive only: one new column on subject; no earlier
+-- table, column or row is changed. 0 is "off", so every existing subject and
+-- every subject created later starts off. Earlier code names its columns and
+-- never reads this one, so while it runs every subject opens as if the setting
+-- were off (AT-5.3). The down path is
+-- migrations-down/0013_chapters_in_order.down.sql, outside this folder: only
+-- the owner runs it, after redeploying the earlier code (README, "Rollback").
+--
+-- Nothing else is stored: no lock, no "chapter finished" record, no history of
+-- switches. Locks are worked out at every page load from the outline and the
+-- learner's own done marks (src/learning.ts, chapterLocks).
+ALTER TABLE subject ADD COLUMN chapters_in_order INTEGER NOT NULL DEFAULT 0 CHECK (chapters_in_order IN (0, 1));

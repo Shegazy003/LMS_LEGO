@@ -450,7 +450,9 @@ describe('W2 AT-3.7 no route returns done marks but the learner\'s own pages; th
     assert.doesNotMatch(order.replace('ORDER BY d.marked_at DESC', ''), /marked_at/, 'markOrder names the time nowhere else');
     const app = readFileSync(join(root, 'src', 'app.ts'), 'utf8');
     assert.deepEqual([...app.matchAll(/\bisDone\(/g)].length, 1, 'one reader: the lesson page');
-    assert.deepEqual([...app.matchAll(/\bdoneLessonIds\(/g)].length, 1, 'one reader: the outline');
+    // LMS wave 4 (product-contract v2 on PIL-238, Code facts and section 5.2): the lock gate learnerLocks (lesson, mark and file) is the second reader.
+    assert.deepEqual([...app.matchAll(/\bdoneLessonIds\(/g)].length, 2, 'two readers: the outline, and the lock gate of a subject in order');
+    assert.equal([...app.matchAll(/\bdoneLessonIds\(/g)].filter((m) => /async function learnerLocks[\s\S]*$/.test(app.slice(Math.max(0, m.index! - 400), m.index!))).length, 1, 'the second is inside learnerLocks');
     assert.deepEqual([...app.matchAll(/\bmarkOrder\(/g)].length, 1, 'one reader: the learner home (W2-2)');
     const readme = readFileSync(join(root, 'README.md'), 'utf8');
     const section = readme.match(/\n### Done marks \(LMS wave 2[^\n]*\n([\s\S]*?)(?=\n### |\n## )/)?.[1] ?? '';

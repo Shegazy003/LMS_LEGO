@@ -19,7 +19,7 @@ import { issueLink } from '../support/admin.ts';
 import { ADMIN, C, D, HADEER, KARIM, OTHER_ADMIN, SHIMAA, personPath } from '../at9/world.ts';
 import { OWNER } from '../support/seed.ts';
 import {
-  A, B, G1, G2, UPLOADED, crawl, doneHits, doneWords, guardianPaths, privacyWorld, resultPaths, uploadHits, useLanguage, withDoneMarks, withUpload, type PrivacyWorld,
+  A, B, G1, G2, UPLOADED, crawl, doneHits, doneWords, guardianPaths, lockHits, privacyWorld, resultPaths, uploadHits, useLanguage, withDoneMarks, withLocks, withUpload, type PrivacyWorld,
 } from './pages.ts';
 import { corrected } from '../at12/corrections.ts';
 
@@ -76,6 +76,8 @@ describe('AT-13b the forbidden-string scan finds nothing a guardian or learner c
     await withDoneMarks(w);
     // LMS wave 3b (W3b-1, AT-4.3): people added from a spreadsheet are present too.
     uploadId = await withUpload(w);
+    // LMS wave 4 (W4-1a, AT-4.5): A's locks are present too (Arabic in order, its second chapter locked for A).
+    await withLocks(w);
   });
   after(async () => {
     await w?.close();
@@ -126,6 +128,8 @@ describe('AT-13b the forbidden-string scan finds nothing a guardian or learner c
           if (text && done) assert.deepEqual(doneHits(page.body, done), [], `done marks: ${lang} ${page.path} (${page.status})`);
           // LMS wave 3b: nothing of an upload (no upload word, no "No password yet") on a guardian's or learner's page.
           if (text) assert.deepEqual(uploadHits(page.body), [], `upload words: ${lang} ${page.path} (${page.status})`);
+          // LMS wave 4 (AT-4.5): A's locks reach nobody else (no lock word, reason, order line, Go to or marker); B is not assigned Arabic.
+          if (text && viewer !== A) assert.deepEqual(lockHits(page.body), [], `lock state: ${lang} ${page.path} (${page.status})`);
         }
       }
       assert.ok(scanned >= 30, `${viewer.username}: bodies scanned ${scanned}`);

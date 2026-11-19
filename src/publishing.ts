@@ -57,7 +57,7 @@ export interface EditableMaterial {
 
 export function editableSubject(db: Db, spaceId: string, userId: string, subjectId: string): Promise<SubjectRow | null> {
   return db.first<SubjectRow>(
-    'SELECT s.id, s.title, s.publisher_user_id, s.is_published FROM subject s WHERE s.id = ? AND s.space_id = ? AND s.publisher_user_id = ?',
+    'SELECT s.id, s.title, s.publisher_user_id, s.is_published, s.chapters_in_order FROM subject s WHERE s.id = ? AND s.space_id = ? AND s.publisher_user_id = ?',
     subjectId, spaceId, userId,
   );
 }
@@ -148,6 +148,17 @@ export async function setPublished(db: Db, spaceId: string, userId: string, subj
   const changed = await db.run(
     'UPDATE subject SET is_published = ? WHERE id = ? AND space_id = ? AND publisher_user_id = ?',
     published ? 1 : 0, subjectId, spaceId, userId,
+  );
+  return changed === 1;
+}
+
+/** LMS wave 4 (section 4): the subject's "open in order" setting, set by its
+ * responsible publisher (a set, not a switch: a second press stores the same
+ * value). The check is inside the statement. Returns whether the subject is theirs. */
+export async function setChaptersInOrder(db: Db, spaceId: string, userId: string, subjectId: string, on: boolean): Promise<boolean> {
+  const changed = await db.run(
+    'UPDATE subject SET chapters_in_order = ? WHERE id = ? AND space_id = ? AND publisher_user_id = ?',
+    on ? 1 : 0, subjectId, spaceId, userId,
   );
   return changed === 1;
 }

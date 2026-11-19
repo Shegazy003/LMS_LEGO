@@ -13,7 +13,9 @@
 // subject, no lesson, no file), show nobody an exam or a mark, expose nothing
 // to others, write no lesson-view row and delete nothing. From LMS wave 2
 // (W2-1, AT-3.3) a done mark of Salma's: old code shows nobody anything of it,
-// writes no done mark and deletes nothing.
+// writes no done mark and deletes nothing. From LMS wave 4 (W4-1a, AT-5.3): a
+// subject set in order (chapters_in_order = 1): old code opens its later
+// chapter's lesson (no lock) and writes nothing to the setting.
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { startWorker, type RunningWorker } from '../support/worker.ts';
@@ -38,6 +40,7 @@ let worker: RunningWorker;
 let spaceId = '';
 let ids: Record<string, string> = {};
 let content = { subject: '', lesson: '', pdf: '' };
+let later = '';
 const count = async (sql: string) => Number((await worker.sql(sql))[0].n);
 const tableExists = async (name: string) => (await worker.sql(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = '${name}'`)).length === 1;
 
@@ -65,14 +68,18 @@ describe('AT-14a old code on a release 2 database shows a guardian nothing, expo
       people: [HADEER, SALMA, MONA].map((p) => ({ ...p, valid_until: utcDatePlusDays(30) })),
       subjects: [{
         title: 'Mathematics', publisher: HADEER.username, published: true, users: [SALMA.username],
-        chapters: [{ title: 'Fractions', lessons: [{ title: 'Adding fractions', materials: [
+        chapters: [{ title: 'Fractions', position: 1, lessons: [{ title: 'Adding fractions', materials: [
           { kind: 'pdf', title: 'Worksheet', base64: b64(tinyPdf('Pizza slices')), contentType: 'application/pdf' },
-        ] }] }],
+        ] }] }, {
+          // From LMS wave 4 (W4-1a, AT-5.3): a later chapter, which wave 4 code would lock while Fractions is not done.
+          title: 'Decimals', position: 2, lessons: [{ title: 'Reading decimals', materials: [{ kind: 'note', title: 'Decimal note', text: 'Tenths and hundredths' }] }],
+        }],
       }],
     });
     ids = s.users;
     const lesson = s.subjects.Mathematics.chapters.Fractions.lessons['Adding fractions'];
     content = { subject: s.subjects.Mathematics.id, lesson: lesson.id, pdf: lesson.materials.Worksheet };
+    later = s.subjects.Mathematics.chapters.Decimals.lessons['Reading decimals'].id;
     const adminId = String((await worker.sql(`SELECT id FROM user WHERE username = '${ADMIN.username}'`))[0].id);
     // What release 2 writes: Mona's membership is a guardian's, linked to Salma.
     await worker.sql(`UPDATE membership SET role = 'guardian' WHERE user_id = '${ids[MONA.username]}' AND space_id = '${spaceId}'`);
@@ -263,5 +270,39 @@ describe('AT-14a old code on a release 2 database shows a guardian nothing, expo
       const published = await worker.sql(`SELECT mark, published_at FROM exam_result WHERE id = 'result-1'`);
       assert.deepEqual(published.map((r) => [Number(r.mark), Number(r.published_at)]), [[17.5, 1]], 'unchanged');
     }
+  });
+
+  it('W4 AT-5.3 old code opens every lesson of a subject set in order (no lock) and writes nothing to the setting', async () => {
+    const column = await worker.sql("SELECT name FROM pragma_table_info('subject') WHERE name = 'chapters_in_order'");
+    assert.equal(column.length, 1, 'the rollback job gave the old code the wave 4 migration');
+    await worker.sql(`UPDATE subject SET chapters_in_order = 1 WHERE id = '${content.subject}'`);
+    const setting = async () => (await worker.sql('SELECT id, chapters_in_order AS v FROM subject ORDER BY id')).map((r) => [r.id, Number(r.v)]);
+    const before = await setting();
+    assert.ok(before.some(([id, v]) => id === content.subject && v === 1), 'Mathematics is set in order');
+    // Wave 4's markup by its ids (a bare "order-box" also matches today's CSS "border-box").
+    const lockSigns = ['Locked', 'data-locked', 'id="order-box"', 'id="locked-lesson"', 'id="order-state"', 'Open in order', 'Opens when', 'Go to:', 'مغلق', 'تُفتح', 'بالترتيب'];
+    // Fractions is not done by Salma: wave 4 code would lock Decimals; old code opens it.
+    const salma = await signedIn(worker.url, SALMA.username, SALMA.password);
+    const outline = await salma.get(`/s/${spaceId}/learn/${content.subject}`);
+    assert.equal(outline.status, 200);
+    const outlineBody = await outline.text();
+    assert.ok(outlineBody.includes(`/read/${later}`), 'the later chapter\'s lesson is a link on the outline');
+    const read = await salma.get(`/s/${spaceId}/read/${later}`);
+    assert.equal(read.status, 200, 'the later lesson opens');
+    const readBody = await read.text();
+    assert.ok(readBody.includes('Tenths and hundredths'), 'with its material');
+    for (const [where, body] of [['outline', outlineBody], ['lesson', readBody]] as const) {
+      for (const sign of lockSigns) assert.ok(!body.includes(sign), `${where}: no lock (${sign})`);
+    }
+    const hadeer = await signedIn(worker.url, HADEER.username, HADEER.password);
+    const admin = await signedIn(worker.url, ADMIN.username, ADMIN.password);
+    for (const [c, path] of [[hadeer, `/s/${spaceId}/publish/edit/${content.subject}`], [admin, `/s/${spaceId}/admin/topics/${content.subject}`]] as const) {
+      const body = await (await c.get(path)).text();
+      assert.ok(!body.includes('id="order-state"'), `${path}: no setting card in old code`);
+      // Wave 4's setting addresses do not exist in old code: nothing is written.
+      const res = await c.post(`${path}/order`, { state: 'off' });
+      assert.ok(res.status >= 400, `${path}/order is not an address of old code (${res.status})`);
+    }
+    assert.deepEqual(await setting(), before, 'old code wrote nothing to the setting');
   });
 });

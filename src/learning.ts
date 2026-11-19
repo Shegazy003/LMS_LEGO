@@ -21,7 +21,10 @@ export interface SubjectRow {
   title: string;
   publisher_user_id: string | null;
   is_published: number;
+  /** LMS wave 4 (section 6.1): 1 when the subject opens its chapters in order; read with the row every page already reads. */
+  chapters_in_order: number;
 }
+
 
 export interface SubjectItem {
   id: string;
@@ -60,6 +63,8 @@ export interface FileRow {
   title: string;
   storage_key: string;
   subject_id: string;
+  /** LMS wave 4 (section 5.4): the lesson the file belongs to, from the same read, so a locked lesson's files are refused. */
+  lesson_id: string;
 }
 
 /** The learner’s home: published subjects assigned to them, directly or
@@ -91,13 +96,15 @@ export interface LearnerCard {
   first: { id: string; title: string } | null;
   /** The subject's reading sequence (wave 1, section 5.1), from the same read: LMS wave 2 (W2-2) works out "Continue" from it. */
   steps: SequenceStep[];
+  /** LMS wave 4 (section 5.4): the subject opens its chapters in order, from the same read. */
+  inOrder: boolean;
 }
 
 /** The learner home’s cards in one read, whatever the number of subjects
  * (section 4.5): exactly the subjects of subjectsForLearner, in its order. */
 export async function learnerCards(db: Db, spaceId: string, userId: string): Promise<LearnerCard[]> {
   const rows = await db.all<CardRow>(
-    `SELECT s.id AS subject_id, s.title AS subject_title, u.display_name AS publisher_name, c.id AS chapter_id, c.title AS chapter_title, l.id AS lesson_id, l.title AS lesson_title
+    `SELECT s.id AS subject_id, s.title AS subject_title, s.chapters_in_order AS in_order, u.display_name AS publisher_name, c.id AS chapter_id, c.title AS chapter_title, l.id AS lesson_id, l.title AS lesson_title
        FROM subject s
        LEFT JOIN user u ON u.id = s.publisher_user_id
        LEFT JOIN chapter c ON c.subject_id = s.id AND c.space_id = s.space_id AND c.removed_at IS NULL
@@ -115,7 +122,7 @@ export async function learnerCards(db: Db, spaceId: string, userId: string): Pro
 }
 
 type CardRow = {
-  subject_id: string; subject_title: string; publisher_name: string | null;
+  subject_id: string; subject_title: string; in_order: number; publisher_name: string | null;
   chapter_id: string | null; chapter_title: string | null; lesson_id: string | null; lesson_title: string | null;
 };
 
@@ -134,7 +141,7 @@ export interface Previewer {
 export async function previewCards(db: Db, spaceId: string, previewer: Previewer): Promise<LearnerCard[]> {
   const rows = previewer.kind === 'admin'
     ? await db.all<CardRow>(
-      `SELECT s.id AS subject_id, s.title AS subject_title, u.display_name AS publisher_name, c.id AS chapter_id, c.title AS chapter_title, l.id AS lesson_id, l.title AS lesson_title
+      `SELECT s.id AS subject_id, s.title AS subject_title, s.chapters_in_order AS in_order, u.display_name AS publisher_name, c.id AS chapter_id, c.title AS chapter_title, l.id AS lesson_id, l.title AS lesson_title
          FROM subject s
          LEFT JOIN user u ON u.id = s.publisher_user_id
          LEFT JOIN chapter c ON c.subject_id = s.id AND c.space_id = s.space_id AND c.removed_at IS NULL
@@ -144,7 +151,7 @@ export async function previewCards(db: Db, spaceId: string, previewer: Previewer
       spaceId,
     )
     : await db.all<CardRow>(
-      `SELECT s.id AS subject_id, s.title AS subject_title, u.display_name AS publisher_name, c.id AS chapter_id, c.title AS chapter_title, l.id AS lesson_id, l.title AS lesson_title
+      `SELECT s.id AS subject_id, s.title AS subject_title, s.chapters_in_order AS in_order, u.display_name AS publisher_name, c.id AS chapter_id, c.title AS chapter_title, l.id AS lesson_id, l.title AS lesson_title
          FROM subject s
          LEFT JOIN user u ON u.id = s.publisher_user_id
          LEFT JOIN chapter c ON c.subject_id = s.id AND c.space_id = s.space_id AND c.removed_at IS NULL
@@ -159,7 +166,7 @@ export async function previewCards(db: Db, spaceId: string, previewer: Previewer
 /** A subject this person may preview (section 4.1), published or not; null otherwise. */
 export async function previewableSubject(db: Db, spaceId: string, previewer: Previewer, subjectId: string): Promise<SubjectRow | null> {
   const subject = await db.first<SubjectRow>(
-    'SELECT s.id, s.title, s.publisher_user_id, s.is_published FROM subject s WHERE s.id = ? AND s.space_id = ?',
+    'SELECT s.id, s.title, s.publisher_user_id, s.is_published, s.chapters_in_order FROM subject s WHERE s.id = ? AND s.space_id = ?',
     subjectId, spaceId,
   );
   if (!subject) return null;
@@ -171,7 +178,7 @@ function cardsOf(rows: CardRow[]): LearnerCard[] {
   for (const r of rows) {
     let card = cards.at(-1);
     if (!card || card.id !== r.subject_id) {
-      cards.push((card = { id: r.subject_id, title: r.subject_title, publisherName: r.publisher_name, count: 0, first: null, steps: [] }));
+      cards.push((card = { id: r.subject_id, title: r.subject_title, publisherName: r.publisher_name, count: 0, first: null, steps: [], inOrder: r.in_order === 1 }));
     }
     if (!r.lesson_id) continue;
     card.count++;
@@ -211,7 +218,10 @@ export function continueWhere(cards: LearnerCard[], order: string[][]): { area: 
     const group = order.findIndex((g) => g.some((id) => pos.has(id)));
     const at = Math.max(...order[group].filter((id) => pos.has(id)).map((id) => pos.get(id)!));
     // The first lesson not done after it; if none, the first not-done lesson from the start.
-    const target = card.steps.slice(at + 1).find((s) => !done.has(s.id)) ?? card.steps.find((s) => !done.has(s.id)) ?? null;
+    let target = card.steps.slice(at + 1).find((s) => !done.has(s.id)) ?? card.steps.find((s) => !done.has(s.id)) ?? null;
+    // LMS wave 4 (section 5.4, A9): in a subject opened in order, a target in a locked chapter gives way to the
+    // first not-done lesson in reading order, which is always open. With the setting off, wave 2's target.
+    if (card.inOrder && target && chapterLocks(chaptersOfSteps(card.steps), done).locked.has(target.chapterId)) target = card.steps.find((s) => !done.has(s.id)) ?? null;
     const p = { done: done.size, target };
     progress.set(card.id, p);
     started.push({ card, newest: group, p });
@@ -242,6 +252,69 @@ export function lessonSequence(chapters: OutlineChapter[]): SequenceStep[] {
   return chapters.flatMap((ch) => ch.lessons.map((l) => ({ id: l.id, title: l.title, chapterId: ch.id, chapterTitle: ch.title })));
 }
 
+// ------------------------------------------------------ chapters in order ----
+// LMS wave 4 (product-contract v2 on PIL-238, section 5). One rule, worked out
+// at every page load from the current outline and the learner's current marks;
+// nothing about a lock is stored, so every change (a mark, an undo, a lesson
+// added, removed, restored or moved, a chapter moved, the setting switched)
+// applies at the next load. Only for a subject whose setting is on, read by a
+// person reading it as a learner (progress.ts readsAsLearner), or by the
+// made-up learner of a preview (no marks).
+
+/** Why a chapter is locked (section 5.4): the first locked chapter names the
+ * blocking chapter and how many of its shown lessons are not done; every later
+ * one counts the not-done shown lessons of all chapters before it. */
+export type LockReason =
+  | { kind: 'first'; blocking: { id: string; title: string }; left: number }
+  | { kind: 'later'; left: number };
+
+export interface ChapterLocks {
+  /** The locked chapters, by id, each with its reason. A chapter not here is open. */
+  locked: Map<string, LockReason>;
+  /** The earliest chapter with a not-done shown lesson (it is open), or null when every lesson is done. */
+  blocking: string | null;
+  /** The first not-done lesson in reading order while any chapter is locked ("Go to"); null otherwise. */
+  goTo: { id: string; title: string } | null;
+}
+
+/** The lock rule (section 5.2): a chapter is open when every shown lesson of
+ * every earlier chapter carries this learner's done mark; otherwise locked.
+ * The first argument holds the shown chapters in reading order with their shown lessons
+ * (the outline already leaves out removed ones, so a mark on a removed lesson
+ * counts for nothing); `done` holds the learner's marked lesson ids. A chapter
+ * with no shown lesson is done by definition and is never shown locked. Marks
+ * inside a locked chapter are kept and counted but open nothing before the
+ * chapters before it are done. Pure: no read. */
+export function chapterLocks(chapters: { id: string; title: string; lessons: { id: string; title: string }[] }[], done: Set<string>): ChapterLocks {
+  const locked = new Map<string, LockReason>();
+  let blocking: { id: string; title: string; left: number } | null = null;
+  let goTo: { id: string; title: string } | null = null;
+  let leftBefore = 0;
+  for (const ch of chapters) {
+    const notDone = ch.lessons.filter((l) => !done.has(l.id));
+    if (leftBefore > 0 && ch.lessons.length > 0) {
+      locked.set(ch.id, locked.size === 0 ? { kind: 'first', blocking: { id: blocking!.id, title: blocking!.title }, left: blocking!.left } : { kind: 'later', left: leftBefore });
+    }
+    if (!blocking && notDone.length > 0) {
+      blocking = { id: ch.id, title: ch.title, left: notDone.length };
+      goTo = notDone[0];
+    }
+    leftBefore += notDone.length;
+  }
+  return { locked, blocking: blocking?.id ?? null, goTo: locked.size ? goTo : null };
+}
+
+/** The chapters of a reading sequence (a home card's steps), in order: enough for the lock rule, since a chapter without lessons never locks or blocks. */
+function chaptersOfSteps(steps: SequenceStep[]): { id: string; title: string; lessons: { id: string; title: string }[] }[] {
+  const out: { id: string; title: string; lessons: { id: string; title: string }[] }[] = [];
+  for (const s of steps) {
+    let ch = out.at(-1);
+    if (!ch || ch.id !== s.chapterId) out.push((ch = { id: s.chapterId, title: s.chapterTitle, lessons: [] }));
+    ch.lessons.push({ id: s.id, title: s.title });
+  }
+  return out;
+}
+
 /** The publisher’s home: the subjects they are responsible for. */
 export function subjectsForPublisher(db: Db, spaceId: string, userId: string): Promise<SubjectItem[]> {
   return db.all<SubjectItem>(
@@ -265,7 +338,7 @@ async function assignedToLearner(db: Db, spaceId: string, subjectId: string, use
  * (whether it does not exist, is in another space, or is not theirs). */
 export async function readableSubject(db: Db, space: CurrentSpace, userId: string, subjectId: string): Promise<SubjectRow | null> {
   const subject = await db.first<SubjectRow>(
-    'SELECT s.id, s.title, s.publisher_user_id, s.is_published FROM subject s WHERE s.id = ? AND s.space_id = ?',
+    'SELECT s.id, s.title, s.publisher_user_id, s.is_published, s.chapters_in_order FROM subject s WHERE s.id = ? AND s.space_id = ?',
     subjectId, space.id,
   );
   if (!subject) return null;
@@ -317,7 +390,7 @@ export function lessonMaterials(db: Db, spaceId: string, lessonId: string): Prom
 /** A stored file (PDF or image) with the subject it belongs to. */
 export function findFile(db: Db, spaceId: string, materialId: string): Promise<FileRow | null> {
   return db.first<FileRow>(
-    `SELECT m.id, m.kind, m.title, m.storage_key, c.subject_id
+    `SELECT m.id, m.kind, m.title, m.storage_key, c.subject_id, l.id AS lesson_id
        FROM material m
        JOIN lesson l ON l.id = m.lesson_id AND l.space_id = m.space_id AND l.removed_at IS NULL
        JOIN chapter c ON c.id = l.chapter_id AND c.space_id = l.space_id AND c.removed_at IS NULL
