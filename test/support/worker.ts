@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { setStartOffset } from './http.ts';
+import { retryD1 } from './busy.ts';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 const wrangler = join(root, 'node_modules', '.bin', 'wrangler');
@@ -107,18 +108,15 @@ export async function startWorker(options: { production?: boolean; vars?: Record
     url,
     log: () => output,
     async sql(query: string) {
-      const out = await run([
-        'd1', 'execute', 'lms-lego', '--local', ...envArgs, '--persist-to', persist, '--json', '--command', query,
-      ]);
+      // Retried on SQLITE_BUSY / ECONNRESET only (test/support/busy.ts).
+      const out = await retryD1(() => run(['d1', 'execute', 'lms-lego', '--local', ...envArgs, '--persist-to', persist, '--json', '--command', query]), { label: query });
       const start = out.search(/^\[/m); // the JSON array starts a line
       if (start < 0) throw new Error(`no JSON from wrangler d1 execute:\n${out}`);
       const parsed = JSON.parse(out.slice(start));
       return parsed[0]?.results ?? [];
     },
     async sqlAll(query: string) {
-      const out = await run([
-        'd1', 'execute', 'lms-lego', '--local', ...envArgs, '--persist-to', persist, '--json', '--command', query,
-      ]);
+      const out = await retryD1(() => run(['d1', 'execute', 'lms-lego', '--local', ...envArgs, '--persist-to', persist, '--json', '--command', query]), { label: query });
       const start = out.search(/^\[/m);
       if (start < 0) throw new Error(`no JSON from wrangler d1 execute:\n${out}`);
       return (JSON.parse(out.slice(start)) as { results?: Record<string, unknown>[] }[]).map((r) => r.results ?? []);

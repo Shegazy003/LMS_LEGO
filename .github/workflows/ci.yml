@@ -65,6 +65,14 @@ jobs:
       - name: Unit tests
         if: success() || failure()
         run: npm run test:unit
+      # Housekeeping Q1 (PIL-243): the test set-up's `wrangler d1 execute`
+      # calls retry on SQLITE_BUSY / ECONNRESET only (test/support/busy.ts).
+      - name: HQ-1 every wrangler d1 execute call in the test set-up goes through the shared retry helper
+        if: success() || failure()
+        run: npm run test:hq -- --test-name-pattern='^HQ-1 ' test/housekeeping/d1-retry.test.ts
+      - name: HQ-4 a stubbed d1 execute command - a busy error then success passes, busy every time fails after 3 retries, any other error fails at once
+        if: success() || failure()
+        run: npm run test:hq -- --test-name-pattern='^HQ-4' test/housekeeping/d1-retry.test.ts
       # One named step per acceptance test ("AT-1 ...", "AT-5 ...").
       - name: AT-1 owner shapes a space and appoints its admin
         if: success() || failure()
@@ -1314,6 +1322,10 @@ jobs:
           done
           mkdir -p release-1.1/test/rollback
           cp test/rollback/*.test.ts release-1.1/test/rollback/
+          # Housekeeping Q1 (PIL-243): the set-up's `wrangler d1 execute` calls
+          # retry on SQLITE_BUSY / ECONNRESET only. Release 1.1's worker.ts is
+          # this one without the retry; its product code is untouched.
+          cp test/support/busy.ts test/support/worker.ts release-1.1/test/support/
           ls release-1.1/migrations
       - name: AT-14a release 1.1 code on the release 2 database shows a guardian nothing, shows nobody a mark, exposes nothing, writes and deletes nothing
         working-directory: release-1.1
