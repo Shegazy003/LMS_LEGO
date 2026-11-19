@@ -1144,6 +1144,25 @@ jobs:
       - name: W4 AT-1.4 with the setting off no page makes more reads than main's (d); every existing step passes (a, the rest of this run)
         if: success() || failure()
         run: npm run test:wave3b -- --test-name-pattern='^W4 AT-1\.4 ' test/wave4/at1.test.ts
+      # AT-1.4(b) and (c), the base comparison: main b4ad669 (pinned) runs beside this commit, in the same process,
+      # on a copy of the same database (test/wave4/base.test.ts reads it from LMS_BASE_ROOT).
+      - name: Check out main b4ad669 for the base comparison (code only, never run but by the comparison)
+        if: success() || failure()
+        uses: actions/checkout@v4
+        with:
+          ref: b4ad669c848a0454f700ab7e68bc24d0f5571095
+          path: .base-main
+          persist-credentials: false
+      - name: W4 AT-1.4(b) base comparison, every page and mark POST with every setting off answers as main b4ad669 does (but the setting card)
+        if: success() || failure()
+        env:
+          LMS_BASE_ROOT: ${{ github.workspace }}/.base-main
+        run: npm run test:wave3b -- --test-name-pattern='^W4 AT-1\.4\(b\) ' test/wave4/base.test.ts
+      - name: W4 AT-1.4(c) after switching on and off again from both pages, the base comparison passes again
+        if: success() || failure()
+        env:
+          LMS_BASE_ROOT: ${{ github.workspace }}/.base-main
+        run: npm run test:wave3b -- --test-name-pattern='^W4 AT-1\.4\(c\) ' test/wave4/base.test.ts
       - name: W4 AT-2.1 first look, the order box, Go to, the locked chapters with their reasons
         if: success() || failure()
         run: npm run test:wave3b -- --test-name-pattern='^W4 AT-2\.1 ' test/wave4/at2.test.ts
@@ -1153,7 +1172,7 @@ jobs:
       - name: W4 AT-2.3 a locked lesson by its address, the locked page, HEAD, its file and its mark POST refused
         if: success() || failure()
         run: npm run test:wave3b -- --test-name-pattern='^W4 AT-2\.3 ' test/wave4/at2.test.ts
-      - name: W4 AT-2.4 the lesson end around a lock (W4-1a, without the status sentence)
+      - name: W4 AT-2.4 the lesson end around a lock, and after Mark as done the status sentence that Decimals is open now
         if: success() || failure()
         run: npm run test:wave3b -- --test-name-pattern='^W4 AT-2\.4 ' test/wave4/at2.test.ts
       - name: W4 AT-2.5 home never leads into a lock
@@ -1165,6 +1184,21 @@ jobs:
       - name: W4 AT-2.7 every lesson-keyed learner route is gated (the route table)
         if: success() || failure()
         run: npm run test:wave3b -- --test-name-pattern='^W4 AT-2\.7 ' test/wave4/at2.test.ts
+      - name: W4 AT-3.1 undo locks what follows again (marks kept), marking again opens it; status lines only when the press changed what is open
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W4 AT-3\.1 ' test/wave4/at3.test.ts
+      - name: W4 AT-3.2 a lesson added to a finished chapter locks what follows; done, removed or restored, the lock follows; the change note
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W4 AT-3\.2 ' test/wave4/at3.test.ts
+      - name: W4 AT-3.3 order changes, a chapter moved, lessons moved inside a chapter, the blocking chapter removed and restored
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W4 AT-3\.3 ' test/wave4/at3.test.ts
+      - name: W4 AT-3.4 a lesson moved to another chapter (database update), its mark follows it
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W4 AT-3\.4 ' test/wave4/at3.test.ts
+      - name: W4 AT-3.5 switching while learners are part-way; done marks identical before and after every switch and publisher change
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W4 AT-3\.5 ' test/wave4/at3.test.ts
       - name: W4 AT-4.1 no page of Amal, Hadeer, Mona or the owner shows a lock; only the setting card and the change note are new
         if: success() || failure()
         run: npm run test:wave3b -- --test-name-pattern='^W4 AT-4\.1 ' test/wave4/at4.test.ts
@@ -1209,7 +1243,7 @@ jobs:
       - name: UX-46 locked lesson page
         if: success() || failure()
         run: npm run test:wave3b -- --test-name-pattern='^UX-46 ' test/wave4/ux.test.ts
-      - name: UX-47 lesson end and status lines around a lock (W4-1a, the locked Next)
+      - name: UX-47 lesson end and status lines around a lock
         if: success() || failure()
         run: npm run test:wave3b -- --test-name-pattern='^UX-47 ' test/wave4/ux.test.ts
       - name: UX-48 home actions lead to open lessons

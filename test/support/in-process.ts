@@ -9,7 +9,7 @@
 // network, no Cloudflare account.
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
@@ -103,6 +103,8 @@ export interface InProcessWorker {
   /** The address the Client uses (reaches the router in this process). */
   url: string;
   sqlite: DatabaseSync;
+  /** The in-memory file store (LMS wave 4, AT-1.4(b): shared with a second build on a copy of the database). */
+  files: R2Bucket;
   /** Swaps the statement hooks (or clears them with {}). */
   setHooks(h: StatementHooks): void;
   /** Every line the product wrote to the console since the start (or since clearLog). */
@@ -115,17 +117,31 @@ export interface InProcessWorker {
 
 let address = 0;
 
+/** Where an in-process product comes from (LMS wave 4, AT-1.4(b), the base comparison): by default this checkout's
+ * code on a fresh database with every migration; or another checkout's code (`root`, e.g. main b4ad669), and/or a
+ * database and file store already filled (then no migration is applied here). */
+export interface InProcessSource {
+  root?: string;
+  sqlite?: DatabaseSync;
+  files?: R2Bucket;
+}
+
 /** Starts the product's router in this process with the test build's hooks and the given Wrangler variables. */
-export async function startInProcess(vars: Record<string, string> = {}): Promise<InProcessWorker> {
+export async function startInProcess(vars: Record<string, string> = {}, from: InProcessSource = {}): Promise<InProcessWorker> {
   (globalThis as { __TEST_HOOKS__?: boolean }).__TEST_HOOKS__ = true;
-  const { app } = await import('../../src/app.ts');
-  const sqlite = new DatabaseSync(':memory:');
-  const dir = join(root, 'migrations');
-  for (const f of readdirSync(dir).filter((n) => n.endsWith('.sql')).sort()) sqlite.exec(readFileSync(join(dir, f), 'utf8'));
+  const { app } = (from.root
+    ? await import(pathToFileURL(join(from.root, 'src', 'app.ts')).href)
+    : await import('../../src/app.ts')) as typeof import('../../src/app.ts');
+  const sqlite = from.sqlite ?? new DatabaseSync(':memory:');
+  if (!from.sqlite) {
+    const dir = join(from.root ?? root, 'migrations');
+    for (const f of readdirSync(dir).filter((n) => n.endsWith('.sql')).sort()) sqlite.exec(readFileSync(join(dir, f), 'utf8'));
+  }
+  const files = from.files ?? r2InMemory();
   let hooks: StatementHooks = {};
   const env = {
     DB: d1Over(sqlite, { before: (s, p) => hooks.before?.(s, p), after: (s, p) => hooks.after?.(s, p), rewrite: (s, p) => (hooks.rewrite ? hooks.rewrite(s, p) : [s, p]), seen: (s, p) => hooks.seen?.(s, p) }),
-    FILES: r2InMemory(),
+    FILES: files,
     TEST_HOOKS: '1',
     ...vars,
   };
@@ -153,6 +169,7 @@ export async function startInProcess(vars: Record<string, string> = {}): Promise
   return {
     url,
     sqlite,
+    files,
     setHooks: (h) => void (hooks = h),
     log: () => [...lines],
     clearLog: () => void (lines.length = 0),

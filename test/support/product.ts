@@ -11,7 +11,7 @@
 // direct database read, so a test is written once.
 import { createServer, type IncomingMessage } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { startInProcess, type StatementHooks } from './in-process.ts';
+import { startInProcess, type InProcessSource, type InProcessWorker, type StatementHooks } from './in-process.ts';
 import { startWorker } from './worker.ts';
 import { withBusyRetry } from './busy.ts';
 
@@ -33,8 +33,9 @@ async function bodyOf(req: IncomingMessage): Promise<Buffer | undefined> {
   return chunks.length ? Buffer.concat(chunks) : undefined;
 }
 
-async function inProcess(): Promise<Product> {
-  const w = await startInProcess();
+/** An in-process product (see InProcessSource), with its worker (database and file store) at hand. */
+export async function inProcess(from: InProcessSource = {}): Promise<Product & { worker: InProcessWorker }> {
+  const w = await startInProcess({}, from);
   let served = '';
   let spied: string[] = [];
   const server = createServer((req, res) => {
@@ -63,6 +64,7 @@ async function inProcess(): Promise<Product> {
   return {
     url: served,
     runtime: 'in-process',
+    worker: w,
     sql: async (query) => w.sqlite.prepare(query).all() as Record<string, unknown>[],
     spy: {
       start() {
@@ -88,7 +90,14 @@ async function inProcess(): Promise<Product> {
 export const runtime = (): Product['runtime'] =>
   process.env.LMS_TEST_RUNTIME === 'in-process' || (process.platform === 'win32' && !process.env.CI) ? 'in-process' : 'workerd';
 
+/** LMS wave 4, AT-1.4(b): while set, startProduct() starts this instead (so a test world can be built on main's code). */
+let instead: (() => Promise<Product>) | null = null;
+export function startProductWith(start: (() => Promise<Product>) | null): void {
+  instead = start;
+}
+
 export async function startProduct(): Promise<Product> {
+  if (instead) return instead();
   if (runtime() === 'in-process') return inProcess();
   const w = await startWorker();
   // HK-1: a set-up statement that meets SQLITE_BUSY beside the Worker is run again (test/support/busy.ts).

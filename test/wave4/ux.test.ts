@@ -1,6 +1,6 @@
 // LMS wave 4, W4-1a: the UX floor (ux-plan v2 on PIL-238, rev 65dd62f1),
-// UX-44, UX-45, UX-46, UX-47 (the locked Next; the status lines are W4-1b),
-// UX-48, UX-49 and UX-50. One describe per item, each its own CI step
+// UX-44, UX-45, UX-46, UX-47 (the locked Next), UX-48, UX-49 and UX-50; W4-1b
+// adds UX-47's status lines and re-runs UX-49 and UX-50 with their strings. One describe per item, each its own CI step
 // (`UX-<n> ...`, selected with --test-name-pattern), each on a fresh world, in
 // Chromium (Playwright), script on unless stated. Screenshots go to
 // evidence/ux/ as the ux-plan names them. Made-up data only.
@@ -18,10 +18,11 @@ import {
 type Lang = 'ar' | 'en';
 const L = (w: Wave1World, title: string, s = w.school) => s.lessons[title];
 
-/** The wave 4 keys of src/i18n/ui.ts (W4-1a). */
+/** The wave 4 keys of src/i18n/ui.ts (W4-1a, then W4-1b's two status lines). */
 const W4_UI_KEYS = [
   'orderStateOn', 'orderStateOff', 'orderExplain', 'orderSwitchOn', 'orderSwitchOff', 'orderNowOn', 'orderNowOff', 'orderAddNote',
   'orderLine', 'lockedTag', 'lockedReason', 'lockedLater', 'lockedCount', 'lockedCountOne', 'goTo',
+  'markedOpened', 'markedRelocked',
 ] as const satisfies readonly UiKey[];
 
 /** WCAG 2 contrast ratio of two CSS colours (rgb() or rgba() strings). */
@@ -399,6 +400,56 @@ describe('UX-47 lesson end and status lines around a lock', { concurrency: false
     assert.equal(await k.page.$('#next-locked'), null);
     await k.ctx.close();
   });
+
+  it('UX-47 (W4-1b: the status lines) after a press that changed what is open, its sentence follows wave 2\'s in the same role="status" element inside #done-state, which takes focus; after "… is open now." Next is today\'s link; no extra sentence when nothing changed', async () => {
+    const s = w.school;
+    await setOrder(w, true);
+    for (const lang of ['ar', 'en'] as const) {
+      const { t } = kitWords('school', lang);
+      const k = await open(browser, w, SALMA, lessonPath(s, L(w, 'Comparing fractions')), { lang });
+      const page = k.page;
+      /** Presses the done block's button (a real form post) and reads the status element after the 303. */
+      const pressButton = async () => {
+        await Promise.all([page.waitForURL(/[?&]marked=/), page.click('#done-control button')]);
+        await page.waitForLoadState('load');
+        return page.evaluate(() => {
+          const st = document.querySelector('#done-status') as HTMLElement | null;
+          const extra = document.querySelector('#open-change');
+          return {
+            text: st?.innerText.replace(/\s+/g, ' ').trim() ?? null, role: st?.getAttribute('role') ?? null,
+            inBlock: Boolean(st?.closest('#done-state')), extraInStatus: extra ? Boolean(extra.closest('#done-status')) : null,
+            bdi: extra ? [...extra.querySelectorAll('bdi')].map((b) => b.textContent) : [], focus: document.activeElement?.id ?? '',
+          };
+        });
+      };
+      // A mark that opened Decimals.
+      const opened = await pressButton();
+      assert.equal(opened.text, `${t('markedDone')} ${t('markedOpened', { title: 'Decimals' })}`, `${lang}: wave 2's sentence, then "… is open now."`);
+      assert.deepEqual([opened.role, opened.inBlock, opened.extraInStatus, opened.focus], ['status', true, true, 'done-state'], `${lang}: one role="status" element inside #done-state, which has focus`);
+      assert.ok(opened.bdi.includes('Decimals'), `${lang}: the title in a bdi`);
+      assert.ok(await page.$('a.go.next .line2'), `${lang}: Next is today's link with the chapter on its second line`);
+      assert.equal(await page.$('#next-locked'), null);
+      if (lang === 'ar') await uxShot(page, 'UX-47-phone-ar-opened');
+      // The undo locked what was open.
+      const relocked = await pressButton();
+      assert.equal(relocked.text, `${t('markedNotDone')} ${t('markedRelocked', { title: 'Fractions' })}`, `${lang}: wave 2's sentence, then "… is locked until it is done."`);
+      assert.deepEqual([relocked.role, relocked.inBlock, relocked.extraInStatus, relocked.focus], ['status', true, true, 'done-state'], `${lang}: the same element, focused`);
+      assert.ok(await page.$('#next-locked'), `${lang}: Next into the locked chapter is the plain block again`);
+      if (lang === 'ar') await uxShot(page, 'UX-47-phone-ar-relocked');
+      // Nothing changed: un-marking and marking Adding fractions (Decimals stays locked), then a repeated "Mark as done".
+      await go(page, w, lessonPath(s, L(w, 'Adding fractions')));
+      const undoAdding = await pressButton();
+      assert.deepEqual([undoAdding.text, undoAdding.extraInStatus, undoAdding.focus], [t('markedNotDone'), null, 'done-state'], `${lang}: only wave 2's sentence`);
+      const markAdding = await pressButton();
+      assert.deepEqual([markAdding.text, markAdding.extraInStatus, markAdding.focus], [t('markedDone'), null, 'done-state'], `${lang}: only wave 2's sentence`);
+      const again = await press(await as(w, SALMA, lang), s, L(w, 'Adding fractions'), 'done');
+      assert.doesNotMatch(again.headers.get('location')!, /opened=|relocked=/, `${lang}: a repeated press flags nothing`);
+      await go(page, w, lessonPath(s, L(w, 'Comparing fractions')));
+      await go(page, w, again.headers.get('location')!.replace(w.p.url, '').split('#')[0]);
+      assert.deepEqual(await page.evaluate(() => [document.querySelector('#done-status')?.textContent?.trim(), document.querySelector('#open-change')]), [t('markedDone'), null], `${lang}: a repeated press, only wave 2's sentence`);
+      await k.ctx.close();
+    }
+  });
 });
 
 // ------------------------------------------------------------------- UX-48 ----
@@ -498,7 +549,11 @@ describe('UX-49 Arabic, mixed text and kit words for chapters in order (three ki
       for (const space of [s, w.company, w.university]) {
         const pages: [string, string, { username: string; password: string }][] = [
           ['outline', subjectPath(space, space.math), SALMA], ['locked lesson', lessonPath(space, L(w, 'Reading decimals', space)), SALMA],
-          ...(space === s ? [['lesson end', lessonPath(s, L(w, 'Comparing fractions')), SALMA], ['editor', editorPath(s, s.math), HADEER], ['admin', topicPath(s, s.math), ADMIN]] as [string, string, { username: string; password: string }][] : []),
+          ...(space === s ? [
+            ['lesson end', lessonPath(s, L(w, 'Comparing fractions')), SALMA], ['editor', editorPath(s, s.math), HADEER], ['admin', topicPath(s, s.math), ADMIN],
+            // W4-1b: the status line after an undo that locked what follows (Comparing fractions not done, Decimals locked: the flag matches).
+            ['relocked status', `${lessonPath(s, L(w, 'Comparing fractions'))}?marked=not-done&relocked=1`, SALMA],
+          ] as [string, string, { username: string; password: string }][] : []),
         ];
         for (const [name, path, who] of pages) {
           const k = await open(browser, w, who, path, { lang });
@@ -506,10 +561,11 @@ describe('UX-49 Arabic, mixed text and kit words for chapters in order (three ki
           const attrs = await page.evaluate(() => ({ lang: document.documentElement.lang, dir: document.documentElement.dir }));
           assert.deepEqual(attrs, { lang, dir: lang === 'ar' ? 'rtl' : 'ltr' }, `${space.kit} ${name} ${lang}: lang and dir`);
           // Titles inside the wave 4 sentences are each in their own bdi.
-          const titles = await page.$$eval('#go-to, .lock-reason, #next-locked .line1', (els) => els.map((e) => ({ text: (e as HTMLElement).innerText, bdi: [...e.querySelectorAll('bdi')].map((b) => b.textContent) })));
+          const titles = await page.$$eval('#go-to, .lock-reason, #next-locked .line1, #open-change', (els) => els.map((e) => ({ text: (e as HTMLElement).innerText, bdi: [...e.querySelectorAll('bdi')].map((b) => b.textContent) })));
           for (const x of titles) {
-            if (/Fractions|Adding fractions|Reading decimals/.test(x.text)) assert.ok(x.bdi.some((b) => b && /Fractions|Adding fractions|Reading decimals/.test(b)), `${space.kit} ${name} ${lang}: the title in a bdi (${x.text})`);
+            if (/Fractions|Adding fractions|Reading decimals|Decimals/.test(x.text)) assert.ok(x.bdi.some((b) => b && /Fractions|Adding fractions|Reading decimals|Decimals/.test(b)), `${space.kit} ${name} ${lang}: the title in a bdi (${x.text})`);
           }
+          if (name === 'relocked status') assert.equal(await page.getAttribute('#open-change', 'data-change'), 'relocked', `${lang}: the relocked line is on the page`);
           // The language check by key: no value of the other language as visible text (data, PDF and the space's name allowed).
           const text = (await page.innerText('body')).replace(/Mathematics|Fractions|Adding fractions|Comparing fractions|Reading decimals|What is a percent|Review sheet|Decimals|Percent|Review|PDF/g, ' ');
           for (const [key, value] of lang === 'ar' ? enValues : arValues) assert.ok(!text.includes(value), `${space.kit} ${name} ${lang}: no ${lang === 'ar' ? 'English' : 'Arabic'} ${key} ("${value}")`);
@@ -519,6 +575,16 @@ describe('UX-49 Arabic, mixed text and kit words for chapters in order (three ki
           await k.ctx.close();
         }
       }
+      // W4-1b: the status line after a mark that opened Decimals (a real press), then the undo back to the set-up.
+      const k = await open(browser, w, SALMA, lessonPath(s, L(w, 'Comparing fractions')), { lang });
+      await Promise.all([k.page.waitForURL(/opened=1/), k.page.click('#done-control button')]);
+      assert.deepEqual(await k.page.evaluate(() => ({ lang: document.documentElement.lang, dir: document.documentElement.dir })), { lang, dir: lang === 'ar' ? 'rtl' : 'ltr' }, `opened status ${lang}: lang and dir`);
+      const line = await k.page.$eval('#open-change', (e) => ({ text: (e as HTMLElement).innerText, bdi: [...e.querySelectorAll('bdi')].map((b) => b.textContent) }));
+      assert.ok(line.bdi.includes('Decimals'), `opened status ${lang}: the title in a bdi (${line.text})`);
+      const text = (await k.page.innerText('body')).replace(/Mathematics|Fractions|Adding fractions|Comparing fractions|Reading decimals|What is a percent|Review sheet|Decimals|Percent|Review|PDF/g, ' ');
+      for (const [key, value] of lang === 'ar' ? enValues : arValues) assert.ok(!text.includes(value), `opened status ${lang}: no ${lang === 'ar' ? 'English' : 'Arabic'} ${key} ("${value}")`);
+      await Promise.all([k.page.waitForURL(/relocked=1/), k.page.click('#done-control button')]);
+      await k.ctx.close();
     }
   });
 });
@@ -553,6 +619,8 @@ describe('UX-50 widths, sizes, contrast and keyboard for chapters in order', { c
     ];
     // The lesson end with the locked Next: Salma on Comparing fractions (Adding fractions not done), whose Next is Reading decimals.
     pages.push(['lesson end', lessonPath(s, L(w, 'Comparing fractions')), SALMA]);
+    // W4-1b: the status line after an undo that locked what follows (no marks: the flag matches), naming the 120-character chapter.
+    pages.push(['relocked status', `${lessonPath(s, L(w, 'Comparing fractions'))}?marked=not-done&relocked=1`, SALMA]);
     for (const lang of ['ar', 'en'] as const) {
       for (const [name, path, who] of pages) {
         const k = await open(browser, w, who, path, { lang });
@@ -569,7 +637,8 @@ describe('UX-50 widths, sizes, contrast and keyboard for chapters in order', { c
         await page.reload();
         // Controls at least 44 x 44; new text at least 14 px and 4.5:1.
         for (const m of await measure(page, '#go-to, #order-state button')) assert.ok(m.width >= 44 && m.height >= 44, `${name} ${lang}: ${m.selector} ${m.width}x${m.height}`);
-        for (const m of await measure(page, '#order-line, .lock-reason, .lock-tag, .lock-item, #order-value, .order-explain, [data-order-note], #next-locked .line1')) {
+        if (name === 'relocked status') assert.ok(await page.$('#open-change'), `${lang}: the relocked line is on the page`);
+        for (const m of await measure(page, '#order-line, .lock-reason, .lock-tag, .lock-item, #order-value, .order-explain, [data-order-note], #next-locked .line1, #open-change')) {
           assert.ok(m.fontPx >= 14 && m.contrast >= 4.5, `${name} ${lang}: ${m.selector} "${m.text}" ${m.fontPx} px ${m.contrast.toFixed(2)}:1`);
         }
         // Wave 1's focus ring on the new buttons and links.
@@ -598,6 +667,24 @@ describe('UX-50 widths, sizes, contrast and keyboard for chapters in order', { c
       assert.ok(foldAt > goAt, `${lang}: then Expand all / Collapse all`);
       assert.ok(summaries.length === 5 && summaries[0][1] > foldAt, `${lang}: then each chapter summary (${summaries.length})`);
       assert.ok(stops.every((x) => !x.locked), `${lang}: locked lesson titles are skipped`);
+      await k.ctx.close();
+    }
+    // W4-1b: the status line after a mark that opened the chapter with the mixed title (Fractions done; the flag matches).
+    const salma = await as(w, SALMA, 'en');
+    for (const title of ['Adding fractions', 'Comparing fractions']) assert.equal((await press(salma, s, L(w, title), 'done')).status, 303);
+    for (const lang of ['ar', 'en'] as const) {
+      const k = await open(browser, w, SALMA, `${lessonPath(s, L(w, 'Comparing fractions'))}?marked=done&opened=1`, { lang });
+      assert.ok(await k.page.$('#open-change'), `${lang}: the opened line is on the page`);
+      for (const [wname, size] of widths) {
+        await k.page.setViewportSize(size);
+        await k.page.reload();
+        const o = await overflow(k.page);
+        assert.ok(o.sideways <= 0, `opened status ${lang} ${wname}: no sideways scroll (${o.sideways})`);
+        assert.deepEqual(o.clipped.filter((c) => !/\.sr-only|sr-only:/.test(c)), [], `opened status ${lang} ${wname}: no clipped text`);
+      }
+      await k.page.setViewportSize(WIDTHS.phone);
+      await k.page.reload();
+      for (const m of await measure(k.page, '#open-change')) assert.ok(m.fontPx >= 14 && m.contrast >= 4.5, `opened status ${lang}: "${m.text}" ${m.fontPx} px ${m.contrast.toFixed(2)}:1`);
       await k.ctx.close();
     }
   });
