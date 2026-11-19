@@ -464,6 +464,9 @@ const en = {
   lockedCount: '{n} {lessonPlural}',
   lockedCountOne: '1 {lesson}',
   goTo: 'Go to: {title}',
+  // LMS wave 4, W4-1b (section 5.4): after wave 2's status sentence, only when the press changed what is open.
+  markedOpened: '{chapter}: {title} is open now.',
+  markedRelocked: 'What comes after {chapter}: {title} is locked until it is done.',
   // LMS wave 3b, W3b-1 (product-contract v2 on PIL-232, sections 4, 5 and 8; ux-plan wording table).
   uploadEntry: 'Add from a spreadsheet',
   uploadTitle: 'Add people from a spreadsheet',
@@ -981,6 +984,9 @@ const ar: Record<UiKey, string> = {
   lockedCount: '{n} من {lessonPlural}',
   lockedCountOne: '1 من {lessonPlural}',
   goTo: 'الانتقال إلى: {title}',
+  // LMS wave 4, W4-1b: the ux-plan wording; «الوصول» carries the agreement, never a kit word.
+  markedOpened: 'أصبح الوصول متاحًا إلى {chapter}: {title}.',
+  markedRelocked: 'الوصول إلى ما بعد {chapter}: {title} مغلق حتى الإكمال.',
   // LMS wave 3b, W3b-1 (ux-plan wording table: noun phrases and passives, no gender agreement needed).
   uploadEntry: 'إضافة من جدول بيانات',
   uploadTitle: 'إضافة أشخاص من جدول بيانات',

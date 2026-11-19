@@ -22,13 +22,18 @@ const LOCKED = (reason: string) => ({ tag: 'Locked', reason });
 /** Every sign of a lock a page could carry: its markers anywhere, its words in the text a person reads. */
 function lockSigns(body: string): string[] {
   const hits: string[] = [];
-  for (const marker of ['id="order-box"', 'data-locked', 'class="lock-tag"', 'id="go-to"', 'id="next-locked"', 'class="lock-item"', 'id="lock-reason"']) {
+  for (const marker of ['id="order-box"', 'data-locked', 'class="lock-tag"', 'id="go-to"', 'id="next-locked"', 'class="lock-item"', 'id="lock-reason"', 'id="open-change"']) {
     if (body.includes(marker)) hits.push(marker);
   }
   const text = inline(body, { hidden: true });
   for (const lang of ['en', 'ar'] as const) {
-    for (const key of ['orderLine', 'lockedTag', 'lockedReason', 'lockedLater', 'goTo'] as const) {
-      const fixed = UI[lang][key].split(/{[^}]*}/).map((x) => x.trim()).sort((x, y) => y.length - x.length)[0];
+    // W4-1b: and the two status lines after a press.
+    for (const key of ['orderLine', 'lockedTag', 'lockedReason', 'lockedLater', 'goTo', 'markedOpened', 'markedRelocked'] as const) {
+      // The longest fixed part that the setting card's own words (explanation, change note) do not hold
+      // (the Arabic «الوصول إلى ما بعد» of the relocked line is inside the explanation).
+      const card = UI[lang].orderExplain + UI[lang].orderAddNote;
+      const parts = UI[lang][key].split(/{[^}]*}/).map((x) => x.trim()).filter((x) => x.length > 2).sort((x, y) => y.length - x.length);
+      const fixed = parts.find((x) => !card.includes(x)) ?? parts[0];
       // The order line's longest fixed part is also in the setting card's explanation; the line's own start is looked for instead.
       const probe = key === 'orderLine' ? UI[lang][key].split('{')[0].trim() + ' ' + UI[lang][key].split('}')[1].split('{')[0].trim() : fixed;
       if (text.includes(probe)) hits.push(`${lang} ${key}`);

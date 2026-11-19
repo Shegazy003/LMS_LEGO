@@ -54,7 +54,7 @@ import { accountPage, languagePage } from './views/account.ts';
 import { peoplePage, setPage, setsPage, topicPage, topicsPage, type AppointForm, type ItemNotice, type OrderStatus } from './views/admin.ts';
 import { recoverPage, recoveryCodePage, setupPage, signInPage } from './views/auth.ts';
 import { layout, messagePage, type Html } from './views/layout.ts';
-import { learnerHome, lessonPage, lockedLessonPage, spacePage, subjectPage, type DoneBlock } from './views/learn.ts';
+import { learnerHome, lessonPage, lockedLessonPage, spacePage, subjectPage, type DoneBlock, type OpenChange } from './views/learn.ts';
 import {
   kitConfirmPage, newSpacePage, ownerHome, ownerSpacePage, type AdminRow, type AppointValues, type NewSpaceValues, type OwnerSpaceExtra,
 } from './views/owner.ts';
@@ -1125,6 +1125,22 @@ async function learnerLocks(c: C, subject: SubjectRow): Promise<{ parts: Outline
   return { parts, marks, locks: chapterLocks(parts, marks) };
 }
 
+/** LMS wave 4, W4-1b (section 5.4): the status line after a press that changed
+ * what is open, only when the address's flag is there and matches the current
+ * state (as wave 2's status rule). A mark opened the chapter after this
+ * lesson's chapter (the first with shown lessons; it is the first one a mark
+ * here can open), so it is named while it is open; an undo locked what comes
+ * after this lesson's chapter, so that chapter is named while the one after it
+ * is locked. Anything else shows only wave 2's sentence. */
+function openChange(c: C, order: { parts: OutlineChapter[]; locks: ChapterLocks }, lesson: { chapter_id: string; chapter_title: string }, status: string): OpenChange | null {
+  const at = order.parts.findIndex((ch) => ch.id === lesson.chapter_id);
+  const following = at < 0 ? undefined : order.parts.slice(at + 1).find((ch) => ch.lessons.length > 0);
+  if (!following) return null;
+  if (status === 'done' && c.req.query('opened') === '1' && !order.locks.locked.has(following.id)) return { kind: 'opened', title: following.title };
+  if (status === 'not-done' && c.req.query('relocked') === '1' && order.locks.locked.has(following.id)) return { kind: 'relocked', title: lesson.chapter_title };
+  return null;
+}
+
 /** The chapter a lesson sits in, on an outline. */
 const chapterOfLesson = (parts: OutlineChapter[], lessonId: string) => parts.find((ch) => ch.lessons.some((l) => l.id === lessonId))?.id ?? null;
 
@@ -1166,7 +1182,7 @@ app.get('/s/:spaceId/read/:lessonId', async (c) => {
     const isMarked = order ? order.marks.has(lesson.id) : await isDone(db, signedInLearner(c), lesson.id);
     const asked = c.req.query('marked');
     const status = asked === 'failed' || (asked === 'done' && isMarked) || (asked === 'not-done' && !isMarked) ? asked : null;
-    done = { kind: 'learner', done: isMarked, status };
+    done = { kind: 'learner', done: isMarked, status, change: order && status ? openChange(c, order, lesson, status) : null };
   }
   return page(c, lessonPage(t, lang, view, { subject, lesson, materials, place, notice, done, locks: order?.locks ?? null }));
 });
@@ -1204,7 +1220,19 @@ app.post('/s/:spaceId/read/:lessonId/done', async (c) => {
     logError('progress write failed');
     marked = 'failed';
   }
-  return c.redirect(`/s/${space.id}/read/${lesson.id}?marked=${marked}#done-state`, 303);
+  // LMS wave 4, W4-1b (section 5.4): in order, the open chapters before and after the write, from the marks
+  // already read (no further read); the address says so only when they differ.
+  let change = '';
+  if (order && marked !== 'failed') {
+    const after = new Set(order.marks);
+    if (marked === 'done') after.add(lesson.id);
+    else after.delete(lesson.id);
+    const lockedAfter = chapterLocks(order.parts, after).locked;
+    const lockedBefore = order.locks.locked;
+    if ([...lockedBefore.keys()].some((id) => !lockedAfter.has(id))) change = '&opened=1';
+    else if ([...lockedAfter.keys()].some((id) => !lockedBefore.has(id))) change = '&relocked=1';
+  }
+  return c.redirect(`/s/${space.id}/read/${lesson.id}?marked=${marked}${change}#done-state`, 303);
 });
 
 app.get('/s/:spaceId/file/:materialId', async (c) => {

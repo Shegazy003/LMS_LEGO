@@ -2,8 +2,8 @@
 // learner, with Mathematics in order (Hadeer's editor form) and lesson
 // activity on throughout. One describe per labelled expectation, each its own
 // CI step (`W4 AT-2.<n> ...`, selected with --test-name-pattern), each on a
-// fresh world. AT-2.4's status sentence ("... is open now.") is W4-1b's: here,
-// after "Mark as done", wave 2's sentence and today's Next. Made-up data only.
+// fresh world. AT-2.4's status sentence ("... is open now.") came with W4-1b:
+// after "Mark as done", wave 2's sentence, then it, and today's Next. Made-up data only.
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Client } from '../support/http.ts';
@@ -253,7 +253,9 @@ describe('W4 AT-2.4 the lesson end around a lock: Next into a locked chapter is 
     const res = await press(salma, s, L(s, 'Comparing fractions'), 'done');
     assert.equal(res.status, 303);
     const after = await (await salma.get(res.headers.get('location')!.split('#')[0])).text();
-    assert.equal(inline(/<p id="done-status"[^>]*>([\s\S]*?)<\/p>/.exec(after)![1]), 'Marked as done.', 'wave 2\'s sentence (the added sentence is W4-1b\'s)');
+    // W4-1b (section 5.4): the press opened Decimals, so its sentence follows wave 2's in the same status element.
+    assert.match(res.headers.get('location')!, /[?&]opened=1(&|#|$)/, 'the 303 address says the press opened a chapter');
+    assert.equal(inline(/<p id="done-status"[^>]*>([\s\S]*?)<\/p>/.exec(after)![1]), 'Marked as done. Chapter: Decimals is open now.', 'wave 2\'s sentence, then W4-1b\'s');
     const next = pick(after, 'next-lesson')!;
     assert.ok(next && next.includes(`href="${lessonPath(s, L(s, 'Reading decimals'))}"`), 'today\'s Next link');
     assert.equal(inline(/<span class="line2">([\s\S]*?)<\/span>/.exec(next)![1]), 'Chapter: Decimals', 'with the chapter on its second line');

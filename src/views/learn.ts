@@ -330,8 +330,15 @@ function lessonNav(t: Label, lang: Lang, space: SpaceView, subject: { id: string
  * matches the stored state (the router decides); in a preview, "Mark as done"
  * inert (UX-31). Nobody else gets one. */
 export type DoneBlock =
-  | { kind: 'learner'; done: boolean; status: 'done' | 'not-done' | 'failed' | null }
+  | { kind: 'learner'; done: boolean; status: 'done' | 'not-done' | 'failed' | null; change?: OpenChange | null }
   | { kind: 'inert' };
+
+/** LMS wave 4, W4-1b (section 5.4): what a press changed in a subject in order,
+ * shown after wave 2's sentence only when it changed what is open: the first
+ * chapter a mark opened, or the lesson's own chapter after an undo locked what follows. */
+export type OpenChange = { kind: 'opened' | 'relocked'; title: string };
+
+const CHANGE_KEY = { opened: 'markedOpened', relocked: 'markedRelocked' } as const;
 
 const STATUS_KEY = { done: 'markedDone', 'not-done': 'markedNotDone', failed: 'markFailed' } as const;
 
@@ -356,7 +363,7 @@ function doneBlock(t: Label, space: SpaceView, lessonId: string, d: DoneBlock): 
 <section id="done-state" class="done-block" tabindex="-1">${doneStyle}<button type="button" id="done-control"${INERT}>${t('markDone')}</button></section>`;
   }
   const status = d.status
-    ? html`<p id="done-status" class="${d.status === 'failed' ? 'error' : 'done'}" role="status">${t(STATUS_KEY[d.status])}</p>`
+    ? html`<p id="done-status" class="${d.status === 'failed' ? 'error' : 'done'}" role="status">${t(STATUS_KEY[d.status])}${d.change ? html` <span id="open-change" data-change="${d.change.kind}">${sentence(t, CHANGE_KEY[d.change.kind], { title: d.change.title })}</span>` : ''}</p>`
     : '';
   const now = d.done ? html`<p class="done-now" data-done="block"><span class="tick" aria-hidden="true">✓</span><span>${t('doneTag')}</span></p>` : '';
   const control = html`<form id="done-control" method="post" action="${`/s/${space.id}/read/${lessonId}/done`}"><input type="hidden" name="state" value="${d.done ? 'not-done' : 'done'}"><button type="submit"${d.done ? html` class="undo"` : ''}>${t(d.done ? 'markNotDone' : 'markDone')}</button></form>`;

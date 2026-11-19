@@ -285,8 +285,9 @@ export function doneHits(body: string, words: Map<string, string>): string[] {
 // the locked chapter's marker attribute, for guardian pages and for other
 // learners' reach, and pass with A's locks present.
 
-/** The ui.ts keys W4-1a added that a learner's page shows as words (lockedCount and lockedCountOne are only the count inside the reasons, found through them). */
-export const W4_KEYS = ['orderLine', 'lockedTag', 'lockedReason', 'lockedLater', 'goTo'] as const;
+/** The ui.ts keys wave 4 added that a learner's page shows as words (lockedCount and lockedCountOne are only the count inside the reasons, found through them);
+ * W4-1b adds the two status lines after a press (markedOpened, markedRelocked). */
+export const W4_KEYS = ['orderLine', 'lockedTag', 'lockedReason', 'lockedLater', 'goTo', 'markedOpened', 'markedRelocked'] as const;
 
 /** A's locks while the viewers look around: Arabic (assigned to A alone) gains a lesson A has not marked in its first chapter
  * and a second chapter, and is set in order, so its second chapter is locked for A. Call after withDoneMarks. */
