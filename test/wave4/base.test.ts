@@ -85,6 +85,8 @@ async function pair(): Promise<Pair> {
   b.worker.sqlite.exec(`VACUUM INTO '${file.replace(/'/g, "''")}'`);
   const copy = new DatabaseSync(file);
   copy.exec(readFileSync(join(repo, 'migrations', '0013_chapters_in_order.sql'), 'utf8'));
+  // LMS wave 5 (contract on PIL-246, section 11 item 3): the candidate's code reads announcements, so its copy gains that migration too (none stored).
+  copy.exec(readFileSync(join(repo, 'migrations', '0014_announcements.sql'), 'utf8'));
   const cand = await inProcess({ sqlite: copy, files: b.worker.files });
   const off = await cand.sql('SELECT COUNT(*) AS n FROM subject WHERE chapters_in_order <> 0');
   assert.equal(Number(off[0].n), 0, 'every setting off on the candidate');
@@ -111,10 +113,32 @@ function normalised(body: string, url: string): string {
     .replace(/<div id="usage"[\s\S]*?(?=<h2|<\/main>)/g, '[usage today]');
 }
 
-/** The candidate's body without its setting card; whether it had one. */
+// LMS wave 5 (contract on PIL-246, section 11 item 3, and AT-4's style handling): the CSS is inlined in every page,
+// and wave 5 appends one block to it. The candidate's <style> in <head> must be main's followed by exactly that block
+// (starting with the mark, every selector `#announcements…` or `.ann-…`); then both are replaced by one token.
+const W5_MARK = '/* wave 5 announcements */';
+const HEAD_STYLE = /(<head>[\s\S]*?<style>)([\s\S]*?)(<\/style>)/;
+function styleHandled(base: string, cand: string, what: string): { base: string; cand: string } {
+  const sb = HEAD_STYLE.exec(base);
+  const sc = HEAD_STYLE.exec(cand);
+  assert.equal(Boolean(sc), Boolean(sb), `${what}: a <style> on both sides or neither`);
+  if (!sb || !sc) return { base, cand };
+  assert.ok(sc[2].startsWith(sb[2]), `${what}: the candidate's style starts with main's`);
+  const block = sc[2].slice(sb[2].length);
+  if (block) {
+    assert.ok(block.startsWith(W5_MARK), `${what}: the added style is the wave 5 block`);
+    for (const rule of block.slice(W5_MARK.length).split('}').map((r) => r.trim()).filter(Boolean)) {
+      for (const s of rule.slice(0, rule.indexOf('{')).split(',').map((x) => x.trim())) assert.match(s, /^(#announcements|\.ann-)/, `${what}: a scoped selector`);
+    }
+  }
+  return { base: base.replace(HEAD_STYLE, '$1[style]$3'), cand: cand.replace(HEAD_STYLE, '$1[style]$3') };
+}
+
+/** The candidate's body without its setting card and (wave 5) its announcement card; whether it had one. */
 function withoutCard(body: string): { body: string; card: boolean } {
   // The card with the line break and indent it is drawn after.
-  const out = body.replace(/\n?[ \t]*<section id="order-state"[\s\S]*?<\/section>/g, '');
+  const out = body.replace(/\n?[ \t]*<section id="order-state"[\s\S]*?<\/section>/g, '')
+    .replace(/<section id="announcements"[\s\S]*?<\/section>/g, '');
   return { body: out, card: out !== body };
 }
 
@@ -146,8 +170,9 @@ async function same(p: Pair, who: { who: string; base: Client; cand: Client }, m
   const loc = (r: Response, url: string) => (r.headers.get('location') ?? '').split(url).join('[product]');
   assert.equal(loc(rc, p.cand.url), loc(rb, p.base.url), `${what}: same Location`);
   for (const h of ['content-type', 'cache-control']) assert.equal(rc.headers.get(h), rb.headers.get(h), `${what}: same ${h}`);
-  const bb = normalised(await bodyOf(rb), p.base.url);
-  const cut = withoutCard(normalised(await bodyOf(rc), p.cand.url));
+  const styled = styleHandled(normalised(await bodyOf(rb), p.base.url), normalised(await bodyOf(rc), p.cand.url), what);
+  const bb = styled.base;
+  const cut = withoutCard(styled.cand);
   if (cut.card) {
     assert.ok(CARD_PAGES.some((re) => re.test(path)), `${what}: the setting card only on the editor, add-lesson, removed-items and subject admin pages`);
     tally.cards.push(path);

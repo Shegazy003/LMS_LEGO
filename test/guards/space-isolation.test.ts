@@ -31,6 +31,8 @@ const SPACE_TABLES = [
   'done_mark',
   // LMS wave 3b, W3b-1 (product-contract v2 on PIL-232, AT-5.6): class_upload, one row per add from a spreadsheet.
   'class_upload',
+  // LMS wave 5, W5-1 (product-contract v2 on PIL-246, section 6.1): announcement, a subject's announcements.
+  'announcement',
 ];
 // LMS wave 3b (section 6.2): membership.class_upload_id is a column added to an
 // existing table, and SQLite can add a column with a one-column reference only

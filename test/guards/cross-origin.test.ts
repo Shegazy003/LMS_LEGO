@@ -91,6 +91,7 @@ function fields(path: string): Record<string, string> {
     set: ids.groupId,
     learner: ids.salmaId,
     publisher: ids.hadeerId,
+    body: 'Forged announcement.',
     ...labels,
   };
 }
@@ -191,6 +192,10 @@ describe('AT-5 guard: every form refuses a cross-origin post', { concurrency: fa
       '/s/:spaceId/admin/activity', '/s/:spaceId/admin/activity/off',
       // Wave 2 (W2-1a): a learner's done mark.
       '/s/:spaceId/read/:lessonId/done',
+      // Wave 5 (AT-1.5): the announcement card's posts, from the editor and the subject admin page.
+      '/s/:spaceId/publish/edit/:subjectId/announcements', '/s/:spaceId/publish/edit/:subjectId/announcements/:annId',
+      '/s/:spaceId/publish/edit/:subjectId/announcements/:annId/remove', '/s/:spaceId/admin/topics/:subjectId/announcements',
+      '/s/:spaceId/admin/topics/:subjectId/announcements/:annId', '/s/:spaceId/admin/topics/:subjectId/announcements/:annId/remove',
     ]) assert.ok(posts.includes(must), `POST ${must} exists and is in the sweep`);
 
     const dataBefore: Snapshot = await snapshot(worker);

@@ -36,6 +36,8 @@ const BASE_MIGRATIONS: Record<string, string> = {
   '0012_class_upload.sql': '2a5b44991ede382449b6ca26a28a81eef40a4c2545cbe376690b247ba41939c6',
   // LMS wave 4 (contract on PIL-238, section 11 item 1): the subject's "open in order" column.
   '0013_chapters_in_order.sql': '51bae431600df24960efe0049a0430f7e68b8892b5aaa628ecf4e4dd3f71e242',
+  // LMS wave 5 (contract on PIL-246, section 11 item 1): the announcement table and its index.
+  '0014_announcements.sql': 'b7b7387ee238160e340767740316d07584d0949071c353757e2e38eec6bd154e',
 };
 
 const schemaQuery = "SELECT type, name, tbl_name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND name <> 'd1_migrations' ORDER BY type, name";

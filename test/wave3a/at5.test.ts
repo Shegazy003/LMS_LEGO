@@ -119,9 +119,10 @@ test('W3a AT-5.1 every existing step of contract section 10 is still in its job 
   assert.ok(ci.rollback.filter((s) => s.name.startsWith('AT-14a ')).length >= 10, 'every AT-14a step of the rollback job');
   // The one new job (section 12): one step per W3a label and UX item, each run after an earlier failure.
   check('wave-3a', WAVE_3A, true);
-  // Wave 3b adds its own one new job, `wave-3b` (W3b contract section 11), and wave 4 `wave-4` (W4 contract section 11 item 3); nothing else may appear.
-  const known = new Set(Object.keys(SECTION_10).concat('wave-3a', 'wave-3b', 'wave-4', 'push')); // "push" is the trigger under on:, not a job
-  assert.deepEqual(Object.keys(ci).filter((j) => !known.has(j)), [], 'at most one new job per wave (wave-3a, then wave-3b, then wave-4)');
+  // Wave 3b adds its own one new job, `wave-3b` (W3b contract section 11), wave 4 `wave-4` (W4 contract section 11 item 3)
+  // and wave 5 `wave-5` (W5 contract section 11 item 5); nothing else may appear.
+  const known = new Set(Object.keys(SECTION_10).concat('wave-3a', 'wave-3b', 'wave-4', 'wave-5', 'push')); // "push" is the trigger under on:, not a job
+  assert.deepEqual(Object.keys(ci).filter((j) => !known.has(j)), [], 'at most one new job per wave (wave-3a, then wave-3b, wave-4, wave-5)');
 });
 
 describe('W3a AT-5 keep working', { concurrency: false }, () => {

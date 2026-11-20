@@ -105,6 +105,7 @@ export function subjectEditor(
   error?: string,
   notice?: EditorNotice,
   order: OrderStatus = null,
+  announcements: Html | string = '',
 ): Html {
   const inOrder = subject.chapters_in_order === 1;
   const published = subject.is_published === 1;
@@ -121,7 +122,7 @@ ${errorBox(error)}
   ${orderCard(t, lang, { action: `${action}/order`, on: inOrder, status: order, own: false })}
   <p><a id="preview-subject" href="${previewPath(space.id, `/learn/${subject.id}`, `subject:${subject.id}`)}">${t('preview')}</a></p>
 </div>
-<h2>${t('chapter')} <span class="muted">· ${t('lesson')}</span></h2>
+${announcements}<h2>${t('chapter')} <span class="muted">· ${t('lesson')}</span></h2>
 <div id="outline">${parts.map((ch, i) => chapterEditor(t, lang, space, ch, i, parts.length, inOrder))}</div>
 ${parts.length ? '' : html`<p class="card muted">${t('nothingHere')}</p>`}
 <form id="add-chapter" class="stack card" method="post" action="${action}/add">

@@ -1269,6 +1269,124 @@ jobs:
         with:
           name: evidence-wave-4
           path: evidence/
+  # LMS wave 5 (product-contract v2 on PIL-246): announcements to a subject.
+  # One step per labelled expectation ("W5 AT-..." and "UX-5x ..."), the
+  # product in this process (the statement spy), as wave-3a, wave-3b, wave-4.
+  wave-5:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      WRANGLER_SEND_METRICS: "false"
+      LMS_TEST_RUNTIME: in-process
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install (lockfile only, when present)
+        run: if [ -f package-lock.json ]; then npm ci; fi
+      - name: Read the Playwright version
+        id: playwright
+        run: |
+          echo "version=$(node -p "require('playwright/package.json').version")" >> "$GITHUB_OUTPUT"
+          echo "image=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
+      - name: Cache Chromium for the browser test
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.image }}-${{ steps.playwright.outputs.version }}-chromium
+      - name: Install Chromium for the browser test
+        timeout-minutes: 10
+        run: |
+          npx playwright install-deps chromium
+          for attempt in 1 2 3; do
+            timeout 180 npx playwright install chromium && exit 0
+            echo "::warning::Chromium install attempt $attempt did not finish; retrying"
+            sleep 10
+          done
+          exit 1
+      - name: W5 AT-1.1 post from the editor and the subject admin page, 303 to the card, each page lists the other's, double tap stored once
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W5 AT-1\.1 ' test/wave5/at1.test.ts
+      - name: W5 AT-1.2 edit, own role only; the other role's edit form and save answer 403
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W5 AT-1\.2 ' test/wave5/at1.test.ts
+      - name: W5 AT-1.3 remove, the confirmation, the text erased, 404 after
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W5 AT-1\.3 ' test/wave5/at1.test.ts
+      - name: W5 AT-1.4 text rules, refused texts kept in the field, the live count matches the server
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W5 AT-1\.4 ' test/wave5/at1.test.ts
+      - name: W5 AT-1.5 every refused case stores nothing; one gate read, at most one more read, one write
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W5 AT-1\.5 ' test/wave5/at1.test.ts
+      - name: W5 AT-5.1 the forward migration creates exactly the table and the index; a second apply is a no-op
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W5 AT-5\.1 ' test/wave5/at5.test.ts
+      - name: W5 AT-5.2 the down script brings the schema and the applied-migrations record back to main's
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W5 AT-5\.2 ' test/wave5/at5.test.ts
+      - name: W5 AT-5.3 the README's rollback text (the old-code case is in the rollback job)
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W5 AT-5\.3 ' test/wave5/at5.test.ts
+      - name: W5 AT-5.4 announcements go with their subject and their space; ending the writer's access changes none
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W5 AT-5\.4 ' test/wave5/at5.test.ts
+      - name: W5 AT-5.5 no route returns announcement text but the card's pages; README and Later on export, backup and erasure
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W5 AT-5\.5 ' test/wave5/at5.test.ts
+      - name: W5 deploy note
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W5 deploy note' test/wave5/at5.test.ts
+      - name: UX-51 teacher card order, labels and role controls
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-51 ' test/wave5/ux.test.ts
+      - name: UX-52 status line, focus target and cancel links
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-52 ' test/wave5/ux.test.ts
+      - name: UX-53 errors keep text, count matches server, button disabled
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-53 ' test/wave5/ux.test.ts
+      - name: UX-56 language check by key (three kits)
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-56 language check by key' test/wave5/ux.test.ts
+      - name: UX-56 deny list and placeholder neighbours
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-56 deny list' test/wave5/ux.test.ts
+      - name: UX-56 no spaced slash in Arabic values
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-56 no spaced slash' test/wave5/ux.test.ts
+      - name: UX-57 states table
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-57 ' test/wave5/ux.test.ts
+      - name: UX-58 widths, targets, contrast and keyboard
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-58 ' test/wave5/ux.test.ts
+      # AT-4.1a and AT-4.1b, the base comparison: main b87bfc5 (pinned) runs beside this commit, in the same process,
+      # on a copy of the same database (test/wave5/base.test.ts reads it from LMS_BASE_ROOT).
+      - name: Check out main b87bfc5 for the base comparison (code only, never run but by the comparison)
+        if: success() || failure()
+        uses: actions/checkout@v4
+        with:
+          ref: b87bfc55f255a332f0593e45bf08c2fa5f96697d
+          path: .base-main
+          persist-credentials: false
+      - name: W5 AT-4.1a (teacher pages) the editors and subject admin pages differ from main b87bfc5 only by the announcement card
+        if: success() || failure()
+        env:
+          LMS_BASE_ROOT: ${{ github.workspace }}/.base-main
+        run: npm run test:wave3b -- --test-name-pattern='^W5 AT-4\.1a ' test/wave5/base.test.ts
+      - name: W5 AT-4.1b (every other page) same status and body as main b87bfc5; no learner page shows an announcement block
+        if: success() || failure()
+        env:
+          LMS_BASE_ROOT: ${{ github.workspace }}/.base-main
+        run: npm run test:wave3b -- --test-name-pattern='^W5 AT-4\.1b ' test/wave5/base.test.ts
+      - name: Upload evidence (wave 5 screenshots)
+        if: always() && hashFiles('evidence/**') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-wave-5
+          path: evidence/
   # AT-14a: rollback holds. The code live before release 2 (main at f3b1fa7,
   # the H-1 version 528786a4, the rollback target) is checked out beside this
   # commit and given this commit's migrations, so the old code runs on a
@@ -1342,6 +1460,10 @@ jobs:
         if: success() || failure()
         working-directory: release-1.1
         run: node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./test/support/github-reporter.mjs --test-reporter-destination=stdout --test-name-pattern='^W4 AT-5\.3 ' test/rollback/old-code.test.ts
+      - name: W5 AT-5.3 release 1.1 code on the database with announcements shows none, has no announcement address and writes nothing to the table
+        if: success() || failure()
+        working-directory: release-1.1
+        run: node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./test/support/github-reporter.mjs --test-reporter-destination=stdout --test-name-pattern='^W5 AT-5\.3 ' test/rollback/old-code.test.ts
       - name: AT-14a release 1.1 suite on the release 2 database - AT-1
         if: success() || failure()
         working-directory: release-1.1

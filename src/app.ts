@@ -33,6 +33,11 @@ import { noticeCookieName, noticeCookieOptions, noticeFormFor, type NoticeForm }
 import { adminActivityOffPage, adminActivityPage, guardianActivityPage, type AdminActivityView } from './views/activity.ts';
 import { externalUrl } from './links.ts';
 import { logError } from './log.ts';
+import {
+  ANN_MAX, cardRows, checkText, mayEdit, mayRemove, oneRow, postAnnouncement, removeAnnouncement, saveAnnouncement,
+  type AnnouncementRow, type AuthorRole, type CheckedText, type Writer,
+} from './announcements.ts';
+import { announcementCard, announcementEditPage, announcementRemovePage, type AnnRefusal, type AnnStatus } from './views/announcements.ts';
 import { normaliseCountryCode, normaliseMobile } from './phone.ts';
 import {
   addChapter, addLesson, addMaterial, editableChapter, editableLesson, editableMaterial, editableSubject, isDirection,
@@ -1812,14 +1817,18 @@ app.post('/s/:spaceId/admin/topics', async (c) => {
 async function renderTopic(
   c: C,
   subjectId: string,
-  extra: { notice?: ItemNotice; error?: string; typedName?: string } = {},
+  extra: { notice?: ItemNotice; error?: string; typedName?: string; annRefusal?: AnnRefusal } = {},
   status: 200 | 400 = 200,
 ) {
   const db = c.get('db');
   const { t, lang, view } = spaceLabel(c);
   const topic = await findTopic(db, view.id, subjectId);
   if (!topic) return refuse(c, 403, 'noAccess');
+  const { annRefusal, ...shown } = extra;
+  // LMS wave 5 (section 4.1): the announcement card, after the setting card.
+  const announcements = await announcementsOf(c, { subjectId: topic.id, role: 'admin', page: `/s/${view.id}/admin/topics/${topic.id}`, published: topic.is_published === 1 }, annRefusal);
   const body = topicPage(t, lang, view, {
+    announcements,
     topic,
     publishers: await publishersOf(db, view.id),
     sets: (await setsOf(db, view.id)).map((s) => ({ id: s.id, display_name: s.name })),
@@ -1827,7 +1836,7 @@ async function renderTopic(
     readers: await topicReaders(db, view.id, topic.id),
     // LMS wave 4 (section 4.2): the setting card's status line after a press.
     order: orderStatus(c, topic.chapters_in_order),
-    ...extra,
+    ...shown,
   });
   return page(c, body, status);
 }
@@ -1974,10 +1983,12 @@ function titleFrom(body: Record<string, unknown>): string | null {
 const DONE: Record<string, EditorNotice> = { renamed: 'renamed', removed: 'removedDone', restored: 'restoredDone', replaced: 'replacedDone' };
 const editorNotice = (c: C): EditorNotice | undefined => DONE[c.req.query('done') ?? ''];
 
-async function renderSubjectEditor(c: C, subject: SubjectRow, error?: LabelKey, notice?: EditorNotice) {
+async function renderSubjectEditor(c: C, subject: SubjectRow, error?: LabelKey, notice?: EditorNotice, refusal?: AnnRefusal) {
   const { t, lang, view } = spaceLabel(c);
   const parts = await outline(c.get('db'), view.id, subject.id);
-  return page(c, subjectEditor(t, lang, view, subject, parts, error && t(error), notice, orderStatus(c, subject.chapters_in_order)), error ? 400 : 200);
+  // LMS wave 5 (section 4.1): the announcement card after the card of Publish, Preview and the setting.
+  const card = await announcementsOf(c, { subjectId: subject.id, role: 'publisher', page: subjectEditorPath(view.id, subject.id), published: subject.is_published === 1 }, refusal);
+  return page(c, subjectEditor(t, lang, view, subject, parts, error && t(error), notice, orderStatus(c, subject.chapters_in_order), card), error || refusal ? 400 : 200);
 }
 
 // LMS wave 4 (product-contract v2 on PIL-238, section 4): the subject's "open
@@ -2030,6 +2041,156 @@ app.post('/s/:spaceId/admin/topics/:subjectId/order', async (c) => {
   if (!topic) return refuse(c, 403, 'noAccess');
   return orderPost(c, (on) => setTopicOrder(db, spaceId, topic.id, on), `/s/${spaceId}/admin/topics/${topic.id}`);
 });
+
+// ------------------------------------------------------- announcements ----
+// LMS wave 5 (product-contract v2 on PIL-246, sections 4 and 7): a subject's
+// announcement card, on the responsible publisher's editor and on the admin's
+// subject page, each behind its own gate (publisher, admin; access ended and
+// another site refused before any lookup). A subject that is not theirs here
+// answers 403; an announcement that is not this subject's, or is removed, 404;
+// an item of the other role that this role may not edit or remove, 403.
+// Each write is one gate read (the subject), at most one read of the
+// announcement (or of the newest one, for the double tap) and one write that
+// repeats the gate. Then 303 back to the card. GET and HEAD of the post
+// address have no route (404). The writer is kept as a role only.
+
+/** Where a card lives: the subject, the role that uses it, and the page it sits on. */
+interface AnnPlace {
+  subjectId: string;
+  subjectTitle: string;
+  role: AuthorRole;
+  writer: Writer;
+  page: string;
+  published: boolean;
+}
+
+/** The publisher's place: only the subject they are responsible for (one read). */
+async function publisherAnnPlace(c: C): Promise<AnnPlace | null> {
+  const spaceId = c.get('space').id;
+  const userId = c.get('user')!.id;
+  const subject = await editableSubject(c.get('db'), spaceId, userId, c.req.param('subjectId') ?? '');
+  if (!subject) return null;
+  return { subjectId: subject.id, subjectTitle: subject.title, role: 'publisher', writer: { role: 'publisher', userId }, page: subjectEditorPath(spaceId, subject.id), published: subject.is_published === 1 };
+}
+
+/** The admin's place: any subject of the space (one read). */
+async function adminAnnPlace(c: C): Promise<AnnPlace | null> {
+  const spaceId = c.get('space').id;
+  const topic = await findTopic(c.get('db'), spaceId, c.req.param('subjectId') ?? '');
+  if (!topic) return null;
+  return { subjectId: topic.id, subjectTitle: topic.title, role: 'admin', writer: { role: 'admin' }, page: `/s/${spaceId}/admin/topics/${topic.id}`, published: topic.is_published === 1 };
+}
+
+/** The card's status line (section 4.2): ?announcement= shows only when it matches what is stored; failed always. */
+function annStatus(c: C, rows: AnnouncementRow[], role: AuthorRole): AnnStatus {
+  const asked = c.req.query('announcement');
+  const shown = rows.filter((r) => r.removed_at === null);
+  if (asked === 'failed') return 'failed';
+  if (asked === 'posted') return shown[0]?.author_role === role ? 'posted' : null;
+  if (asked === 'saved') return shown.some((r) => r.author_role === role && r.edited_at !== null) ? 'saved' : null;
+  if (asked === 'removed') return rows.some((r) => r.removed_at !== null) ? 'removed' : null;
+  return null;
+}
+
+/** The card for a page: its list in one read, the status line, a refused text kept. */
+async function announcementsOf(c: C, v: { subjectId: string; role: AuthorRole; page: string; published: boolean }, refusal?: AnnRefusal) {
+  const { t, lang, view } = spaceLabel(c);
+  const rows = await cardRows(c.get('db'), view.id, v.subjectId);
+  return announcementCard(t, lang, { action: `${v.page}/announcements`, role: v.role, published: v.published, rows, status: refusal ? null : annStatus(c, rows, v.role), refusal });
+}
+
+/** The refusal of a typed text (section 4.3), in the page's words. */
+function annRefusal(c: C, typed: string, checked: Exclude<CheckedText, { ok: true }>): AnnRefusal {
+  const { t } = spaceLabel(c);
+  return { typed, error: checked.key === 'annTooLong' ? t('annTooLong', { n: String(checked.n), max: String(ANN_MAX) }) : t('annEmptyError') };
+}
+
+const typedBody = async (c: C): Promise<string> => {
+  const body = (await c.req.parseBody()).body;
+  return typeof body === 'string' ? body : '';
+};
+
+/** A write, then 303 back to the card; a failed write keeps everything and says so (its log line is the fixed event alone). */
+async function annWrite(c: C, place: AnnPlace, said: 'posted' | 'saved' | 'removed', write: () => Promise<boolean>) {
+  try {
+    if (!(await write())) return refuse(c, 403, 'noAccess');
+  } catch {
+    logError('announcement write failed');
+    return c.redirect(`${place.page}?announcement=failed#announcements`, 303);
+  }
+  return c.redirect(`${place.page}?announcement=${said}#announcements`, 303);
+}
+
+/** The announcement an edit or remove address names: 404 unless it is this subject's and not removed; 403 for an item this role may not use. */
+async function annItem(c: C, place: AnnPlace, may: (role: AuthorRole, row: AnnouncementRow) => boolean): Promise<AnnouncementRow | Response> {
+  const row = await oneRow(c.get('db'), c.get('space').id, place.subjectId, c.req.param('annId') ?? '');
+  if (!row || row.removed_at !== null) return refuse(c, 404, 'notFound');
+  if (!may(place.role, row)) return refuse(c, 403, 'noAccess');
+  return row;
+}
+
+type PlaceOf = (c: C) => Promise<AnnPlace | null>;
+
+/** The page a refused post is drawn again on: the card's own page, 400, the typed text kept. */
+async function refusedPost(c: C, place: AnnPlace, refusal: AnnRefusal) {
+  if (place.role === 'admin') return renderTopic(c, place.subjectId, { annRefusal: refusal }, 400);
+  const subject = await editableSubject(c.get('db'), c.get('space').id, c.get('user')!.id, place.subjectId);
+  if (!subject) return refuse(c, 403, 'noAccess');
+  return renderSubjectEditor(c, subject, undefined, undefined, refusal);
+}
+
+function editPage(c: C, place: AnnPlace, row: AnnouncementRow, refusal?: AnnRefusal) {
+  const { t, lang, view } = spaceLabel(c);
+  const action = `${place.page}/announcements/${row.id}`;
+  return page(c, announcementEditPage(t, lang, view, { subjectTitle: place.subjectTitle, action, back: `${place.page}#announcements`, row, refusal }), refusal ? 400 : 200);
+}
+
+function announcementRoutes(prefix: string, placeOf: PlaceOf) {
+  app.post(`${prefix}/announcements`, async (c) => {
+    const place = await placeOf(c);
+    if (!place) return refuse(c, 403, 'noAccess');
+    const typed = await typedBody(c);
+    const checked = checkText(typed);
+    if (!checked.ok) return refusedPost(c, place, annRefusal(c, typed, checked));
+    return annWrite(c, place, 'posted', async () =>
+      (await postAnnouncement(c.get('db'), c.get('space').id, place.subjectId, place.writer, checked.text, now())) !== 'refused');
+  });
+  app.get(`${prefix}/announcements/:annId`, async (c) => {
+    const place = await placeOf(c);
+    if (!place) return refuse(c, 403, 'noAccess');
+    const row = await annItem(c, place, mayEdit);
+    return row instanceof Response ? row : editPage(c, place, row);
+  });
+  app.post(`${prefix}/announcements/:annId`, async (c) => {
+    const place = await placeOf(c);
+    if (!place) return refuse(c, 403, 'noAccess');
+    const row = await annItem(c, place, mayEdit);
+    if (row instanceof Response) return row;
+    const typed = await typedBody(c);
+    const checked = checkText(typed);
+    if (!checked.ok) return editPage(c, place, row, annRefusal(c, typed, checked));
+    return annWrite(c, place, 'saved', () => saveAnnouncement(c.get('db'), c.get('space').id, place.subjectId, row.id, place.writer, checked.text, now()));
+  });
+  app.get(`${prefix}/announcements/:annId/remove`, async (c) => {
+    const place = await placeOf(c);
+    if (!place) return refuse(c, 403, 'noAccess');
+    const row = await annItem(c, place, mayRemove);
+    if (row instanceof Response) return row;
+    const { t, lang, view } = spaceLabel(c);
+    const action = `${place.page}/announcements/${row.id}/remove`;
+    return page(c, announcementRemovePage(t, lang, view, { subjectTitle: place.subjectTitle, action, back: `${place.page}#announcements`, row }));
+  });
+  app.post(`${prefix}/announcements/:annId/remove`, async (c) => {
+    const place = await placeOf(c);
+    if (!place) return refuse(c, 403, 'noAccess');
+    const row = await annItem(c, place, mayRemove);
+    if (row instanceof Response) return row;
+    return annWrite(c, place, 'removed', () => removeAnnouncement(c.get('db'), c.get('space').id, place.subjectId, row.id, place.writer, now()));
+  });
+}
+
+announcementRoutes('/s/:spaceId/publish/edit/:subjectId', publisherAnnPlace);
+announcementRoutes('/s/:spaceId/admin/topics/:subjectId', adminAnnPlace);
 
 /** The add-material chooser's state as the editor is asked for it (LMS wave 1, L2, section 8.2). */
 interface AddAsked {
