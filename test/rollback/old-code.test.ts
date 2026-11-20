@@ -305,4 +305,37 @@ describe('AT-14a old code on a release 2 database shows a guardian nothing, expo
     }
     assert.deepEqual(await setting(), before, 'old code wrote nothing to the setting');
   });
+
+  it('W5 AT-5.3 old code shows no announcement anywhere, has no announcement address and writes nothing to the table', async () => {
+    assert.ok(await tableExists('announcement'), 'the rollback job gave the old code the wave 5 migration');
+    const texts = ['Quiz moved to Sunday (rollback).', 'Parents evening (rollback).'];
+    for (const [i, [role, body]] of [['publisher', texts[0]], ['admin', texts[1]]].entries()) {
+      await worker.sql(`INSERT INTO announcement (id, space_id, subject_id, body, author_role, created_at) VALUES ('ann-${i}', '${spaceId}', '${content.subject}', '${body}', '${role}', '2026-11-1${i}T08:00:00.000Z')`);
+    }
+    const rows = async () => (await worker.sql('SELECT * FROM announcement ORDER BY id')).map((r) => JSON.stringify(r));
+    const before = await rows();
+    const signs = [...texts, 'id="announcements"', 'ann-item', 'Announcements', 'الإعلانات', '/announcements'];
+    const salma = await signedIn(worker.url, SALMA.username, SALMA.password);
+    const hadeer = await signedIn(worker.url, HADEER.username, HADEER.password);
+    const admin = await signedIn(worker.url, ADMIN.username, ADMIN.password);
+    const editor = `/s/${spaceId}/publish/edit/${content.subject}`;
+    const topic = `/s/${spaceId}/admin/topics/${content.subject}`;
+    for (const [who, c, path] of [
+      ['Salma', salma, `/s/${spaceId}`], ['Salma', salma, `/s/${spaceId}/learn/${content.subject}`], ['Salma', salma, `/s/${spaceId}/read/${content.lesson}`],
+      ['Hadeer', hadeer, editor], ['Hadeer', hadeer, `/s/${spaceId}/learn/${content.subject}`], ['Amal', admin, topic], ['Amal', admin, `/s/${spaceId}/learn/${content.subject}`],
+    ] as const) {
+      const res = await c.get(path);
+      assert.equal(res.status, 200, `${who} ${path}`);
+      const body = await res.text();
+      for (const sign of signs) assert.ok(!body.includes(sign), `${who} ${path}: no announcement (${sign})`);
+    }
+    // Wave 5's addresses do not exist in old code: nothing is written.
+    for (const [c, path] of [[hadeer, editor], [admin, topic]] as const) {
+      for (const [method, sub] of [['POST', '/announcements'], ['GET', '/announcements/ann-0'], ['POST', '/announcements/ann-0'], ['POST', '/announcements/ann-1/remove']] as const) {
+        const res = method === 'GET' ? await c.get(path + sub) : await c.post(path + sub, { body: 'Written by old code?' });
+        assert.ok(res.status >= 400, `${method} ${path}${sub} is not an address of old code (${res.status})`);
+      }
+    }
+    assert.deepEqual(await rows(), before, 'old code wrote nothing to the announcement table and deleted nothing');
+  });
 });

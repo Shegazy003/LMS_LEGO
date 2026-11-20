@@ -211,6 +211,8 @@ export function topicPage(
     error?: string;
     typedName?: string;
     order?: OrderStatus;
+    /** LMS wave 5 (section 4.1): the announcement card, after the setting card. */
+    announcements?: Html;
   },
 ): Html {
   const action = `${base(space)}/topics/${v.topic.id}`;
@@ -229,6 +231,6 @@ ${errorBox(v.error)}
   <button type="submit">${t('save')}</button>
 </form>
 ${renameForm(t, { id: 'rename-topic', heading: t('renameItem', { item: t('subject') }), action: `${action}/name`, field: 'title', value: v.typedName ?? v.topic.title })}
-${orderCard(t, lang, { action: `${action}/order`, on: v.topic.chapters_in_order === 1, status: v.order ?? null, own: true })}`;
+${orderCard(t, lang, { action: `${action}/order`, on: v.topic.chapters_in_order === 1, status: v.order ?? null, own: true })}${v.announcements ?? ''}`;
   return spacePage(t, lang, space, v.topic.title, body);
 }
