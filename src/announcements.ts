@@ -1,7 +1,7 @@
 // LMS wave 5 (product-contract v2 on PIL-246, sections 4 and 6): a subject's
 // announcements. A short plain-text note that the subject's responsible
-// publisher or the space's admin posts, edits and removes on the subject's
-// card; its learners read it (section 5). The writer is kept as a role only
+// publisher or the admin of the space posts, edits and removes on the card of
+// the subject; its learners read it (section 5). The writer is kept as a role only
 // (publisher or admin), never as a person. Each role edits only its own role's
 // items; the admin may remove any (moderation). Removing erases the text in
 // the same statement. Every write is one statement that repeats the gate.
@@ -97,7 +97,7 @@ export function oneRow(db: Db, spaceId: string, subjectId: string, id: string): 
  * (an active admin of the space) has run before the handler. */
 export type Writer = { role: 'publisher'; userId: string } | { role: 'admin' };
 
-/** The publisher's gate, repeated in a write: still the subject's responsible publisher (the last bound parameters). */
+/** The gate of a publisher, repeated in a write: still the responsible publisher of the subject (the last bound parameters). */
 const gateParams = (w: Writer, spaceId: string, subjectId: string): string[] => (w.role === 'publisher' ? [subjectId, spaceId, w.userId] : []);
 
 /** Each write as one whole statement per role (the space guard reads every statement as written). */

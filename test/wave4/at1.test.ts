@@ -256,6 +256,10 @@ const MAIN_READS: Record<string, number> = {
   'Salma mark POST': 5, 'Salma file': 5, 'Hadeer editor': 4, 'Hadeer removed items': 6, 'Hadeer preview outline': 4, 'Hadeer preview lesson': 6,
   'Amal subject admin page': 8, 'Amal preview outline': 4, 'Amal preview lesson': 7, 'Amal outline': 4, 'Amal lesson': 6,
 };
+// LMS wave 5 (product-contract v2 on PIL-246, AT-3.5): the announcement card on a subject's editor and subject
+// admin page reads its list once, so those two pages are allowed exactly one read more than main's. Every other
+// page keeps main's count. Named in CANDIDATE READY (an assertion outside section 11's list; the Lead decides).
+const WAVE5_CARD_READS: Record<string, number> = { 'Hadeer editor': 1, 'Amal subject admin page': 1 };
 
 describe('W4 AT-1.4 with the setting off no page makes more reads than main\'s (statement spy)', { concurrency: false }, () => {
   it('W4 AT-1.4 (d) the read counts with every setting off are at most main\'s, page by page', async (t) => {
@@ -297,7 +301,8 @@ describe('W4 AT-1.4 with the setting off no page makes more reads than main\'s (
       t.diagnostic(`AT-1.4 (d) reads with the setting off: ${counts.map((x) => `${x.name}: ${x.n} (main ${MAIN_READS[x.name]})`).join('; ')}`);
       for (const x of counts) {
         assert.ok(x.status === 200 || x.status === 303, `${x.name}: ${x.status}`);
-        assert.ok(x.n <= MAIN_READS[x.name], `${x.name}: ${x.n} reads, main ${MAIN_READS[x.name]}`);
+        const allowed = MAIN_READS[x.name] + (WAVE5_CARD_READS[x.name] ?? 0);
+        assert.ok(x.n <= allowed, `${x.name}: ${x.n} reads, main ${MAIN_READS[x.name]}, allowed ${allowed}`);
       }
     } finally {
       await w.close();
