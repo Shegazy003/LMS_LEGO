@@ -174,6 +174,19 @@ a.latest-result.none{color:#3d444d}
 .ann-controls a{display:inline-flex;align-items:center;justify-content:center;min-height:44px;min-width:44px;padding:0 12px;color:#0b3d91}
 .ann-empty{margin:12px 0 0;color:#57606a}
 .ann-quote{white-space:pre-line;overflow-wrap:anywhere;margin:12px 0;padding:8px 12px;border-inline-start:4px solid #c9ced6;background:#fff}
+.ann-form button.secondary{color:#0b3d91;border-color:#8c959f}
+.ann-block .ann-list{margin:8px 0 0}
+.ann-block .ann-item:first-of-type{border-top:0;padding-top:4px}
+.ann-meta{min-width:0}
+.ann-older{margin:8px 0 0;border-top:1px solid #e3e6ea}
+.ann-older>summary{display:flex;align-items:center;min-height:44px;cursor:pointer;font-weight:600;color:#0b3d91}
+.ann-older>.ann-list{margin:0}
+.ann-older .ann-item:first-of-type{border-top:0}
+.ann-where{margin:0}
+.ann-where-link{display:inline-block;box-sizing:border-box;min-height:44px;min-width:44px;max-width:100%;padding:10px 0;font-weight:600;color:#0b3d91;overflow-wrap:anywhere}
+.ann-home .ann-by{margin:0}
+.ann-home .ann-text{margin:4px 0 0}
+.ann-full{color:#0b3d91;overflow-wrap:anywhere}
 `;
 
 export interface LayoutOptions {

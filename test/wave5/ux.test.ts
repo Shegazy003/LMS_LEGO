@@ -93,6 +93,11 @@ describe('UX-51 teacher card order, labels and role controls', { concurrency: fa
       assert.equal(await page.textContent('#ann-new label'), UI.en.annNewLabel);
       assert.match((await page.getAttribute('#ann-new button', 'class')) ?? '', /\bsecondary\b/, 'Post announcement is a secondary button');
       assert.equal(await page.$$eval('#announcements button:not(.secondary)', (b) => b.length), 0, 'the card adds no primary button');
+      // W5-1b (PM UX GAPS on UX-51): Post announcement is drawn in the non-destructive secondary style, not the dark red of "Unpublish".
+      const postColour = await page.$eval('#ann-new button', (b) => getComputedStyle(b).color);
+      assert.notEqual(postColour, 'rgb(138, 28, 18)', `Post announcement is not drawn in the destructive dark red (${postColour})`);
+      assert.equal(postColour, 'rgb(11, 61, 145)', 'Post announcement uses the secondary blue');
+      if (who === HADEER) await page.locator('#ann-new').screenshot({ path: 'evidence/ux/UX-51-desktop-en-post.png' });
       const items = await page.$$eval('#announcements .ann-item', (lis) => lis.map((li) => ({
         role: li.getAttribute('data-role'),
         time: li.querySelector('time')?.getAttribute('datetime') ?? null,

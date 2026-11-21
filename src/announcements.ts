@@ -72,6 +72,52 @@ const BLANK_JS = BLANK.replace(/\\/g, '\\\\');
 export const COUNT_RULES_JS = `function annLen(s){s=s.replace(/\\r\\n|\\r|\\u2028|\\u2029/g,'\\n').replace(/\\t/g,' ').replace(/(?!\\n)[\\p{Cc}\\u202A-\\u202E\\u2066-\\u2069]/gu,'').replace(new RegExp('^[${BLANK_JS}]+|[${BLANK_JS}]+$','gu'),'').replace(/\\n{3,}/g,'\\n\\n');return Array.from(s).length;}`;
 
 // --------------------------------------------------------------- reading ----
+/** An announcement as a learner reads it (section 5): never a removed one. */
+export type ShownRow = Pick<AnnouncementRow, 'id' | 'body' | 'author_role' | 'created_at' | 'edited_at'>;
+/** One item of the learner home (section 5.3): with its subject. */
+export type HomeRow = ShownRow & { subject_id: string; subject_title: string };
+
+/** How many a subject page reads: the newest 3 in full and the next 7 folded (section 5.2). */
+export const ANN_SUBJECT_ROWS = ANN_SHOWN + ANN_FOLDED;
+
+/** The subject page block (section 5.2): the newest 10 of the subject that are not removed, in one statement. */
+export function subjectRows(db: Db, spaceId: string, subjectId: string): Promise<ShownRow[]> {
+  return db.all<ShownRow>(
+    `SELECT id, body, author_role, created_at, edited_at FROM announcement
+      WHERE space_id = ? AND subject_id = ? AND removed_at IS NULL
+      ORDER BY created_at DESC, id DESC LIMIT ?`,
+    spaceId, subjectId, ANN_SUBJECT_ROWS,
+  );
+}
+
+/** The earliest posting time the learner home shows (section 5.3): 30 days before now. */
+export const homeSince = (nowMs: number): string => new Date(nowMs - ANN_HOME_DAYS * 86_400_000).toISOString();
+
+const BLANK_ONLY = new RegExp(`^[${BLANK}]+$`, 'u');
+const segmenter = new Intl.Segmenter('und', { granularity: 'grapheme' });
+
+/** The home's cut (section 5.3): a text over 100 code points is cut at the last
+ * blank character at or before code point 100; with none, at code point 100,
+ * moved back to the start of the character it would split (a combining mark, a
+ * ZWJ sequence or a surrogate pair stay whole). Cut only between whole
+ * characters as a reader sees them (grapheme clusters); the "…" is added by the view. */
+export function cutText(text: string): { text: string; cut: boolean } {
+  if (codePoints(text) <= ANN_CUT) return { text, cut: false };
+  let at = 0; // code points before the current character
+  let lastBlank = -1; // code points before the last blank character that starts at or before code point 100
+  let lastWhole = 0; // code points of the whole characters that fit in 100
+  for (const { segment } of segmenter.segment(text)) {
+    if (at >= ANN_CUT) break;
+    // A blank character starting at code point at + 1 (at most 100).
+    if (BLANK_ONLY.test(segment) && at > 0) lastBlank = at;
+    const n = codePoints(segment);
+    if (at + n <= ANN_CUT) lastWhole = at + n;
+    at += n;
+  }
+  const keep = lastBlank > 0 ? lastBlank : lastWhole;
+  return { text: [...text].slice(0, keep).join('').replace(EDGE_BLANKS, ''), cut: true };
+}
+
 /** The card's list (section 4.2): every row of the subject, newest first, in
  * one statement. Removed rows (their text already erased) come too, only so
  * the status line can tell a real "removed" from a stale address. */

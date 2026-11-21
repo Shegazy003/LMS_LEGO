@@ -94,6 +94,7 @@ ${inner}
 export function learnerHome(
   t: Label, lang: Lang, space: SpaceView, displayName: string, cards: LearnerCard[], notice: NoticeForm | null = null,
   where: { area: ContinueArea; progress: Map<string, CardProgress> } | null = { area: { kind: 'first' }, progress: new Map() },
+  announcements: Html | string = '',
 ): Html {
   // The continue area (W2-2, section 8.1) is on every learner home and every
   // preview home, also with nothing assigned (the first-time state, AT-5.4);
@@ -108,7 +109,7 @@ ${cards.length
   const body = html`<p id="greeting">${t('welcome', { name: displayName })}</p>
 ${notice ? activityNotice(t, notice, learnerUrl(space), Boolean(space.preview)) : ''}
 ${where ? html`${continueArea(t, lang, space, where.area)}
-` : ''}${list}`;
+` : ''}${announcements}${list}`;
   return spacePage(t, lang, space, space.name, body, { current: 'home', wide: true });
 }
 
@@ -235,6 +236,7 @@ export function openChapters(parts: OutlineChapter[], open: string | undefined):
 export function subjectPage(
   t: Label, lang: Lang, space: SpaceView, head: { id: string; title: string }, parts: OutlineChapter[], open?: string, marks: Set<string> = new Set(),
   locks: ChapterLocks | null = null,
+  announcements: Html | string = '',
 ): Html {
   const opened = openChapters(parts, open);
   const ids = parts.flatMap((ch) => ch.lessons.map((l) => l.id));
@@ -245,7 +247,7 @@ export function subjectPage(
     ? html`<p id="fold-all" class="fold-all"><a id="expand-all" class="button plain" href="${learnerUrl(space, `/learn/${head.id}?open=all`)}">${t('expandAll')}</a><a id="collapse-all" class="button plain" href="${learnerUrl(space, `/learn/${head.id}?open=none`)}">${t('collapseAll')}</a></p>`
     : '';
   const body = html`<p class="muted">${t('subject')}</p>
-<h1 id="subject-title" dir="auto">${head.title}</h1>${progressLine(t, lang, done.size, ids.length)}${locks ? orderBox(t, lang, space, locks) : ''}
+<h1 id="subject-title" dir="auto">${head.title}</h1>${progressLine(t, lang, done.size, ids.length)}${locks ? orderBox(t, lang, space, locks) : ''}${announcements}
 ${fold}
 <div id="outline">${blocks}</div>`;
   return spacePage(t, lang, space, head.title, body);

@@ -8,13 +8,14 @@
 import { html, raw } from 'hono/html';
 import type { Label, Lang } from '../labels.ts';
 import {
-  ANN_FOLDED, ANN_HOME, ANN_HOME_DAYS, ANN_MAX, ANN_SHOWN, COUNT_RULES_JS, mayEdit, mayRemove,
-  type AnnouncementRow, type AuthorRole,
+  ANN_FOLDED, ANN_HOME, ANN_HOME_DAYS, ANN_MAX, ANN_SHOWN, COUNT_RULES_JS, cutText, mayEdit, mayRemove,
+  type AnnouncementRow, type AuthorRole, type ShownRow,
 } from '../announcements.ts';
 import { utcDate } from '../access.ts';
+import type { HomeAnnouncement } from '../learning.ts';
 import type { Html } from './layout.ts';
 import { spacePage } from './learn.ts';
-import type { SpaceView } from './space.ts';
+import { learnerUrl, type SpaceView } from './space.ts';
 
 /** From the 11th item on, the card says the item no longer shows to learners (section 4.2). */
 const SHOWN_TO_LEARNERS = ANN_SHOWN + ANN_FOLDED;
@@ -110,6 +111,55 @@ ${v.published ? '' : html`<p class="ann-help ann-unpublished">${t('annUnpublishe
 ${textForm(t, { id: 'ann-new', action: v.action, label: html`${t('annNewLabel')}`, value: v.refusal?.typed ?? '', error: v.refusal?.error, button: t('annPost') })}
 ${list}
 </section>`;
+}
+
+// ------------------------------------------------------ the learner's side ----
+// LMS wave 5, W5-1b (section 5; ux-plan UX-54 to UX-56): the block a learner
+// reads on a subject page and on the home, drawn the same for a learner, for
+// the admin and the publisher on their own /learn page, and in the preview.
+// With nothing to show there is no block at all (the page is today's). Every
+// text is an escaped text node with dir="auto"; nothing in it becomes markup.
+
+/** The direction of the page's own words (the role and date line, the subject link). */
+const pageDir = (lang: Lang) => (lang === 'ar' ? 'rtl' : 'ltr');
+
+/** One item of the subject page: the text as stored (line breaks kept), then the role and date line. */
+function shownItem(t: Label, lang: Lang, row: ShownRow): Html {
+  return html`<li class="ann-item" dir="auto"><p class="ann-text" dir="auto">${row.body}</p><div class="ann-meta" dir="${pageDir(lang)}">${byLine(t, row)}</div></li>`;
+}
+
+/** The subject page block (section 5.2, UX-54): the newest 3 in full, then up to 7 in a closed fold; none: no block. */
+export function subjectBlock(t: Label, lang: Lang, rows: ShownRow[]): Html | string {
+  if (rows.length === 0) return '';
+  const shown = rows.slice(0, ANN_SHOWN);
+  const folded = rows.slice(ANN_SHOWN, ANN_SHOWN + ANN_FOLDED);
+  const fold = folded.length
+    ? html`
+<details class="ann-older"><summary>${t('annOlder', { n: String(folded.length) })}</summary><ul class="ann-list">${folded.map((r) => shownItem(t, lang, r))}</ul></details>`
+    : '';
+  return html`
+<section id="announcements" class="card ann-block" aria-labelledby="ann-heading"><h2 id="ann-heading">${t('annTitle')}</h2>
+<ul class="ann-list">${shown.map((r) => shownItem(t, lang, r))}</ul>${fold}
+</section>`;
+}
+
+/** One item of the home (section 5.3, UX-55): the subject title as a link to its block, the role and date line, then the text, cut at 100 with the inline link to the whole. */
+function homeItem(t: Label, lang: Lang, space: SpaceView, row: HomeAnnouncement): Html {
+  const href = `${learnerUrl(space, `/learn/${row.subject_id}`)}#announcements`;
+  const { text, cut } = cutText(row.body);
+  const full = cut
+    ? html`… <a class="ann-full" href="${href}" aria-label="${t('annFullFor', { subject: row.subject_title })}">${t('annFull')}</a>`
+    : '';
+  return html`<li class="ann-item" dir="auto" data-subject="${row.subject_id}"><p class="ann-where" dir="${pageDir(lang)}"><a class="ann-where-link" href="${href}"><bdi>${row.subject_title}</bdi></a></p><div class="ann-meta" dir="${pageDir(lang)}">${byLine(t, row)}</div><p class="ann-text" dir="auto">${text}${full}</p></li>`;
+}
+
+/** The home block (section 5.3, UX-55): the newest 3 of the last 30 days across the subjects on the cards; none: no block. */
+export function homeBlock(t: Label, lang: Lang, space: SpaceView, rows: HomeAnnouncement[]): Html | string {
+  if (rows.length === 0) return '';
+  return html`<section id="announcements" class="card ann-block ann-home" aria-labelledby="ann-heading"><h2 id="ann-heading">${t('annHomeTitle')}</h2>
+<ul class="ann-list">${rows.map((r) => homeItem(t, lang, space, r))}</ul>
+</section>
+`;
 }
 
 /** The page around an edit or remove step: the subject's title, then the step in the card's place. */

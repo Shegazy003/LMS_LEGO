@@ -1320,6 +1320,36 @@ jobs:
       - name: W5 AT-1.5 every refused case stores nothing; one gate read, at most one more read, one write
         if: success() || failure()
         run: npm run test:wave3b -- --test-name-pattern='^W5 AT-1\.5 ' test/wave5/at1.test.ts
+      - name: W5 AT-2.1 subject page block under the title block, newest first, text as stored, role and date line, 3 in full and 7 folded
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W5 AT-2\.1 ' test/wave5/at2.test.ts
+      - name: W5 AT-2.2 home block after Continue (form 2), the newest 3 of the last 30 days, subject links, the cut at 100 code points
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W5 AT-2\.2 ' test/wave5/at2.test.ts
+      - name: W5 AT-2.3 everyone in the subject and nobody else; unpublished, unassigned or ended gone, back when published again
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W5 AT-2\.3 ' test/wave5/at2.test.ts
+      - name: W5 AT-2.4 safe text shown literally, today's headers, the long string wraps at 390 px, dir auto on each item
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W5 AT-2\.4 ' test/wave5/at2.test.ts
+      - name: W5 AT-2.5 kits and languages, the kit's role words, every new string the ui.ts value, the date as today's
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W5 AT-2\.5 ' test/wave5/at2.test.ts
+      - name: W5 AT-3.1 no guardian, owner, lesson or file page and no Nile Test Space page shows an announcement; each byte-identical to none stored
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W5 AT-3\.1 ' test/wave5/at3.test.ts
+      - name: W5 AT-3.2 no announcement block holds the writer's name, number or email, or any learner's name
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W5 AT-3\.2 ' test/wave5/at3.test.ts
+      - name: W5 AT-3.3 the admin's and the publisher's own learn page shows the learner's block; their homes unchanged
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W5 AT-3\.3 ' test/wave5/at3.test.ts
+      - name: W5 AT-3.4 (a) to (d) the preview subject page and home show the learner's blocks exactly, and no preview request writes
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W5 AT-3\.4 ' test/wave5/at3.test.ts
+      - name: W5 AT-3.4 (e) the wave 3a preview journey (W3a AT-3.1 to AT-3.5) passes with announcements present
+        if: success() || failure()
+        run: npm run test:wave3b -- test/wave3a/at3.test.ts
       - name: W5 AT-5.1 the forward migration creates exactly the table and the index; a second apply is a no-op
         if: success() || failure()
         run: npm run test:wave3b -- --test-name-pattern='^W5 AT-5\.1 ' test/wave5/at5.test.ts
@@ -1335,9 +1365,6 @@ jobs:
       - name: W5 AT-5.5 no route returns announcement text but the card's pages; README and Later on export, backup and erasure
         if: success() || failure()
         run: npm run test:wave3b -- --test-name-pattern='^W5 AT-5\.5 ' test/wave5/at5.test.ts
-      - name: W5 deploy note
-        if: success() || failure()
-        run: npm run test:wave3b -- --test-name-pattern='^W5 deploy note' test/wave5/at5.test.ts
       - name: UX-51 teacher card order, labels and role controls
         if: success() || failure()
         run: npm run test:wave3b -- --test-name-pattern='^UX-51 ' test/wave5/ux.test.ts
@@ -1347,9 +1374,18 @@ jobs:
       - name: UX-53 errors keep text, count matches server, button disabled
         if: success() || failure()
         run: npm run test:wave3b -- --test-name-pattern='^UX-53 ' test/wave5/ux.test.ts
+      - name: UX-54 subject page block order, fold and empty case
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-54 ' test/wave5/ux-learner.test.ts
+      - name: UX-55 home block order, cut and wrapping
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-55 home block order' test/wave5/ux-learner.test.ts
+      - name: UX-55 continue stays on the first phone screen
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-55 continue stays' test/wave5/ux-learner.test.ts
       - name: UX-56 language check by key (three kits)
         if: success() || failure()
-        run: npm run test:wave3b -- --test-name-pattern='^UX-56 language check by key' test/wave5/ux.test.ts
+        run: npm run test:wave3b -- --test-name-pattern='^UX-56 language check by key' test/wave5/ux.test.ts test/wave5/ux-learner.test.ts
       - name: UX-56 deny list and placeholder neighbours
         if: success() || failure()
         run: npm run test:wave3b -- --test-name-pattern='^UX-56 deny list' test/wave5/ux.test.ts
@@ -1358,10 +1394,10 @@ jobs:
         run: npm run test:wave3b -- --test-name-pattern='^UX-56 no spaced slash' test/wave5/ux.test.ts
       - name: UX-57 states table
         if: success() || failure()
-        run: npm run test:wave3b -- --test-name-pattern='^UX-57 ' test/wave5/ux.test.ts
+        run: npm run test:wave3b -- --test-name-pattern='^UX-57 ' test/wave5/ux.test.ts test/wave5/ux-learner.test.ts
       - name: UX-58 widths, targets, contrast and keyboard
         if: success() || failure()
-        run: npm run test:wave3b -- --test-name-pattern='^UX-58 ' test/wave5/ux.test.ts
+        run: npm run test:wave3b -- --test-name-pattern='^UX-58 ' test/wave5/ux.test.ts test/wave5/ux-learner.test.ts
       # AT-4.1a and AT-4.1b, the base comparison: main b87bfc5 (pinned) runs beside this commit, in the same process,
       # on a copy of the same database (test/wave5/base.test.ts reads it from LMS_BASE_ROOT).
       - name: Check out main b87bfc5 for the base comparison (code only, never run but by the comparison)
@@ -1381,6 +1417,16 @@ jobs:
         env:
           LMS_BASE_ROOT: ${{ github.workspace }}/.base-main
         run: npm run test:wave3b -- --test-name-pattern='^W5 AT-4\.1b ' test/wave5/base.test.ts
+      - name: W5 AT-4.2 after one announcement is posted and removed, AT-4.1a and AT-4.1b pass again
+        if: success() || failure()
+        env:
+          LMS_BASE_ROOT: ${{ github.workspace }}/.base-main
+        run: npm run test:wave3b -- --test-name-pattern='^W5 AT-4\.2 ' test/wave5/base.test.ts
+      - name: W5 AT-3.5 reads against main b87bfc5 page by page, the same in the 150-subject load world, the counts and the largest bound-parameter count printed
+        if: success() || failure()
+        env:
+          LMS_BASE_ROOT: ${{ github.workspace }}/.base-main
+        run: npm run test:wave3b -- --test-name-pattern='^W5 AT-3\.5 ' test/wave5/base.test.ts
       - name: Upload evidence (wave 5 screenshots)
         if: always() && hashFiles('evidence/**') != ''
         uses: actions/upload-artifact@v4

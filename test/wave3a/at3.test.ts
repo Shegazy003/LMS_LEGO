@@ -173,6 +173,14 @@ async function run(): Promise<Journey> {
   for (const [title, at] of [['Adding fractions', 1951234567890], ['Comparing fractions', 1951234599999]] as const) {
     await world.p.sql(`INSERT INTO done_mark (space_id, lesson_id, learner_user_id, marked_at) VALUES ('${world.school.id}', '${world.school.lessons[title]}', '${world.ids[SALMA.username]}', ${at})`);
   }
+  // LMS wave 5 (contract on PIL-246, W5 AT-3.4e): the journey runs with announcements present, so the previews show
+  // the blocks and the snapshots hold the announcement table with rows (made-up texts).
+  const recent = Date.now() - 86_400_000;
+  for (const [n, subject, role, body] of [
+    [1, world.school.math, 'publisher', 'Quiz moved to Sunday.'], [2, world.school.math, 'admin', 'Chapter 3 is ready.\nRead it before class.'], [3, world.school.arabic, 'admin', 'Grammar test next week.'],
+  ] as const) {
+    await world.p.sql(`INSERT INTO announcement (id, space_id, subject_id, body, author_role, created_at) VALUES ('w3a-ann-${n}', '${world.school.id}', '${subject}', '${body}', '${role}', '${new Date(recent + n * 1000).toISOString()}')`);
+  }
   const ownerId = String((await world.p.sql(`SELECT id FROM user WHERE username = '${OWNER.username}'`))[0].id);
   const j: Journey = {
     before: {}, after: {}, schemaBefore: '', schemaAfter: '', previewers: new Set([world.ids[ADMIN.username], world.ids[HADEER.username], ownerId]),
@@ -217,6 +225,7 @@ async function run(): Promise<Journey> {
     const start = owner ? ownerPreview(world.school) : previewHome(world.school, 'home');
     await visit(start);
     if (!owner) {
+      assert.equal(await page.locator('#announcements').count(), 1, `${name}: the preview home shows the announcements (W5 AT-3.4e)`);
       const titles = await hrefs(page, 'li.card[data-subject] h2 a');
       const starts = await hrefs(page, 'li.card[data-subject] a.start');
       for (const t of titles) {

@@ -92,6 +92,7 @@ From the Later list of the frozen contract `product-contract-r2` (PIL-120, secti
 | Guardian approving print orders | Release 4 (idea C) |
 | Token out of the reset address | PIL-109 Later item 1; parked unless the owner revisits it (the retry feedback, item 2, is in R2-b) |
 | Lesson activity for publishers or admins; time of day, duration or count of an open; per-person opt-out; a deletion screen; keeping activity when switched off; any automatic retention limit | Release 2 records the least it can (AT-15); each widens it |
+| Announcements (LMS wave 5): one message instead of two after a too-long text is sent. With script on, the refused page shows the server's error line and the count's own "Too long: <n> of 500" together | Both lines are correct and tied to the field (UX-53). Merging them changes the count's behaviour, which the frozen ux-plan fixes (from the W5-1a Lead stamp) |
 
 ## From the brainstorm comparison
 

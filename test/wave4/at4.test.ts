@@ -279,8 +279,13 @@ describe('W4 AT-4.5 no new cookie, and every learner outline, lesson and home ke
 
 // ------------------------------------------------------------------ AT-4.6 ----
 /** Main b4ad669's reads for Salma's requests (statement spy, the wave 1 world), recorded once from main's code. */
-const MAIN = { home: 5, outline: 6, lesson: 9, mark: 5, file: 5 } as const;
-type Kind = keyof typeof MAIN;
+const MAIN_B4AD669 = { home: 5, outline: 6, lesson: 9, mark: 5, file: 5 } as const;
+type Kind = keyof typeof MAIN_B4AD669;
+// LMS wave 5 (W5-1b, product-contract v2 on PIL-246, AT-3.5): the learner home and the subject's /learn page read their
+// announcements once, so main's count plus exactly one there; every other request keeps main's. Named in CANDIDATE READY
+// (an assertion outside section 11's list; the Lead decides).
+const WAVE5_READS: Record<Kind, number> = { home: 1, outline: 1, lesson: 0, mark: 0, file: 0 };
+const MAIN = Object.fromEntries((Object.keys(MAIN_B4AD669) as Kind[]).map((k) => [k, MAIN_B4AD669[k] + WAVE5_READS[k]])) as Record<Kind, number>;
 
 describe('W4 AT-4.6 reads: off exactly main\'s; on at most 1 more on the outline, lesson and home, 2 more on a file and a mark POST, whatever the size', { concurrency: false }, () => {
   it('W4 AT-4.6 the counts with the setting off and on, in the wave 1 world and in a larger one, are printed', async (t) => {
