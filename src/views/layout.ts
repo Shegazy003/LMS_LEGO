@@ -187,6 +187,31 @@ a.latest-result.none{color:#3d444d}
 .ann-home .ann-by{margin:0}
 .ann-home .ann-text{margin:4px 0 0}
 .ann-full{color:#0b3d91;overflow-wrap:anywhere}
+/* wave 6 due dates */
+#due-dates{border-inline-start:4px solid #57606a}
+#due-dates>h2{margin:0 0 8px}
+.due-help{margin:0 0 8px;color:#57606a;font-size:.9rem;overflow-wrap:anywhere}
+.due-set{margin:0}
+.due-link{display:inline-flex;align-items:center;justify-content:center;box-sizing:border-box;min-height:44px;min-width:44px;max-width:100%;padding:8px 12px;border:1px solid #8c959f;border-radius:8px;background:#fff;color:#0b3d91;font-weight:600;text-decoration:none;overflow-wrap:anywhere}
+.due-back a{display:inline-flex;align-items:center;min-height:44px;min-width:44px;color:#0b3d91}
+.due-list,.due-sub{list-style:none;margin:0;padding:0}
+.due-sub{padding-inline-start:24px;border-inline-start:2px solid #e3e6ea;margin-inline-start:8px}
+.due-item{min-width:0}
+.due-item:focus,.due-status:focus{outline:3px solid #1b1f24;outline-offset:2px}
+.due-row{background:#fff;border:1px solid #e3e6ea;border-radius:12px;padding:12px;margin:0 0 12px;min-width:0}
+.due-row>p{margin:0 0 6px}
+.due-title{font-weight:700;overflow-wrap:anywhere}
+.due-kind{color:#57606a;font-weight:400}
+.due-value,.due-empty{color:#57606a;font-size:.9rem}
+.due-form{display:flex;flex-direction:column;gap:6px;margin:8px 0 0;min-width:0}
+.due-form label{display:block;font-weight:600;overflow-wrap:anywhere}
+.due-fields{display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:0}
+.due-fields input[type=date]{box-sizing:border-box;min-height:44px;min-width:0;max-width:100%;font:inherit;padding:6px 8px;border:1px solid #8c959f;border-radius:8px}
+.due-fields input[aria-invalid=true]{border:2px solid #b42318}
+.due-button{min-height:44px;min-width:44px}
+.due-clear{margin:8px 0 0}
+.due-clear .due-button{background:#fff;color:#0b3d91;border:1px solid #8c959f}
+.due-error{margin:6px 0 0}
 `;
 
 export interface LayoutOptions {

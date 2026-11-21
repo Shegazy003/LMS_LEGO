@@ -53,6 +53,8 @@ export const OPEN_WRITES: Record<string, string> = {
   'POST /__test/clock': 'test builds only (production guard)',
   'POST /__test/seed': 'test builds only (production guard)',
   'POST /__test/mark-clock': 'test builds only (production guard): the done marks\' test clock (LMS wave 2)',
+  // LMS wave 6 (product-contract v2 on PIL-257, W6-c): the fixed test clock.
+  'POST /__test/clock-fixed': 'test builds only (production guard): the fixed clock (LMS wave 6)',
 };
 
 const WRITE_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE', 'ALL']);
@@ -200,6 +202,13 @@ test('role guard: every route that changes data or serves an admin or publisher 
       assert.ok(handlers.some((r) => r.method === method && r.path === base + path), `the announcement address ${method} ${base}${path} is a gated route`);
     }
     assert.ok(!handlers.some((r) => r.method !== 'POST' && r.path === `${base}/announcements`), `${base}/announcements answers POST only (GET and HEAD have no route)`);
+  }
+  // LMS wave 6 (product-contract v2 on PIL-257, AT-1.4): every due-date address is in the table, so this check and the sweep cover them.
+  for (const base of ['/s/:spaceId/publish/edit/:subjectId', '/s/:spaceId/admin/topics/:subjectId']) {
+    for (const [method, path] of [['GET', '/due'], ['POST', '/due/:kind/:itemId']]) {
+      assert.ok(handlers.some((r) => r.method === method && r.path === base + path), `the due-date address ${method} ${base}${path} is a gated route`);
+    }
+    assert.ok(!handlers.some((r) => r.method !== 'POST' && r.path === `${base}/due/:kind/:itemId`), `${base}/due/:kind/:itemId answers POST only (GET and HEAD have no route)`);
   }
   assert.deepEqual(ungated(routes, declared), [], 'register role routes under their gated prefix, after the gate');
 });

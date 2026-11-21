@@ -52,6 +52,9 @@ export const BASE_SHA = 'b87bfc55f255a332f0593e45bf08c2fa5f96697d';
 const BASE_ROOT = process.env.LMS_BASE_ROOT ?? join(repo, '.base-main');
 const MIGRATION = '0014_announcements.sql';
 const MARK = '/* wave 5 announcements */';
+// LMS wave 6 (contract on PIL-257, section 11 item 3): wave 6 appends its own block after this one; its selectors are its own.
+const W6_MARK = '/* wave 6 due dates */';
+const W6_SCOPE = /^(#todo|#due-dates|\.due-|\.todo-)/;
 
 type Twin = Product & { worker: InProcessWorker };
 interface Who { who: string; base: Client; cand: Client }
@@ -110,6 +113,8 @@ async function pair(): Promise<Pair> {
   b.worker.sqlite.exec(`VACUUM INTO '${file.replace(/'/g, "''")}'`);
   const copy = new DatabaseSync(file);
   copy.exec(readFileSync(join(repo, 'migrations', MIGRATION), 'utf8'));
+  // LMS wave 6 (contract on PIL-257, section 11 item 3): the candidate reads due dates, so its copy gains that migration too (none stored).
+  copy.exec(readFileSync(join(repo, 'migrations', '0015_due_dates.sql'), 'utf8'));
   const cand = await inProcess({ sqlite: copy, files: b.worker.files });
   const [{ n }] = (await cand.sql('SELECT COUNT(*) AS n FROM announcement')) as { n: number }[];
   if (Number(n) !== 0) {
@@ -139,12 +144,17 @@ const isTeacherPage = (path: string) => TEACHER_PAGES.some((re) => re.test(path)
 /** The appended block: from the mark to the end of the candidate's style; every selector scoped (contract AT-4). */
 export function styleCheck(baseStyle: string, candStyle: string): string | null {
   if (!candStyle.startsWith(baseStyle)) return 'the candidate\'s style does not start with main\'s';
-  const block = candStyle.slice(baseStyle.length);
-  if (!block.startsWith(MARK)) return `the added style does not start with ${MARK}: ${JSON.stringify(block.slice(0, 80))}`;
-  const rules = block.slice(MARK.length).replace(/\/\*[\s\S]*?\*\//g, '').split('}').map((r) => r.trim()).filter(Boolean);
-  for (const rule of rules) {
-    const selectors = rule.slice(0, rule.indexOf('{')).split(',').map((s) => s.trim());
-    for (const s of selectors) if (!/^(#announcements|\.ann-)/.test(s)) return `a selector outside the rule: ${s}`;
+  const added = candStyle.slice(baseStyle.length);
+  if (!added.startsWith(MARK)) return `the added style does not start with ${MARK}: ${JSON.stringify(added.slice(0, 80))}`;
+  const at6 = added.indexOf(W6_MARK);
+  const parts: [string, RegExp][] = [[added.slice(MARK.length, at6 < 0 ? undefined : at6), /^(#announcements|\.ann-)/]];
+  if (at6 >= 0) parts.push([added.slice(at6 + W6_MARK.length), W6_SCOPE]);
+  for (const [block, scope] of parts) {
+    const rules = block.replace(/\/\*[\s\S]*?\*\//g, '').split('}').map((r) => r.trim()).filter(Boolean);
+    for (const rule of rules) {
+      const selectors = rule.slice(0, rule.indexOf('{')).split(',').map((s) => s.trim());
+      for (const s of selectors) if (!scope.test(s)) return `a selector outside the rule: ${s}`;
+    }
   }
   return null;
 }
@@ -211,7 +221,8 @@ async function same(p: Pair, who: Who, method: 'GET' | 'POST', path: string, out
   } else if (Boolean(sb) !== Boolean(sc)) {
     problems.push('a <style> on one side only');
   }
-  const cut = cb.replace(/<section id="announcements"[\s\S]*?<\/section>/g, '');
+  // LMS wave 6 (contract on PIL-257, section 11 item 3): the due card (#due-dates) is cut with the announcement card; only on a teacher page.
+  const cut = cb.replace(/<section id="announcements"[\s\S]*?<\/section>/g, '').replace(/<section id="due-dates"[\s\S]*?<\/section>/g, '');
   const card = cut !== cb;
   const teacher = isTeacherPage(path);
   if (card && !teacher) problems.push('an announcement block on a page that is not a teacher page');

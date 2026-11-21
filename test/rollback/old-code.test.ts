@@ -338,4 +338,38 @@ describe('AT-14a old code on a release 2 database shows a guardian nothing, expo
     }
     assert.deepEqual(await rows(), before, 'old code wrote nothing to the announcement table and deleted nothing');
   });
+
+  // LMS wave 6 (W6-1a, product-contract v2 on PIL-257, AT-5.3): stored due dates on a lesson and a chapter.
+  it('W6 AT-5.3 old code shows no due date anywhere, has no due-dates address and writes no due date', async () => {
+    const columns = await worker.sql("SELECT m.name AS t FROM sqlite_master m, pragma_table_info(m.name) c WHERE m.type = 'table' AND c.name = 'due_on' ORDER BY m.name");
+    assert.deepEqual(columns.map((r) => String(r.t)), ['chapter', 'lesson'], 'the rollback job gave the old code the wave 6 migration');
+    const chapter = String((await worker.sql(`SELECT chapter_id AS c FROM lesson WHERE id = '${content.lesson}'`))[0].c);
+    await worker.sql(`UPDATE lesson SET due_on = '2026-12-12' WHERE id = '${content.lesson}'`);
+    await worker.sql(`UPDATE chapter SET due_on = '2026-12-13' WHERE id = '${chapter}'`);
+    const dates = async () => (await worker.sql("SELECT 'chapter' AS k, id, due_on FROM chapter UNION ALL SELECT 'lesson', id, due_on FROM lesson ORDER BY 1, 2")).map((r) => JSON.stringify(r));
+    const before = await dates();
+    const signs = ['2026-12-12', '2026-12-13', 'id="due-dates"', 'id="todo"', 'due-', 'Due dates', 'مواعيد الإنجاز', '/due'];
+    const salma = await signedIn(worker.url, SALMA.username, SALMA.password);
+    const hadeer = await signedIn(worker.url, HADEER.username, HADEER.password);
+    const admin = await signedIn(worker.url, ADMIN.username, ADMIN.password);
+    const editor = `/s/${spaceId}/publish/edit/${content.subject}`;
+    const topic = `/s/${spaceId}/admin/topics/${content.subject}`;
+    for (const [who, c, path] of [
+      ['Salma', salma, `/s/${spaceId}`], ['Salma', salma, `/s/${spaceId}/learn/${content.subject}`], ['Salma', salma, `/s/${spaceId}/read/${content.lesson}`],
+      ['Hadeer', hadeer, editor], ['Hadeer', hadeer, `/s/${spaceId}/learn/${content.subject}`], ['Amal', admin, topic],
+    ] as const) {
+      const res = await c.get(path);
+      assert.equal(res.status, 200, `${who} ${path}`);
+      const body = (await res.text()).replace(/<style>[\s\S]*?<\/style>/g, '');
+      for (const sign of signs) assert.ok(!body.includes(sign), `${who} ${path}: no due date (${sign})`);
+    }
+    // Wave 6's addresses do not exist in old code: nothing is written.
+    for (const [c, path] of [[hadeer, editor], [admin, topic]] as const) {
+      for (const [method, sub] of [['GET', '/due'], ['POST', `/due/lesson/${content.lesson}`], ['POST', `/due/chapter/${chapter}`]] as const) {
+        const res = method === 'GET' ? await c.get(path + sub) : await c.post(path + sub, { due_on: '2026-12-20' });
+        assert.ok(res.status >= 400, `${method} ${path}${sub} is not an address of old code (${res.status})`);
+      }
+    }
+    assert.deepEqual(await dates(), before, 'old code wrote no due date and deleted none');
+  });
 });
