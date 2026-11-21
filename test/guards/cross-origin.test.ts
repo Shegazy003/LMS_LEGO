@@ -82,6 +82,8 @@ function fields(path: string): Record<string, string> {
     primary_color: '#ff0000',
     country_code: '+20',
     direction: 'down',
+    // LMS wave 6: a due date the form would accept.
+    due_on: utcDatePlusDays(5),
     kind: 'note',
     text: 'forged',
     url: 'https://example.org/forged',
@@ -196,6 +198,8 @@ describe('AT-5 guard: every form refuses a cross-origin post', { concurrency: fa
       '/s/:spaceId/publish/edit/:subjectId/announcements', '/s/:spaceId/publish/edit/:subjectId/announcements/:annId',
       '/s/:spaceId/publish/edit/:subjectId/announcements/:annId/remove', '/s/:spaceId/admin/topics/:subjectId/announcements',
       '/s/:spaceId/admin/topics/:subjectId/announcements/:annId', '/s/:spaceId/admin/topics/:subjectId/announcements/:annId/remove',
+      // LMS wave 6 (AT-1.4): a lesson's or a chapter's due date, from the editor's and the subject admin page's due-dates page.
+      '/s/:spaceId/publish/edit/:subjectId/due/:kind/:itemId', '/s/:spaceId/admin/topics/:subjectId/due/:kind/:itemId',
     ]) assert.ok(posts.includes(must), `POST ${must} exists and is in the sweep`);
 
     const dataBefore: Snapshot = await snapshot(worker);

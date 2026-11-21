@@ -87,6 +87,8 @@ async function pair(): Promise<Pair> {
   copy.exec(readFileSync(join(repo, 'migrations', '0013_chapters_in_order.sql'), 'utf8'));
   // LMS wave 5 (contract on PIL-246, section 11 item 3): the candidate's code reads announcements, so its copy gains that migration too (none stored).
   copy.exec(readFileSync(join(repo, 'migrations', '0014_announcements.sql'), 'utf8'));
+  // LMS wave 6 (contract on PIL-257, section 11 item 3): and the due-date migration (none stored).
+  copy.exec(readFileSync(join(repo, 'migrations', '0015_due_dates.sql'), 'utf8'));
   const cand = await inProcess({ sqlite: copy, files: b.worker.files });
   const off = await cand.sql('SELECT COUNT(*) AS n FROM subject WHERE chapters_in_order <> 0');
   assert.equal(Number(off[0].n), 0, 'every setting off on the candidate');
@@ -117,6 +119,8 @@ function normalised(body: string, url: string): string {
 // and wave 5 appends one block to it. The candidate's <style> in <head> must be main's followed by exactly that block
 // (starting with the mark, every selector `#announcements…` or `.ann-…`); then both are replaced by one token.
 const W5_MARK = '/* wave 5 announcements */';
+// LMS wave 6 (contract on PIL-257, section 11 item 3): wave 6 appends its own block after wave 5's; its selectors are its own.
+const W6_MARK = '/* wave 6 due dates */';
 const HEAD_STYLE = /(<head>[\s\S]*?<style>)([\s\S]*?)(<\/style>)/;
 function styleHandled(base: string, cand: string, what: string): { base: string; cand: string } {
   const sb = HEAD_STYLE.exec(base);
@@ -127,8 +131,14 @@ function styleHandled(base: string, cand: string, what: string): { base: string;
   const block = sc[2].slice(sb[2].length);
   if (block) {
     assert.ok(block.startsWith(W5_MARK), `${what}: the added style is the wave 5 block`);
-    for (const rule of block.slice(W5_MARK.length).split('}').map((r) => r.trim()).filter(Boolean)) {
+    const at6 = block.indexOf(W6_MARK);
+    for (const rule of block.slice(W5_MARK.length, at6 < 0 ? undefined : at6).split('}').map((r) => r.trim()).filter(Boolean)) {
       for (const s of rule.slice(0, rule.indexOf('{')).split(',').map((x) => x.trim())) assert.match(s, /^(#announcements|\.ann-)/, `${what}: a scoped selector`);
+    }
+    if (at6 >= 0) {
+      for (const rule of block.slice(at6 + W6_MARK.length).replace(/\/\*[\s\S]*?\*\//g, '').split('}').map((r) => r.trim()).filter(Boolean)) {
+        for (const s of rule.slice(0, rule.indexOf('{')).split(',').map((x) => x.trim())) assert.match(s, /^(#todo|#due-dates|\.due-|\.todo-)/, `${what}: a scoped wave 6 selector`);
+      }
     }
   }
   return { base: base.replace(HEAD_STYLE, '$1[style]$3'), cand: cand.replace(HEAD_STYLE, '$1[style]$3') };
@@ -138,7 +148,9 @@ function styleHandled(base: string, cand: string, what: string): { base: string;
 function withoutCard(body: string): { body: string; card: boolean } {
   // The card with the line break and indent it is drawn after.
   const out = body.replace(/\n?[ \t]*<section id="order-state"[\s\S]*?<\/section>/g, '')
-    .replace(/<section id="announcements"[\s\S]*?<\/section>/g, '');
+    .replace(/<section id="announcements"[\s\S]*?<\/section>/g, '')
+    // LMS wave 6 (contract on PIL-257, section 11 item 3): the due card, on the same pages.
+    .replace(/<section id="due-dates"[\s\S]*?<\/section>/g, '');
   return { body: out, card: out !== body };
 }
 
