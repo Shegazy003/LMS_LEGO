@@ -4,14 +4,17 @@
 // - W5-b: Nile Test Space (W4-a) with one announcement on its subject;
 // - W5-c: the test clock (src/clock.ts through /__test/clock) for posts a few
 //   seconds apart, and rows dated days ago written directly.
-// (W5-a and W5-d are the learner side's, in W5-1b.) Every step name starts with
+// - W5-a (Karim Test, Rana Test) and W5-d (the load world), for the learner
+//   side (W5-1b).
+// Every step name starts with
 // "W5 " and its label, or with the UX id, so CI shows one step per labelled
 // expectation. The wave-5 CI job runs the product in this process
 // (LMS_TEST_RUNTIME=in-process, as wave-3a and wave-4), so the statement spy is
 // available. Made-up data only.
 import assert from 'node:assert/strict';
-import type { Client } from '../support/http.ts';
-import { ADMIN, HADEER, as, editorPath, plain, topicPath, withNile4, words, type Nile, type Wave1World } from '../wave4/world.ts';
+import { setClockOffsetMs, setClockTo, utcDatePlusDays, workerNow, type Client } from '../support/http.ts';
+import { appointAdmin, createSpace, seed } from '../support/seed.ts';
+import { ADMIN, HADEER, SHIMAA, as, editorPath, plain, topicPath, withNile4, words, type Nile, type Wave1World } from '../wave4/world.ts';
 import type { Lang } from '../../src/labels.ts';
 
 export * from '../wave4/world.ts';
@@ -77,7 +80,132 @@ export async function storedAt(w: Wave1World, v: { space: string; subject: strin
   return id;
 }
 
+/** W5-a: Karim Test, a learner of Mesk School assigned only Arabic grammar; Rana Test, who gets Mathematics through the class Science only. */
+export const KARIM5 = { display_name: 'Karim Test', username: 'karim.w5', password: 'karim-wave5-pass', role: 'learner' as const, mobile: '01051510001' };
+export const RANA5 = { display_name: 'Rana Test', username: 'rana.w5', password: 'rana-wave5-pass', role: 'learner' as const, mobile: '01051510002' };
+
+/** W5-a, added through the test seed and the two rows an admin's assignment and class forms write (works on main's code too). */
+export async function withW5a(w: Wave1World, sql: (q: string) => Promise<Record<string, unknown>[]> = (q) => w.p.sql(q), url = w.p.url): Promise<void> {
+  const s = w.school;
+  const seeded = await seed(url, { spaceId: s.id, grantedBy: ADMIN.username, people: [KARIM5, RANA5].map((p) => ({ ...p, valid_until: utcDatePlusDays(30) })) });
+  const karim = seeded.users[KARIM5.username];
+  const rana = seeded.users[RANA5.username];
+  await sql(`INSERT INTO subject_access (id, space_id, subject_id, user_id) VALUES ('w5a-karim', '${s.id}', '${s.arabic}', '${karim}')`);
+  const science = await sql(`SELECT id FROM "group" WHERE space_id = '${s.id}' AND name = 'Science'`);
+  assert.equal(science.length, 1, 'the class Science');
+  await sql(`INSERT INTO group_member (space_id, group_id, user_id) VALUES ('${s.id}', '${science[0].id}', '${rana}')`);
+  w.ids[KARIM5.username] = karim;
+  w.ids[RANA5.username] = rana;
+}
+
+/** The AT-2 announcements, posted through the cards one minute apart (oldest first): Hadeer three and Amal one on
+ * Mathematics, Shimaa one on Arabic grammar. Returns their texts, newest first per subject. */
+export const AT2_MATH = ['Quiz moved to Sunday.', 'Chapter 3 is ready.\nRead it before class.', 'Bring a ruler.', 'Parents evening on Monday.'];
+export const AT2_ARABIC = 'Grammar test next week.';
+export async function withAt2(w: Wave1World): Promise<{ math: string[]; arabic: string }> {
+  const s = w.school;
+  const hadeer = await as(w, HADEER, 'en');
+  const shimaa = await as(w, SHIMAA, 'en');
+  const t0 = (await workerNow(w.p.url)) - 60 * 60_000;
+  const posts: [Client, string, string][] = [
+    [hadeer, publisherAnn(s, s.math), AT2_MATH[0]],
+    [hadeer, publisherAnn(s, s.math), AT2_MATH[1]],
+    [hadeer, publisherAnn(s, s.math), AT2_MATH[2]],
+    [w.admin, adminAnn(s, s.math), AT2_MATH[3]],
+    [shimaa, publisherAnn(s, s.arabic), AT2_ARABIC],
+  ];
+  try {
+    for (const [i, [c, path, body]] of posts.entries()) {
+      await setClockTo(w.p.url, t0 + i * 60_000);
+      await post(c, path, body);
+    }
+  } finally {
+    await setClockOffsetMs(w.p.url, 0);
+  }
+  return { math: [...AT2_MATH].reverse(), arabic: AT2_ARABIC };
+}
+
+/** W5-d: a third made-up space, "Load Test Space", with 150 published subjects all assigned to one learner, each with 2 announcements. */
+export const LOAD_ADMIN = { display_name: 'Load Admin Test', username: 'load.admin.w5', password: 'load-admin-wave5-pass', mobile: '01051510010' };
+export const LOAD_LEARNER = { display_name: 'Load Learner Test', username: 'load.learner.w5', password: 'load-learner-wave5-pass', role: 'learner' as const, mobile: '01051510011' };
+export interface Load { id: string; subjects: string[] }
+export async function withW5d(w: Wave1World, opts: { announcements?: boolean; sql?: (q: string) => Promise<Record<string, unknown>[]>; url?: string; owner?: Client } = {}): Promise<Load> {
+  const sql = opts.sql ?? ((q: string) => w.p.sql(q));
+  const owner = opts.owner ?? w.owner;
+  const id = await createSpace(owner, { name: 'Load Test Space', kit: 'school' });
+  await appointAdmin(owner, id, { ...LOAD_ADMIN, valid_until: utcDatePlusDays(60) });
+  const titles = Array.from({ length: 150 }, (_, i) => `Load subject ${String(i + 1).padStart(3, '0')}`);
+  const s = await seed(opts.url ?? w.p.url, {
+    spaceId: id, grantedBy: LOAD_ADMIN.username,
+    people: [{ ...LOAD_LEARNER, valid_until: utcDatePlusDays(30) }],
+    subjects: titles.map((title) => ({ title, published: true, users: [LOAD_LEARNER.username], chapters: [{ title: 'Unit', lessons: [{ title: `${title} lesson` }] }] })),
+  });
+  const load = { id, subjects: titles.map((t) => s.subjects[t].id) };
+  if (opts.announcements !== false) await withLoadAnnouncements(sql, load);
+  return load;
+}
+
+/** The 300 announcements of W5-d (2 per subject), posted over the last 2 days. */
+export async function withLoadAnnouncements(sql: (q: string) => Promise<Record<string, unknown>[]>, load: Load): Promise<void> {
+  const now = Date.now();
+  const rows = load.subjects.flatMap((subject, i) => [0, 1].map((k) => `('w5d-${i}-${k}', '${load.id}', '${subject}', 'Load note ${i + 1}.${k + 1}', '${k ? 'admin' : 'publisher'}', '${new Date(now - (i * 2 + k + 1) * 60_000).toISOString()}')`));
+  for (let i = 0; i < rows.length; i += 50) {
+    await sql(`INSERT INTO announcement (id, space_id, subject_id, body, author_role, created_at) VALUES ${rows.slice(i, i + 50).join(', ')}`);
+  }
+}
+
 // ------------------------------------------------------------- page reads ----
+
+/** One item of a learner block (UX-54, UX-55), as a reader gets it. */
+export interface LearnerItem {
+  /** The announcement text as shown (unescaped; the home's cut text with its "…", without the inline link). */
+  text: string;
+  /** The raw markup inside the text paragraph. */
+  raw: string;
+  by: string;
+  edited: boolean;
+  /** Home only: the subject link and the inline link to the whole text. */
+  subject: { id: string; title: string; href: string } | null;
+  full: { href: string; name: string; text: string } | null;
+  dirAuto: boolean;
+}
+
+function learnerItems(fragment: string): LearnerItem[] {
+  return [...fragment.matchAll(/<li class="ann-item" dir="auto"(?: data-subject="([^"]+)")?>([\s\S]*?)<\/li>/g)].map((m) => {
+    const inner = m[2];
+    const rawText = /<p class="ann-text" dir="auto">([\s\S]*?)<\/p>/.exec(inner)![1];
+    const fullM = /<a class="ann-full" href="([^"]+)" aria-label="([^"]+)">([\s\S]*?)<\/a>/.exec(rawText);
+    const subjM = /<a class="ann-where-link" href="([^"]+)"><bdi>([\s\S]*?)<\/bdi><\/a>/.exec(inner);
+    const textOnly = fullM ? rawText.slice(0, fullM.index).replace(/ $/, '') : rawText;
+    return {
+      text: unescape(textOnly),
+      raw: rawText,
+      by: plain(/<p class="ann-by">([\s\S]*?)<\/p>/.exec(inner)![1]),
+      edited: inner.includes('class="ann-edited"'),
+      subject: subjM && m[1] ? { id: m[1], title: unescape(subjM[2]), href: unescape(subjM[1]) } : null,
+      full: fullM ? { href: unescape(fullM[1]), name: unescape(fullM[2]), text: plain(fullM[3]) } : null,
+      dirAuto: true,
+    };
+  });
+}
+
+/** The learner block on a subject page or a home (null when absent): heading, items in full, the fold. */
+export function learnerBlockOf(html: string) {
+  const block = annBlock(html);
+  if (!block) return null;
+  const foldAt = block.indexOf('<details class="ann-older">');
+  const top = foldAt < 0 ? block : block.slice(0, foldAt);
+  const fold = foldAt < 0 ? null : block.slice(foldAt, block.indexOf('</details>', foldAt) + '</details>'.length);
+  return {
+    block,
+    heading: plain(/<h2 id="ann-heading">([\s\S]*?)<\/h2>/.exec(block)?.[1] ?? ''),
+    items: learnerItems(top),
+    fold: fold ? { summary: plain(/<summary>([\s\S]*?)<\/summary>/.exec(fold)![1]), open: /<details class="ann-older" open/.test(fold), items: learnerItems(fold) } : null,
+  };
+}
+
+/** Every text a learner block shows, in order (in full, then folded). */
+export const blockTexts = (b: ReturnType<typeof learnerBlockOf>) => (b ? [...b.items, ...(b.fold?.items ?? [])].map((i) => i.text) : []);
 
 export interface CardItem {
   id: string;

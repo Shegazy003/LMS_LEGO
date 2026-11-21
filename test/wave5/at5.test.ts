@@ -198,17 +198,6 @@ describe('W5 AT-5.3 the README\'s rollback text', () => {
   });
 });
 
-// -------------------------------------------------- the W5-1a deploy note ----
-// Contract section 12: W5-1a must not be deployed alone. While the learner's
-// views have no announcement block, the README says so (W5-1b removes this step).
-describe('W5 deploy note', () => {
-  it('W5 deploy note while src/views/learn.ts has no announcement block, the README says part 1 is not deployed on its own', () => {
-    const learn = readFileSync(join(root, 'src/views/learn.ts'), 'utf8');
-    assert.ok(!/announcements|annTitle|annHomeTitle/.test(learn), 'the learner views have no announcement block (W5-1a)');
-    assert.ok(readme().includes('Wave 5 part 1 (W5-1a) is not deployed on its own; deploy only after W5-1b is merged.'), 'the README\'s deploy note');
-  });
-});
-
 // ------------------------------------------------------------ AT-5.4 -----------
 /** Deletes a table's rows matching a condition, every row referring to them first (child-first, by the foreign keys).
  * A foreign key of two columns (as announcement's (subject_id, space_id)) is matched on both together. */
@@ -303,11 +292,19 @@ describe('W5 AT-5.5 no route returns announcement text but the pages of section 
       const texts = ['Crawl teacher text.', 'Crawl admin text.'];
       await post(hadeer.c, hadeer.post, texts[0]);
       await post(amal.c, amal.post, texts[1]);
-      // Section 7: the card on the editor and the subject admin page, and their edit and remove pages.
+      // Section 7 ("See"): the card on the editor and the subject admin page, and their edit and
+      // remove pages; since W5-1b also the subject page (`/learn`) for its learners, its publisher
+      // and the admin, the home of its learners, and the admin's and publisher's preview home and
+      // preview subject page (5.4). Exact addresses: lesson, file and results pages stay excluded.
+      const home = `/s/${s.id}`;
+      const learn = `/s/${s.id}/learn/${s.math}`;
+      const previews = [`/s/${s.id}/preview`, `/s/${s.id}/preview/learn/${s.math}`];
       const allowed = (who: string, path: string) => {
-        const p = path.split('?')[0];
+        const p = path.split('?')[0].split('#')[0];
         if (who === 'Hadeer' && p.startsWith(editorPath(s, s.math))) return true;
         if (who === 'Amal' && p.startsWith(topicPath(s, s.math))) return true;
+        if ((who === 'Salma' || who === 'Omar C') && (p === home || p === learn)) return true;
+        if ((who === 'Hadeer' || who === 'Amal') && (p === learn || previews.includes(p))) return true;
         return false;
       };
       const people: [string, { username: string; password: string }][] = [
@@ -328,6 +325,7 @@ describe('W5 AT-5.5 no route returns announcement text but the pages of section 
       }
       t.diagnostic(`AT-5.5 ${seen} responses crawled; announcement text on ${where.size}: ${[...where].sort().join('; ')}`);
       assert.ok([...where].some((x) => x.startsWith('Hadeer ')) && [...where].some((x) => x.startsWith('Amal ')), 'seen on both cards');
+      assert.ok(where.has('Salma /s/<space>/learn/<math>') && where.has('Salma /s/<space>'), 'and on the learner\'s subject page and home (W5-1b)');
       // A removed row's body is empty.
       const [first] = await annRows(w);
       assert.equal((await hadeer.c.post(`${hadeer.post}/${first.id}/remove`, {})).status, 303);

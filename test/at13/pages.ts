@@ -321,3 +321,45 @@ export function lockHits(body: string, words = lockWords()): string[] {
   if (/\bdata-locked\b/.test(body)) hits.push('the lock marker data-locked');
   return hits;
 }
+
+// LMS wave 5 (product-contract v2 on PIL-246, AT-3.1 and section 11 item 5):
+// announcements reach a subject's learners, never a guardian. The scans gain
+// the announcement texts and the new learner ui.ts values in their forbidden
+// lists for guardian pages, and pass with announcements present.
+
+/** The ui.ts keys of the learner blocks that a page shows as words (annByLine is only a role and a date; annFullFor is annFull's name). */
+export const W5_KEYS = ['annTitle', 'annHomeTitle', 'annOlder', 'annFull', 'annEdited'] as const;
+/** Made-up announcement texts, on A's Arabic (assigned to A alone) and on Mathematics. */
+export const ANN_TEXTS = ['Nahw quiz moved to Sunday (wave 5 scan).', 'اختبار النحو يوم الأحد (فحص الموجة 5).', 'Mathematics workbook due Monday (wave 5 scan).'];
+
+/** The announcements while the viewers look around (stored as the card stores them), dated yesterday; A sees them on her home. */
+export async function withAnnouncements(w: PrivacyWorld): Promise<void> {
+  const [{ space_id: space }] = await w.p.sql(`SELECT space_id FROM subject WHERE id = '${w.content.arabic}'`);
+  const at = Date.now() - 86_400_000;
+  const rows: [string, string, string][] = [[w.content.arabic, ANN_TEXTS[0], 'publisher'], [w.content.arabic, ANN_TEXTS[1], 'admin'], [w.content.math, ANN_TEXTS[2], 'publisher']];
+  for (const [i, [subject, body, role]] of rows.entries()) {
+    await w.p.sql(`INSERT INTO announcement (id, space_id, subject_id, body, author_role, created_at) VALUES ('w5-scan-${i}', '${String(space)}', '${subject}', '${body}', '${role}', '${new Date(at + i * 1000).toISOString()}')`);
+  }
+  const a = new Client(w.p.url);
+  if ((await a.post('/signin', { username: A.username, password: A.password })).status !== 302) throw new Error('A signs in');
+  const home = await (await a.get(`/s/${String(space)}`)).text();
+  if (annHits(home).length === 0) throw new Error('A sees the announcements on her home');
+}
+
+/** The announcement words a guardian must never meet, in both languages (the longest fixed part of each key), and the texts. */
+export function annWords(): Map<string, string> {
+  const words = new Map<string, string>();
+  for (const lang of ['en', 'ar'] as const) {
+    for (const key of W5_KEYS) words.set(`${lang} ${key}`, UI[lang][key].split(/{[^}]*}/).map((x) => x.trim()).sort((x, y) => y.length - x.length)[0]);
+  }
+  ANN_TEXTS.forEach((t, i) => words.set(`announcement text ${i + 1}`, t));
+  return words;
+}
+
+/** Every announcement word, text or block on a page (words and texts in the text a person reads, the block anywhere). */
+export function annHits(body: string, words = annWords()): string[] {
+  const text = visible(body);
+  const hits = [...words].filter(([, value]) => text.includes(value)).map(([name]) => name);
+  if (/\bid="announcements"/.test(body)) hits.push('the announcement block id="announcements"');
+  return hits;
+}

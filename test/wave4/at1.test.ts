@@ -259,7 +259,12 @@ const MAIN_READS: Record<string, number> = {
 // LMS wave 5 (product-contract v2 on PIL-246, AT-3.5): the announcement card on a subject's editor and subject
 // admin page reads its list once, so those two pages are allowed exactly one read more than main's. Every other
 // page keeps main's count. Named in CANDIDATE READY (an assertion outside section 11's list; the Lead decides).
-const WAVE5_CARD_READS: Record<string, number> = { 'Hadeer editor': 1, 'Amal subject admin page': 1 };
+// W5-1b (AT-3.5): the learner home, the subject's /learn page (learner, admin, publisher) and the preview subject
+// page each read their announcements once, so they too are allowed exactly one more.
+const WAVE5_CARD_READS: Record<string, number> = {
+  'Hadeer editor': 1, 'Amal subject admin page': 1,
+  'Salma home': 1, 'Salma outline': 1, 'Salma outline open=all': 1, 'Amal outline': 1, 'Hadeer preview outline': 1, 'Amal preview outline': 1,
+};
 
 describe('W4 AT-1.4 with the setting off no page makes more reads than main\'s (statement spy)', { concurrency: false }, () => {
   it('W4 AT-1.4 (d) the read counts with every setting off are at most main\'s, page by page', async (t) => {

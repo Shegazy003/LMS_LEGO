@@ -22,7 +22,8 @@ import { LANGS, LANG_COOKIE, deviceLang, langChoice, makeLabel, type Concept, ty
 import { cleanDisplayName, cleanItemName, isUsername, typedUsername } from './names.ts';
 import { readLabels, switchedKit } from './kits/edit.ts';
 import {
-  chapterLocks, continueWhere, findFile, findLesson, learnerCards, lessonMaterials, lessonSequence, outline, previewCards, previewableSubject, readableSubject,
+  chapterLocks, continueWhere, findFile, findLesson, learnerAnnouncements, learnerCards, lessonMaterials, lessonSequence, outline, previewAnnouncements, previewCards,
+  previewableSubject, readableSubject,
   subjectsForPublisher, type ChapterLocks, type OutlineChapter, type Previewer, type SubjectRow,
 } from './learning.ts';
 import { doneLessonIds, isDone, markDone, markNotDone, markOrder, readsAsLearner, signedInLearner } from './progress.ts';
@@ -34,10 +35,12 @@ import { adminActivityOffPage, adminActivityPage, guardianActivityPage, type Adm
 import { externalUrl } from './links.ts';
 import { logError } from './log.ts';
 import {
-  ANN_MAX, cardRows, checkText, mayEdit, mayRemove, oneRow, postAnnouncement, removeAnnouncement, saveAnnouncement,
+  ANN_HOME, ANN_MAX, cardRows, checkText, homeSince, mayEdit, mayRemove, oneRow, postAnnouncement, removeAnnouncement, saveAnnouncement, subjectRows,
   type AnnouncementRow, type AuthorRole, type CheckedText, type Writer,
 } from './announcements.ts';
-import { announcementCard, announcementEditPage, announcementRemovePage, type AnnRefusal, type AnnStatus } from './views/announcements.ts';
+import {
+  announcementCard, announcementEditPage, announcementRemovePage, homeBlock, subjectBlock, type AnnRefusal, type AnnStatus,
+} from './views/announcements.ts';
 import { normaliseCountryCode, normaliseMobile } from './phone.ts';
 import {
   addChapter, addLesson, addMaterial, editableChapter, editableLesson, editableMaterial, editableSubject, isDirection,
@@ -867,7 +870,9 @@ async function renderLearnerHome(c: C) {
   // done lines, from this learner's own marks (one more read, whatever their
   // number); a mark counts only on a lesson of one of these cards (section 6.3).
   const where = learner ? continueWhere(cards, await markOrder(c.get('db'), signedInLearner(c))) : null;
-  return page(c, learnerHome(t, lang, view, user.display_name, cards, notice, where));
+  // LMS wave 5 (section 5.3): the newest announcements of the last 30 days across these cards' subjects, one more read.
+  const ann = learner ? homeBlock(t, lang, view, await learnerAnnouncements(c.get('db'), view.id, user.id, homeSince(now()), ANN_HOME)) : '';
+  return page(c, learnerHome(t, lang, view, user.display_name, cards, notice, where, ann));
 }
 
 // The guardian home (release 2, R2-a): every learner actively linked to this
@@ -1037,7 +1042,10 @@ app.get('/s/:spaceId/preview', async (c) => {
   const { t, lang } = spaceLabel(c);
   const view = await previewView(c, previewer, 'home');
   const cards = await previewCards(c.get('db'), view.id, previewer);
-  return page(c, learnerHome(t, lang, view, t('learner'), cards, await previewNotice(c, previewer)));
+  const notice = await previewNotice(c, previewer);
+  // LMS wave 5 (section 5.4): the home block of a made-up learner assigned exactly these cards' subjects, one more read.
+  const ann = homeBlock(t, lang, view, await previewAnnouncements(c.get('db'), view.id, previewer, homeSince(now()), ANN_HOME));
+  return page(c, learnerHome(t, lang, view, t('learner'), cards, notice, undefined, ann));
 });
 
 app.get('/s/:spaceId/preview/results', async (c) => {
@@ -1056,8 +1064,10 @@ app.get('/s/:spaceId/preview/learn/:subjectId', async (c) => {
   const { t, lang } = spaceLabel(c);
   const view = await previewView(c, previewer, 'one', subject.is_published !== 1);
   const parts = await outline(db, space.id, subject.id);
+  // LMS wave 5 (section 5.4): the block exactly as a learner sees it (an unpublished subject's as it will be once published), one more read.
+  const ann = subjectBlock(t, lang, await subjectRows(db, space.id, subject.id));
   // LMS wave 4 (section 5.5): a subject in order shows a new learner's locks (no marks); no done mark is read.
-  return page(c, subjectPage(t, lang, view, subject, parts, c.req.query('open'), undefined, newLearnerLocks(subject, parts)));
+  return page(c, subjectPage(t, lang, view, subject, parts, c.req.query('open'), undefined, newLearnerLocks(subject, parts), ann));
 });
 
 /** LMS wave 4 (section 5.5): the locks a new learner with no marks meets in a subject in order (the preview's made-up learner); null with the setting off. */
@@ -1113,8 +1123,10 @@ app.get('/s/:spaceId/learn/:subjectId', async (c) => {
   const parts = await outline(db, space.id, subject.id);
   // LMS wave 4 (section 5.1): the locks, from the same outline and marks, only for a subject in order read as a learner.
   const locks = subject.chapters_in_order === 1 && marks ? chapterLocks(parts, marks) : null;
+  // LMS wave 5 (sections 5.1, 5.2): the subject's announcements for everyone who reads it here, one more read.
+  const ann = subjectBlock(t, lang, await subjectRows(db, space.id, subject.id));
   // Wave 1 (section 6): ?open=all, ?open=none or one chapter of this subject; any other value is ignored.
-  return page(c, subjectPage(t, lang, view, subject, parts, c.req.query('open'), marks, locks));
+  return page(c, subjectPage(t, lang, view, subject, parts, c.req.query('open'), marks, locks, ann));
 });
 
 /** LMS wave 4 (sections 5.1 to 5.4): for a subject in order read as a learner,
