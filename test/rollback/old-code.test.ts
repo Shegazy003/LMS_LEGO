@@ -341,7 +341,8 @@ describe('AT-14a old code on a release 2 database shows a guardian nothing, expo
 
   // LMS wave 6 (W6-1a, product-contract v2 on PIL-257, AT-5.3): stored due dates on a lesson and a chapter.
   it('W6 AT-5.3 old code shows no due date anywhere, has no due-dates address and writes no due date', async () => {
-    const columns = await worker.sql("SELECT m.name AS t FROM sqlite_master m, pragma_table_info(m.name) c WHERE m.type = 'table' AND c.name = 'due_on' ORDER BY m.name");
+    // Each table named: D1 refuses pragma_table_info over its own _cf_ tables (SQLITE_AUTH, CI run 44885855489).
+    const columns = await worker.sql("SELECT 'chapter' AS t FROM pragma_table_info('chapter') WHERE name = 'due_on' UNION ALL SELECT 'lesson' FROM pragma_table_info('lesson') WHERE name = 'due_on'");
     assert.deepEqual(columns.map((r) => String(r.t)), ['chapter', 'lesson'], 'the rollback job gave the old code the wave 6 migration');
     const chapter = String((await worker.sql(`SELECT chapter_id AS c FROM lesson WHERE id = '${content.lesson}'`))[0].c);
     await worker.sql(`UPDATE lesson SET due_on = '2026-12-12' WHERE id = '${content.lesson}'`);
