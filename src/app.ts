@@ -3,7 +3,7 @@ import { Hono, type Context, type MiddlewareHandler } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import type { AppEnv, CurrentSpace } from './app-env.ts';
-import { checkTypedEndDate, endedDate, isIsoDate, membershipStatus, utcDate } from './access.ts';
+import { addDays, checkTypedEndDate, endedDate, isIsoDate, membershipStatus, utcDate } from './access.ts';
 import {
   ADMIN_MANAGES, OWNER_MANAGES, appoint, correctPerson, createSet, createTopic, endAccess, findSet, findTopic, isAppointable, learnersOf,
   managedPerson, peopleOf, publishersOf, renameSet, renameTopic, restoreAccess, saveSetMembers, saveTopic, searchText, setPassword, setsOf,
@@ -41,6 +41,8 @@ import {
 import {
   announcementCard, announcementEditPage, announcementRemovePage, homeBlock, subjectBlock, type AnnRefusal, type AnnStatus,
 } from './views/announcements.ts';
+import { DUE_MAX_DAYS, dueChoice, dueItem, dueOutline, isDueKind, writeDue, type DueChapter, type DueWriter } from './due.ts';
+import { dueCard, duePage, type DueRefusal, type DueStatus } from './views/due.ts';
 import { normaliseCountryCode, normaliseMobile } from './phone.ts';
 import {
   addChapter, addLesson, addMaterial, editableChapter, editableLesson, editableMaterial, editableSubject, isDirection,
@@ -1841,6 +1843,8 @@ async function renderTopic(
   const announcements = await announcementsOf(c, { subjectId: topic.id, role: 'admin', page: `/s/${view.id}/admin/topics/${topic.id}`, published: topic.is_published === 1 }, annRefusal);
   const body = topicPage(t, lang, view, {
     announcements,
+    // LMS wave 6 (section 4.2): the due card, after the announcement card (a link only, no read).
+    due: dueCard(t, lang, `/s/${view.id}/admin/topics/${topic.id}/due`),
     topic,
     publishers: await publishersOf(db, view.id),
     sets: (await setsOf(db, view.id)).map((s) => ({ id: s.id, display_name: s.name })),
@@ -2000,7 +2004,7 @@ async function renderSubjectEditor(c: C, subject: SubjectRow, error?: LabelKey, 
   const parts = await outline(c.get('db'), view.id, subject.id);
   // LMS wave 5 (section 4.1): the announcement card after the card of Publish, Preview and the setting.
   const card = await announcementsOf(c, { subjectId: subject.id, role: 'publisher', page: subjectEditorPath(view.id, subject.id), published: subject.is_published === 1 }, refusal);
-  return page(c, subjectEditor(t, lang, view, subject, parts, error && t(error), notice, orderStatus(c, subject.chapters_in_order), card), error || refusal ? 400 : 200);
+  return page(c, subjectEditor(t, lang, view, subject, parts, error && t(error), notice, orderStatus(c, subject.chapters_in_order), card, dueCard(t, lang, `${subjectEditorPath(view.id, subject.id)}/due`)), error || refusal ? 400 : 200);
 }
 
 // LMS wave 4 (product-contract v2 on PIL-238, section 4): the subject's "open
@@ -2203,6 +2207,104 @@ function announcementRoutes(prefix: string, placeOf: PlaceOf) {
 
 announcementRoutes('/s/:spaceId/publish/edit/:subjectId', publisherAnnPlace);
 announcementRoutes('/s/:spaceId/admin/topics/:subjectId', adminAnnPlace);
+
+// ----------------------------------------------------------- due dates ----
+// LMS wave 6, W6-1a (product-contract v2 on PIL-257, sections 4 and 7): a
+// subject's due-dates page, reached from the due card on the responsible
+// publisher's editor and on the admin's subject page, each behind its own gate
+// (publisher, admin; access ended and another site refused before any
+// lookup). The gate checks the address's subject first (403 when it is not
+// theirs here), then the item (404 unless it is this subject's and not
+// removed). Each write is one gate read, one item read and one write that
+// repeats the gate; then 303 back to the row. GET and HEAD of a post address
+// have no route (404). A due date names no person.
+
+/** Where the page lives: the subject, who writes, and the page it is reached from. */
+interface DuePlace {
+  subjectId: string;
+  subjectTitle: string;
+  writer: DueWriter;
+  /** The editor or the subject admin page (the back link). */
+  from: string;
+}
+
+/** The publisher's place: only the subject they are responsible for (one read). */
+async function publisherDuePlace(c: C): Promise<DuePlace | null> {
+  const spaceId = c.get('space').id;
+  const userId = c.get('user')!.id;
+  const subject = await editableSubject(c.get('db'), spaceId, userId, c.req.param('subjectId') ?? '');
+  if (!subject) return null;
+  return { subjectId: subject.id, subjectTitle: subject.title, writer: { role: 'publisher', userId }, from: subjectEditorPath(spaceId, subject.id) };
+}
+
+/** The admin's place: any subject of the space (one read). */
+async function adminDuePlace(c: C): Promise<DuePlace | null> {
+  const spaceId = c.get('space').id;
+  const topic = await findTopic(c.get('db'), spaceId, c.req.param('subjectId') ?? '');
+  if (!topic) return null;
+  return { subjectId: topic.id, subjectTitle: topic.title, writer: { role: 'admin' }, from: `/s/${spaceId}/admin/topics/${topic.id}` };
+}
+
+/** The row's status line (section 4.2): ?due=saved or cleared only when it matches the stored state of that row; failed always. */
+function dueStatus(c: C, outline: DueChapter[]): DueStatus {
+  const said = c.req.query('due');
+  const item = c.req.query('item') ?? '';
+  const row = outline.flatMap((ch) => [ch, ...ch.lessons]).find((r) => r.id === item);
+  if (!row) return null;
+  if (said === 'failed') return { item, said };
+  if (said === 'saved' && row.due_on !== null) return { item, said };
+  if (said === 'cleared' && row.due_on === null) return { item, said };
+  return null;
+}
+
+/** The page (two reads: the gate's, then the outline with its dates); a refused date draws it again with 400. */
+async function renderDue(c: C, place: DuePlace, at: number, refusal: DueRefusal | null = null) {
+  const { t, lang, view } = spaceLabel(c);
+  const outline = await dueOutline(c.get('db'), view.id, place.subjectId);
+  const body = duePage(t, lang, view, {
+    subjectTitle: place.subjectTitle, back: place.from, action: `${place.from}/due`, outline, now: at,
+    status: refusal ? null : dueStatus(c, outline), refusal,
+  });
+  return page(c, body, refusal ? 400 : 200);
+}
+
+function dueRoutes(prefix: string, placeOf: (c: C) => Promise<DuePlace | null>) {
+  app.get(`${prefix}/due`, async (c) => {
+    const place = await placeOf(c);
+    if (!place) return refuse(c, 403, 'noAccess');
+    return renderDue(c, place, now());
+  });
+  app.post(`${prefix}/due/:kind/:itemId`, async (c) => {
+    const at = now();
+    const place = await placeOf(c);
+    if (!place) return refuse(c, 403, 'noAccess');
+    const kind = c.req.param('kind');
+    if (!isDueKind(kind)) return refuse(c, 404, 'notFound');
+    const db = c.get('db');
+    const spaceId = c.get('space').id;
+    const item = await dueItem(db, spaceId, place.subjectId, kind, c.req.param('itemId'));
+    if (!item) return refuse(c, 404, 'notFound');
+    const choice = dueChoice(field(await c.req.parseBody(), 'due_on'), item.due_on, at);
+    const back = (said: string) => c.redirect(`${place.from}/due?due=${said}&item=${item.id}#item-${item.id}`, 303);
+    if (choice.kind === 'invalid') {
+      const { t } = spaceLabel(c);
+      return renderDue(c, place, at, { item: item.id, kept: choice.kept, error: t('dueInvalid', { date: addDays(utcDate(at), DUE_MAX_DAYS) }) });
+    }
+    // Re-saving the stored date, or clearing a row with no date, stores nothing (section 4.3, rule 3).
+    if (choice.kind === 'same') return back('saved');
+    if (choice.kind === 'clear' && item.due_on === null) return back('cleared');
+    try {
+      if (!(await writeDue(db, spaceId, place.subjectId, kind, item.id, choice.kind === 'set' ? choice.date : null, place.writer))) return refuse(c, 403, 'noAccess');
+    } catch {
+      logError('due date write failed');
+      return back('failed');
+    }
+    return back(choice.kind === 'set' ? 'saved' : 'cleared');
+  });
+}
+
+dueRoutes('/s/:spaceId/publish/edit/:subjectId', publisherDuePlace);
+dueRoutes('/s/:spaceId/admin/topics/:subjectId', adminDuePlace);
 
 /** The add-material chooser's state as the editor is asked for it (LMS wave 1, L2, section 8.2). */
 interface AddAsked {

@@ -11,7 +11,7 @@ import type { Hono } from 'hono';
 import { isIsoDate, utcDate } from './access.ts';
 import type { AppEnv } from './app-env.ts';
 import { hashPassword } from './auth/password.ts';
-import { now, setClockOffset } from './clock.ts';
+import { now, setClockFixed, setClockOffset } from './clock.ts';
 import type { Db, Param } from './db.ts';
 import { normaliseMobile } from './phone.ts';
 import { setMarkClock } from './progress.ts';
@@ -36,6 +36,22 @@ export function registerTestHooks(app: Hono<AppEnv>): void {
     if (!Number.isFinite(offset)) return c.json({ error: 'offsetMs must be a number' }, 400);
     setClockOffset(offset);
     return c.json({ now: new Date(now()).toISOString() });
+  });
+
+  // LMS wave 6 (product-contract v2 on PIL-257, W6-c): pins the clock to one
+  // exact instant ({ "atMs": <number> }) for every request until it is given
+  // back to the moving clock ({ "atMs": null }).
+  app.post('/__test/clock-fixed', async (c) => {
+    if (c.env.TEST_HOOKS !== '1') return c.notFound();
+    const body = await c.req.json<{ atMs?: unknown }>();
+    if (body.atMs === null) {
+      setClockFixed(null);
+      return c.json({ atMs: null, now: new Date(now()).toISOString() });
+    }
+    const at = Number(body.atMs);
+    if (!Number.isFinite(at)) return c.json({ error: 'atMs must be a number or null' }, 400);
+    setClockFixed(at);
+    return c.json({ atMs: at, now: new Date(now()).toISOString() });
   });
 
   // LMS wave 2 (product-contract v2 on PIL-225, section 3, "Test clock"): fixes
