@@ -38,7 +38,7 @@ import { inProcess, startProductWith, type Product } from '../support/product.ts
 import type { InProcessWorker } from '../support/in-process.ts';
 import { onLocalD1 } from '../wave6/todo.ts';
 import {
-  ADMIN, AT, HADEER, KARIM5, MONA, NOUR6, OMAR, QL, QUIZ_CARD, RANA5, SALMA, W7A, W7_CSS_MAX, W7_MARK, YOUSSEF, annBlock, as, closeWave6, clockAt, publisherQuizzes, questionForm,
+  ADMIN, AT, HADEER, KARIM5, MONA, NOUR6, OMAR, QB_QUESTIONS, QL, QL_QUESTIONS, QUIZ_CARD, RANA5, SALMA, W7A, W7_CSS_MAX, W7_MARK, YOUSSEF, annBlock, as, closeWave6, clockAt, insertQuiz, publisherQuizzes, questionForm,
   resultsOf, wave4World, wave7BlockProblem, wave7World, withAt2, withW5a, withW6a, withW7a, withW7b, withW7d, withW7e, type Wave1World,
 } from './world.ts';
 
@@ -280,6 +280,17 @@ async function compareAll(p: Pair, only?: string[]): Promise<Result[]> {
 
 const report = (rs: Result[]) => rs.filter((r) => r.problem).slice(0, 5).map((r) => `${r.what}: ${r.problem}`).join('\n');
 
+/** W7-2 (AT-5.3, section 11 item 4): the pages that gain the one quiz statement, a subject page read as a learner, by staff or in a preview. */
+const SUBJECT_PAGES = [/^\/s\/[^/]+\/learn\/[^/?#]+(\?|$)/, /^\/s\/[^/]+\/preview\/learn\/[^/?#]+(\?|$)/];
+
+/** Every non-teacher request whose read count is not W6-main's (+1 on a 200 subject page, +0 elsewhere). */
+function learnerReadProblems(rs: Result[]): string {
+  return rs.filter((r) => !r.teacher).filter((r) => {
+    const plus = r.status === 200 && r.what.includes(' GET ') && SUBJECT_PAGES.some((re) => re.test(r.path)) ? 1 : 0;
+    return r.reads.cand !== r.reads.base + plus;
+  }).slice(0, 5).map((r) => `${r.what}: W6-main ${r.reads.base}, candidate ${r.reads.cand}`).join('\n');
+}
+
 describe('W7 AT-5.1 base comparison: with no quizzes every page is W6-main 6ce8366\'s, the teacher pages but for the quiz card', { concurrency: false }, () => {
   let p: Pair;
   let first: Promise<Result[]> | null = null;
@@ -326,6 +337,30 @@ describe('W7 AT-5.1 base comparison: with no quizzes every page is W6-main 6ce83
     t.diagnostic(`AT-5.2 editor (Hadeer, Mathematics) reads W6-main/candidate: ${JSON.stringify(pick('Hadeer', `/s/${s.id}/publish/edit/${s.math}`))}; subject admin page (Amal, Mathematics): ${JSON.stringify(pick('Amal', `/s/${s.id}/admin/topics/${s.math}`))}; ${teacher.length} teacher pages compared; CSS block ${Buffer.byteLength(block)} bytes (at most ${CSS_MAX})`);
     assert.equal(off.slice(0, 5).map((r) => `${r.what}: W6-main ${r.reads.base}, candidate ${r.reads.cand}`).join('\n'), '', 'every editor and subject admin page makes W6-main\'s count');
     assert.ok(Buffer.byteLength(block) <= CSS_MAX, 'the CSS block is at most 4 KB');
+  });
+
+  it('W7 AT-5.3 reads, learner side: the learner\'s subject page, the staff /learn page and the preview subject page make W6-main\'s count plus exactly one (the quiz statement); every other page W6-main\'s count', async (t) => {
+    const results = await noneYet();
+    const off = learnerReadProblems(results);
+    const subjectPages = results.filter((r) => r.status === 200 && r.what.includes(' GET ') && SUBJECT_PAGES.some((re) => re.test(r.path)));
+    t.diagnostic(`AT-5.3 (no quiz) ${results.length} requests: ${subjectPages.length} subject pages at W6-main's count + 1 (e.g. Salma ${JSON.stringify(subjectPages.find((r) => r.who === 'Salma')?.reads)}, Amal ${JSON.stringify(subjectPages.find((r) => r.who === 'Amal' && !r.path.includes('/preview/'))?.reads)}, a preview ${JSON.stringify(subjectPages.find((r) => r.path.includes('/preview/'))?.reads)}), every other page at W6-main's count`);
+    assert.ok(subjectPages.some((r) => r.who === 'Salma') && subjectPages.some((r) => r.path.includes('/preview/learn/')) && subjectPages.some((r) => r.who === 'Hadeer' && /^\/s\/[^/]+\/learn\//.test(r.path)), 'the learner\'s, the staff and the preview subject pages were measured');
+    assert.equal(off, '', 'one more statement on the subject pages, none elsewhere');
+  });
+
+  it('W7 AT-5.1b (QB only) with W7-a\'s QB (draft) alone on the candidate, every learner page is still W6-main\'s (and the subject pages still make one more statement)', async (t) => {
+    const cw = { ...p.w, p: { ...p.w.p, url: p.cand.url, sql: p.cand.sql } } as Wave1World;
+    await insertQuiz((q) => cw.p.sql(q), { id: W7A.QB, space: p.w.school.id, subject: p.w.school.math, title: 'Decimals', questions: QB_QUESTIONS, state: 'draft', created: AT.noon - 3_600_000 });
+    try {
+      const results = await compareAll(p, ['Salma', 'Omar C', 'Karim Test', 'Rana Test', 'Nour Test', 'Youssef', 'Amal', 'Hadeer']);
+      const per: Record<string, number> = {};
+      for (const r of results) per[r.who] = (per[r.who] ?? 0) + 1;
+      t.diagnostic(`AT-5.1b (QB only) ${results.length} requests compared with W6-main ${BASE_SHA.slice(0, 7)} (${JSON.stringify(per)})`);
+      assert.equal(report(results), '', 'every page answers as W6-main does (the teacher pages but for the quiz card)');
+      assert.equal(learnerReadProblems(results), '', 'with a quiz stored: still exactly one more statement on the subject pages');
+    } finally {
+      await cw.p.sql(`DELETE FROM quiz WHERE id = '${W7A.QB}'`);
+    }
   });
 
   it('W7 AT-4.3 (guardian and owner) with W7-a and W7-b on the candidate, every page of Mona and the owner is byte-identical to W6-main\'s on the same world, Arabic and English', async (t) => {
@@ -440,5 +475,125 @@ describe('W7 AT-5.2 reads at W7-e: the quiz list, the editor of QL, QL\'s result
     t.diagnostic(`AT-5.2 W7-e figures: ${figures.join('; ')}`);
     void AT;
     void SALMA;
+  });
+});
+
+// ------------------------------------------------- AT-5.3 at W7-e ----
+
+/** The readable-subject statement every learner address starts with (src/learning.ts readableSubject). */
+const SUBJECT_GATE = /^SELECT s\.id, s\.title, s\.publisher_user_id, s\.is_published, s\.chapters_in_order FROM subject s WHERE s\.id = \? AND s\.space_id = \?$/;
+/** The subject page's quiz statement (src/quiz.ts learnerQuizzes). */
+const QUIZ_SECTION = /FROM quiz LEFT JOIN quiz_attempt a ON[\s\S]*WHERE quiz\.space_id = \? AND quiz\.subject_id = \?/;
+/** The take and result pages' quiz read (src/quiz.ts quizToTake). */
+const QUIZ_TAKE = /FROM quiz LEFT JOIN quiz_attempt a ON[\s\S]*WHERE quiz\.id = \? AND quiz\.space_id = \?/;
+
+describe('W7 AT-5.3 reads at W7-e: the subject pages, the take page of QL, a sending and the result page', { concurrency: false }, () => {
+  let w: Wave1World;
+  before(async () => {
+    ({ w } = await wave7World());
+    await withW7d(w);
+    await withW7e(w);
+  });
+  after(() => closeWave6(w));
+
+  it('W7 AT-5.3 at W7-e: the quiz statement at most 30 rows, no question text returned, rows_read at most 1,000, at most 20 bound parameters; Salma\'s subject page at most W6-main\'s + 20 KB; take and result pages at most 10 statements and 2,000 rows read, the take page at most 150 KB; a sending at most 10 statements and one row written', async (t) => {
+    const worker = (w.p as Twin).worker;
+    assert.ok(worker, 'the in-process product (statement spy)');
+    const s = w.school;
+    const sqlite = worker.sqlite;
+    const rowsOf = (st: { sql: string; params: unknown[] }) => sqlite.prepare(st.sql).all(...(st.params as (string | number | null)[])) as Record<string, unknown>[];
+    const rowsRead = async (sts: { sql: string; params: unknown[] }[]) => {
+      let n = 0;
+      for (const st of sts) {
+        const meta = (await onLocalD1(sqlite, st)).meta;
+        assert.ok(typeof meta.rows_read === 'number', `local D1 reports rows_read (meta: ${JSON.stringify(meta)}); without it the step fails and the Builder raises it to the Lead`);
+        n += Number(meta.rows_read);
+      }
+      return n;
+    };
+    const figures: string[] = [];
+    const salma = await as(w, SALMA, 'en');
+    const amal = await as(w, ADMIN, 'en');
+    const hadeer = await as(w, HADEER, 'en');
+    // The three subject pages: the learner's, the staff /learn page and the preview subject page.
+    for (const [who, c, path] of [['Salma', salma, `/s/${s.id}/learn/${s.math}`], ['Amal', amal, `/s/${s.id}/learn/${s.math}`], ['Hadeer (preview)', hadeer, `/s/${s.id}/preview/learn/${s.math}`]] as const) {
+      const m = await measured(w, c, 'GET', path, who.includes('preview') ? /FROM subject s/ : SUBJECT_GATE);
+      assert.equal(m.status, 200, `${who} ${path}`);
+      const quiz = m.reads.filter((x) => QUIZ_SECTION.test(x.sql));
+      assert.equal(quiz.length, 1, `${who}: exactly one quiz statement`);
+      const rows = rowsOf(quiz[0]);
+      const read = await rowsRead(quiz);
+      // AMBER (comment 30cdbd23 to the Lead): the statement names questions_json only inside json_array_length, so one count
+      // per row comes back and no question text, answer or key leaves the database.
+      const named = [...quiz[0].sql.matchAll(/questions_json/g)].length;
+      const counted = [...quiz[0].sql.matchAll(/json_array_length\(quiz\.questions_json\)/g)].length;
+      assert.equal(named, counted, `${who}: the questions column appears only inside json_array_length`);
+      assert.deepEqual(Object.keys(rows[0] ?? {}).sort(), ['id', 'questions', 'score', 'title', 'total'], `${who}: the rows hold no question text, answer or key`);
+      assert.ok(rows.every((r) => typeof r.questions === 'number'), `${who}: questions is a count`);
+      // The delegate's condition 1 (comment 4ab13626): mechanically, no returned value is a question text, an answer text,
+      // an answer id or a right-answer id of any stored quiz, and the SQL is printed.
+      const stored = (sqlite.prepare('SELECT questions_json FROM quiz').all() as { questions_json: string }[])
+        .flatMap((r) => JSON.parse(r.questions_json) as { id: string; text: string; rightId: string; answers: { id: string; text: string }[] }[]);
+      const exact = new Set(stored.flatMap((q) => [q.id, q.rightId, ...q.answers.flatMap((a) => [a.id, a.text])]));
+      const texts = stored.map((q) => q.text);
+      assert.ok(stored.length >= 50, `${who}: the scan covers every stored question (${stored.length})`);
+      for (const r of rows) {
+        for (const [k, v] of Object.entries(r)) {
+          if (k === 'id' || v === null || typeof v === 'number') continue;
+          assert.ok(!exact.has(String(v)), `${who}: ${k} "${v}" is not an answer, an answer id or a key`);
+          assert.ok(!texts.some((q) => String(v).includes(q)), `${who}: ${k} holds no question text`);
+        }
+      }
+      t.diagnostic(`${who} quiz statement SQL: ${quiz[0].sql.replace(/\s+/g, ' ')}`);
+      assert.ok(rows.length <= 30, `${who}: the quiz statement returns at most 30 rows (${rows.length})`);
+      assert.ok(read <= 1000, `${who}: its rows_read at most 1,000 (${read})`);
+      assert.ok(m.maxParams <= 20, `${who}: no statement has more than 20 bound parameters (${m.maxParams})`);
+      figures.push(`${who} subject page: ${m.total} statements, quiz statement ${rows.length} rows, rows_read ${read}, largest bound-parameter count ${m.maxParams}, ${(m.bytes / 1024).toFixed(1)} KB`);
+      if (who === 'Salma') {
+        // W6-main's same page: the candidate's page with the quiz section and the wave 7 CSS block cut, which AT-5.1b proves is
+        // W6-main's page byte for byte (the section is the only change on a learner page, the block the only change of the style).
+        const style = HEAD_STYLE.exec(m.body)![2];
+        const block = style.slice(style.indexOf(MARK));
+        const section = /\n<section id="quizzes" class="card quiz-section"[\s\S]*?<\/section>/.exec(m.body)![0];
+        const base = m.bytes - Buffer.byteLength(section) - Buffer.byteLength(block);
+        const extra = m.bytes - base;
+        figures.push(`Salma's subject page ${m.bytes} B, W6-main's same page ${base} B, + ${extra} B (section ${Buffer.byteLength(section)} B, CSS block ${Buffer.byteLength(block)} B)`);
+        assert.ok(extra <= 20 * 1024, `Salma's subject page at most W6-main's + 20 KB (+${extra} B)`);
+      }
+    }
+    // The take page of QL (Salma has not taken it), her sending, then the result page.
+    const take = await measured(w, salma, 'GET', `/s/${s.id}/quiz/${QL}`, QUIZ_TAKE);
+    assert.equal(take.status, 200);
+    const takeRead = await rowsRead(take.reads);
+    figures.push(`QL take page: ${take.total} statements, rows_read ${takeRead}, largest bound-parameter count ${take.maxParams}, ${(take.bytes / 1024).toFixed(1)} KB`);
+    assert.ok(take.total <= 10, `the take page at most 10 statements (${take.total})`);
+    assert.ok(takeRead <= 2000, `the take page's rows_read at most 2,000 (${takeRead})`);
+    assert.ok(take.bytes <= 150 * 1024, `the take page at most 150 KB (${take.bytes})`);
+    const picks: Record<string, string> = { rev: '0' };
+    for (const [i, q] of QL_QUESTIONS.entries()) if (i % 2 === 0) picks[`q-${q.id}`] = q.answers[0].id;
+    const count = async () => Number((await w.p.sql(`SELECT COUNT(*) AS n FROM quiz_attempt WHERE quiz_id = '${QL}'`))[0].n);
+    const before = await count();
+    const sent = await measured(w, salma, 'POST', `/s/${s.id}/quiz/${QL}`, QUIZ_TAKE, picks);
+    assert.equal(sent.status, 303, 'the sending answers 303');
+    const after = await count();
+    const insert = sent.writes.filter((x) => /^\s*INSERT INTO quiz_attempt\b/.test(x.sql));
+    assert.equal(insert.length, 1, 'one attempt insert');
+    // D1's own rows_written for that insert: run again on a local D1 holding the database as it was before it.
+    const mine = String((await w.p.sql(`SELECT id FROM quiz_attempt WHERE quiz_id = '${QL}' AND learner_user_id = '${w.ids[SALMA.username]}'`))[0].id);
+    sqlite.prepare('DELETE FROM quiz_attempt WHERE id = ?').run(mine);
+    const meta = (await onLocalD1(sqlite, insert[0])).meta;
+    sqlite.prepare(insert[0].sql).run(...(insert[0].params as (string | number | null)[]));
+    const otherWrites = sent.writes.filter((x) => !/^\s*INSERT INTO quiz_attempt\b/.test(x.sql)).map((x) => x.sql.replace(/\s+/g, ' ').slice(0, 60));
+    figures.push(`QL sending: ${sent.total} statements, ${sent.writes.length} writes (${['the attempt insert', ...otherWrites].join(', ')}), quiz_attempt rows ${before} -> ${after}, D1 meta.rows_written ${JSON.stringify(meta.rows_written)} (changes ${JSON.stringify(meta.changes)})`);
+    assert.ok(sent.total <= 10, `a sending at most 10 statements (${sent.total})`);
+    assert.equal(after - before, 1, 'exactly one quiz_attempt row written');
+    assert.equal(Number(meta.changes ?? 1), 1, 'D1: one row changed');
+    const result = await measured(w, salma, 'GET', `/s/${s.id}/quiz/${QL}/result`, QUIZ_TAKE);
+    assert.equal(result.status, 200);
+    const resultRead = await rowsRead(result.reads);
+    figures.push(`QL result page: ${result.total} statements, rows_read ${resultRead}, ${(result.bytes / 1024).toFixed(1)} KB`);
+    assert.ok(result.total <= 10, `the result page at most 10 statements (${result.total})`);
+    assert.ok(resultRead <= 2000, `the result page's rows_read at most 2,000 (${resultRead})`);
+    t.diagnostic(`AT-5.3 W7-e figures: ${figures.join('; ')}`);
   });
 });

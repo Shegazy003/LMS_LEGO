@@ -39,6 +39,8 @@ const GATES = [
   { prefix: '/s/:spaceId/preview', gate: '/s/:spaceId/preview/*' },
   // LMS wave 2 (W2-1, AT-2.2): the mark address, for a learner only.
   { prefix: '/s/:spaceId/read/:lessonId/done', gate: '/s/:spaceId/read/:lessonId/done' },
+  // LMS wave 7 (W7-2, contract section 7): the learner's quiz addresses; a sending is a learner's only.
+  { prefix: '/s/:spaceId/quiz', gate: '/s/:spaceId/quiz/*' },
 ];
 
 /** Data-changing routes that are not role pages, each for a stated reason. */
@@ -221,6 +223,12 @@ test('role guard: every route that changes data or serves an admin or publisher 
       assert.ok(!handlers.some((r) => r.method !== 'POST' && r.path === base + path), `${base}${path} answers POST only (GET and HEAD have no route)`);
     }
   }
+  // LMS wave 7, W7-2 (AT-3, AT-4.4): the learner's quiz addresses and the preview's, so this check and the sweep cover them.
+  for (const [method, path] of [['GET', '/s/:spaceId/quiz/:quizId'], ['POST', '/s/:spaceId/quiz/:quizId'], ['GET', '/s/:spaceId/quiz/:quizId/result'],
+    ['GET', '/s/:spaceId/preview/quiz/:quizId'], ['POST', '/s/:spaceId/preview/quiz/:quizId']]) {
+    assert.ok(handlers.some((r) => r.method === method && r.path === path), `the quiz address ${method} ${path} is a gated route`);
+  }
+  assert.ok(!handlers.some((r) => r.method !== 'GET' && r.path === '/s/:spaceId/quiz/:quizId/result'), 'the result address answers GET only');
   assert.deepEqual(ungated(routes, declared), [], 'register role routes under their gated prefix, after the gate');
 });
 
@@ -265,6 +273,15 @@ describe('role guard: in the running product, every gated route refuses people w
     const subject = s.subjects.Mathematics;
     const lesson = subject.chapters.Fractions.lessons['Adding fractions'];
     ids = { subjectId: subject.id, chapterId: subject.chapters.Fractions.id, lessonId: lesson.id, materialId: lesson.materials.Worksheet, id: spaceId };
+    // LMS wave 7 (W7-2): an open quiz with one question, made through the publisher's pages, so the sweep has a real quiz id.
+    const hadeer = await signedIn(worker.url, people.hadeer.username, people.hadeer.password);
+    const list = `/s/${spaceId}/publish/edit/${subject.id}/quizzes`;
+    const made = await hadeer.post(list, { title: 'Sweep quiz' });
+    assert.equal(made.status, 303, 'the sweep quiz is created');
+    ids.quizId = (made.headers.get('location') ?? '').split('?')[0].split('/').pop()!;
+    const question: Record<string, string> = { text: 'One?', answer1: 'Yes', answer2: 'No', right: '1', rev: '0' };
+    assert.equal((await hadeer.post(`${list}/${ids.quizId}/question`, question)).status, 303, 'its question is added');
+    assert.equal((await hadeer.post(`${list}/${ids.quizId}/open`, { rev: '1' })).status, 303, 'it is opened');
   });
 
   after(async () => {
@@ -293,6 +310,16 @@ describe('role guard: in the running product, every gated route refuses people w
       if (under(r.path, '/s/:spaceId/read/:lessonId/done')) {
         assert.equal((await send(admin)).status, 403, `${r.method} ${r.path} refused for an admin (not a learner)`);
         assert.equal((await send(publisher)).status, 403, `${r.method} ${r.path} refused for a publisher (not a learner)`);
+        assert.notEqual((await send(learner)).status, 403, `${r.method} ${r.path} admitted for the learner`);
+        continue;
+      }
+      // LMS wave 7 (W7-2): the quiz addresses are the learner's; a sending by anyone else is refused at the gate.
+      if (under(r.path, '/s/:spaceId/quiz')) {
+        if (r.method !== 'GET') {
+          assert.equal((await send(admin)).status, 403, `${r.method} ${r.path} refused for an admin (not a learner)`);
+          assert.equal((await send(publisher)).status, 403, `${r.method} ${r.path} refused for a publisher (not a learner)`);
+        }
+        // Without a rev the sending is refused by the page (409), after the gate let the learner in; nothing is stored.
         assert.notEqual((await send(learner)).status, 403, `${r.method} ${r.path} admitted for the learner`);
         continue;
       }

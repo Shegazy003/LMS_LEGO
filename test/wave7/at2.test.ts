@@ -75,9 +75,10 @@ describe('W7 AT-2 the teacher sees results; nobody else does (W7-b)', { concurre
     const verdicts = sections.map((x) => textOf(/<p class="quiz-verdict [a-z-]+">([\s\S]*?)<\/p>/.exec(x)![1]));
     assert.deepEqual(verdicts, [en('quizRight'), en('quizWrong'), en('quizNoAnswer')], 'right, wrong, no answer');
     const tagsOf = (x: string) => [...x.matchAll(/<li class="quiz-answer[^"]*">([\s\S]*?)<\/li>/g)].map((m) => textOf(m[1]));
-    assert.deepEqual(tagsOf(sections[0]), ['2/6', `✓ 3/4 ${en('quizChosen')} ${en('quizRightMark')}`, '1/8'], 'question 1: chosen and right');
-    assert.deepEqual(tagsOf(sections[1]), [`✗ 1/5 ${en('quizChosen')}`, '1/4', '1/3', `✓ 1/2 ${en('quizRightMark')}`], 'question 2: the wrong choice and the right one');
-    assert.deepEqual(tagsOf(sections[2]), [`✓ True ${en('quizRightMark')}`, 'False'], 'question 3: no choice, the right one');
+    // W7-2 (the PM's W7-1 advisory): each mark follows a " · " separator, so the two marks never run together.
+    assert.deepEqual(tagsOf(sections[0]), ['2/6', `✓ 3/4 · ${en('quizChosen')} · ${en('quizRightMark')}`, '1/8'], 'question 1: chosen and right');
+    assert.deepEqual(tagsOf(sections[1]), [`✗ 1/5 · ${en('quizChosen')}`, '1/4', '1/3', `✓ 1/2 · ${en('quizRightMark')}`], 'question 2: the wrong choice and the right one');
+    assert.deepEqual(tagsOf(sections[2]), [`✓ True · ${en('quizRightMark')}`, 'False'], 'question 3: no choice, the right one');
     // No attempt: quizResultsNone.
     const none = resultsOf_(await html(hadeer, resultsOf(list, W7A.QB)));
     assert.ok(none.none && none.rows.length === 0 && none.stats.length === 0, 'quizResultsNone');

@@ -330,12 +330,13 @@ export function editorQuestionsOf(html: string) {
 
 /** The status line of a page (role="status"), its text, or null. */
 export const statusOf = (html: string) => {
-  const m = /<p class="quiz-status [a-z]+" role="status" tabindex="-1">([\s\S]*?)<\/p>/.exec(html);
+  // W7-2: the learner pages have no script, so their status line takes focus by `autofocus`.
+  const m = /<p class="quiz-status [a-z]+" role="status" tabindex="-1"(?: autofocus)?>([\s\S]*?)<\/p>/.exec(html);
   return m ? textOf(m[1]) : null;
 };
 /** The top message (role="alert"), or null. */
 export const messageOf = (html: string) => {
-  const m = /<p id="quiz-message" class="error" role="alert" tabindex="-1">([\s\S]*?)<\/p>/.exec(html);
+  const m = /<p id="quiz-message" class="error" role="alert" tabindex="-1"(?: autofocus)?>([\s\S]*?)<\/p>/.exec(html);
   return m ? textOf(m[1]) : null;
 };
 /** Every field error on the page, with the field it is tied to (aria-describedby). */

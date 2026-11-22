@@ -123,7 +123,10 @@ async function pair(opts: { dates: boolean; activity: boolean }): Promise<Pair> 
   await b0.worker.settle();
   const file = join(tmpdir(), `lms-w6c-base-${process.pid}-${Date.now()}.sqlite`);
   b0.worker.sqlite.exec(`VACUUM INTO '${file.replace(/'/g, "''")}'`);
-  const cand = await inProcess({ sqlite: new DatabaseSync(file), files: b0.worker.files });
+  const copy = new DatabaseSync(file);
+  // LMS wave 7 (W7-2, contract v2 on PIL-261, section 11 item 3): the candidate's subject pages read quizzes, so the copy gains that migration (none stored).
+  copy.exec(readFileSync(join(repo, 'migrations', '0016_quizzes.sql'), 'utf8'));
+  const cand = await inProcess({ sqlite: copy, files: b0.worker.files });
   return {
     w, base: b0, cand, load: load!, a: a!, b: nile!,
     people: people.map((p) => ({ who: p.who, base: p.c, cand: twin(p.c, cand.url) })),
@@ -335,7 +338,9 @@ const per = (rs: Result[]) => {
 function readsProblems(rs: Result[], activityOn: boolean): string {
   const off = rs.filter((r) => {
     const linked = activityOn && r.status === 200 && r.what.includes(' GET ') && LINKED.test(r.path);
-    return r.reads.cand !== r.reads.base + (linked ? 1 : 0) || (LINKED.test(r.path) && r.todo !== (linked ? 1 : 0));
+    // LMS wave 7 (W7-2, contract v2 on PIL-261, section 11 item 4): a subject's /learn page and the preview subject page read its quizzes once more.
+    const quiz = r.status === 200 && r.what.includes(' GET ') && /^\/s\/[^/]+\/(preview\/)?learn\/[^/?#]+(\?|$)/.test(r.path) ? 1 : 0;
+    return r.reads.cand !== r.reads.base + (linked ? 1 : 0) + quiz || (LINKED.test(r.path) && r.todo !== (linked ? 1 : 0));
   });
   return off.slice(0, 5).map((r) => `${r.what}: W6-1b-main ${r.reads.base}, candidate ${r.reads.cand}, to-do statements ${r.todo}`).join('\n');
 }

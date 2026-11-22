@@ -107,6 +107,8 @@ async function pair(opts: { load?: boolean } = {}): Promise<Pair> {
   b.worker.sqlite.exec(`VACUUM INTO '${file.replace(/'/g, "''")}'`);
   const copy = new DatabaseSync(file);
   copy.exec(readFileSync(join(repo, 'migrations', MIGRATION), 'utf8'));
+  // LMS wave 7 (W7-2, contract v2 on PIL-261, section 11 item 3): the candidate's subject pages read quizzes, so the copy gains that migration too (none stored).
+  copy.exec(readFileSync(join(repo, 'migrations', '0016_quizzes.sql'), 'utf8'));
   const cand = await inProcess({ sqlite: copy, files: b.worker.files });
   const [{ n }] = (await cand.sql('SELECT (SELECT COUNT(*) FROM lesson WHERE due_on IS NOT NULL) + (SELECT COUNT(*) FROM chapter WHERE due_on IS NOT NULL) AS n')) as { n: number }[];
   if (Number(n) !== 0) {
@@ -407,7 +409,11 @@ describe('W6 AT-4.1 base comparison: with no due dates every page is W5-main f01
     const PREVIEW_HOME = /^\/s\/[^/]+\/preview(\?|$)/;
     // W6-1c (contract v3 addendum on PIL-265, G9.5): while lesson activity is on (this world), the linked learner's page reads the to-do list too.
     const plusOne = (r: Result) => r.status === 200 && r.what.includes(' GET ') && ((LEARNERS.has(r.who) && HOME.test(r.path)) || PREVIEW_HOME.test(r.path) || (r.who === 'Mona' && LINKED_PAGE.test(r.path)));
-    const off = results.filter((r) => r.reads.cand !== r.reads.base + (plusOne(r) ? 1 : 0));
+    // LMS wave 7 (W7-2, contract v2 on PIL-261, section 11 item 4): the subject's /learn page and the preview subject page
+    // read the subject's quizzes once more (exactly one more statement, nothing else).
+    const SUBJECT_PAGE = /^\/s\/[^/]+\/(preview\/)?learn\/[^/?#]+(\?|$)/;
+    const quizRead = (r: Result) => (r.status === 200 && r.what.includes(' GET ') && SUBJECT_PAGE.test(r.path) ? 1 : 0);
+    const off = results.filter((r) => r.reads.cand !== r.reads.base + (plusOne(r) ? 1 : 0) + quizRead(r));
     const homes = results.filter(plusOne);
     t.diagnostic(`AT-3.4b small world: ${results.length} requests counted; ${homes.length} learner and preview homes at W5-main's count plus one (e.g. Salma ${JSON.stringify(homes.find((r) => r.who === 'Salma')?.reads)}), every other page W5-main's count`);
     assert.ok(homes.some((r) => r.who === 'Salma') && homes.some((r) => r.who === 'Amal') && homes.some((r) => r.who === 'Hadeer'), 'the learner home and both previews were counted');

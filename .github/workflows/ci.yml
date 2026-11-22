@@ -1703,7 +1703,7 @@ jobs:
   # expectation is its own step; the product runs in this process so the statement spy is available.
   wave-7:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 75
     env:
       WRANGLER_SEND_METRICS: "false"
       LMS_TEST_RUNTIME: in-process
@@ -1800,9 +1800,58 @@ jobs:
       - name: W7 AT-6.5 the README on export, backup and personal data
         if: success() || failure()
         run: npm run test:wave3b -- --test-name-pattern='^W7 AT-6\.5 ' test/wave7/at6.test.ts
-      - name: W7 deploy note
+      # W7-2: the learner takes a quiz and sees the result (AT-3, AT-4.1, AT-4.2 learner pages, AT-4.4).
+      - name: W7 AT-3.1 subject page section, place and absence, and at W7-e QL first, 4 taken, 25 in the fold
         if: success() || failure()
-        run: npm run test:wave3b -- --test-name-pattern='^W7 deploy note' test/wave7/at6.test.ts
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-3\.1 ' test/wave7/at3.test.ts
+      - name: W7 AT-3.2 take and send, one attempt stored
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-3\.2 ' test/wave7/at3.test.ts
+      - name: W7 AT-3.3 result page, marks and verdicts, the score on the subject page
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-3\.3 ' test/wave7/at3.test.ts
+      - name: W7 AT-3.4 once only
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-3\.4 ' test/wave7/at3.test.ts
+      - name: W7 AT-3.5 changes while taking (closed, changed, invalid, closed after, ended session)
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-3\.5 ' test/wave7/at3.test.ts
+      - name: W7 AT-3.6 everyone with their own result
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-3\.6 ' test/wave7/at3.test.ts
+      - name: W7 AT-3.7 access and removal
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-3\.7 ' test/wave7/at3.test.ts
+      - name: W7 AT-3.8 staff on the learner address
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-3\.8 ' test/wave7/at3.test.ts
+      - name: W7 AT-3.9 kits and languages
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-3\.9 ' test/wave7/at3.test.ts
+      - name: W7 AT-3.10 the two tasks joined (real lock, results on real rows, the race)
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-3\.10 ' test/wave7/at3.test.ts
+      - name: W7 AT-4.1a no key before sending, two worlds byte-identical
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-4\.1a ' test/wave7/at4-learner.test.ts
+      - name: W7 AT-4.1b no key before sending, the markup scan
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-4\.1b ' test/wave7/at4-learner.test.ts
+      - name: W7 AT-4.1d scoring on the server, no script element on any learner page
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-4\.1d ' test/wave7/at4-learner.test.ts
+      - name: W7 AT-4.2 safe text on the learner pages (subject, take, result and previews)
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-4\.2 \(learner' test/wave7/at4-learner.test.ts
+      - name: W7 AT-4.4 (a and b) preview section and take page are Nour Test's, a draft's too
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-4\.4 \(a and b\)' test/wave7/at4-learner.test.ts
+      - name: W7 AT-4.4 (c) a preview POST is scored and stores nothing
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-4\.4 \(c\)' test/wave7/at4-learner.test.ts
+      - name: W7 AT-4.4 (d) wave 3a's AT-3.1 to AT-3.5 with quizzes present
+        if: success() || failure()
+        run: npm run test:wave3b -- test/wave3a/at3.test.ts
       - name: UX-68 quiz card place, order and labels
         if: success() || failure()
         run: npm run test:wave3b -- --test-name-pattern='^UX-68 ' test/wave7/ux.test.ts
@@ -1836,6 +1885,33 @@ jobs:
       - name: UX-79 widths, targets, contrast and keyboard
         if: success() || failure()
         run: npm run test:wave3b -- --test-name-pattern='^UX-79 ' test/wave7/ux.test.ts
+      - name: UX-72 subject page quiz section place, order, fold and absence
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-72 ' test/wave7/ux-learner.test.ts
+      - name: UX-73 take page structure and labels
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-73 take page structure' test/wave7/ux-learner.test.ts
+      - name: UX-73 take page errors and kept answers
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-73 take page errors' test/wave7/ux-learner.test.ts
+      - name: UX-74 result page words, marks and order
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-74 ' test/wave7/ux-learner.test.ts
+      - name: UX-76 preview quiz equals learner and saves nothing
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-76 ' test/wave7/ux-learner.test.ts
+      - name: UX-77 language check by key (three kits) on the learner pages
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-77 language check by key' test/wave7/ux-learner.test.ts
+      - name: UX-77 bdi and dir auto on quiz text (learner pages)
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-77 bdi and dir auto' test/wave7/ux-learner.test.ts
+      - name: UX-78 states table (learner screens)
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-78 ' test/wave7/ux-learner.test.ts
+      - name: UX-79 widths, targets, contrast and keyboard (learner pages)
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-79 ' test/wave7/ux-learner.test.ts
       # AT-5.1, AT-5.2 and AT-4.3's byte-identical guardian and owner pages: W6-main 6ce8366 (pinned) runs beside this commit,
       # in the same process, on a copy of the same database (test/wave7/base.test.ts reads it from LMS_BASE_ROOT).
       - name: Check out W6-main 6ce8366 for the base comparison (code only, never run but by the comparison)
@@ -1854,7 +1930,22 @@ jobs:
         if: success() || failure()
         env:
           LMS_BASE_ROOT: ${{ github.workspace }}/.base-w7
-        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-5\.1b ' test/wave7/base.test.ts
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-5\.1b \(every' test/wave7/base.test.ts
+      - name: W7 AT-5.1b (QB only) with W7-a's QB (draft) alone every learner page is still W6-main 6ce8366's
+        if: success() || failure()
+        env:
+          LMS_BASE_ROOT: ${{ github.workspace }}/.base-w7
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-5\.1b \(QB only\)' test/wave7/base.test.ts
+      - name: W7 AT-5.3 reads on the learner side, W6-main 6ce8366's count plus exactly one
+        if: success() || failure()
+        env:
+          LMS_BASE_ROOT: ${{ github.workspace }}/.base-w7
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-5\.3 reads, learner' test/wave7/base.test.ts
+      - name: W7 AT-5.3 reads at W7-e (subject pages, take page of QL, a sending, the result), the figures and the SQL printed
+        if: success() || failure()
+        env:
+          LMS_BASE_ROOT: ${{ github.workspace }}/.base-w7
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-5\.3 (reads )?at W7-e' test/wave7/base.test.ts
       - name: W7 AT-5.2 reads on the teacher side against W6-main 6ce8366 and at W7-e, the figures printed
         if: success() || failure()
         env:

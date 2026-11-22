@@ -116,6 +116,8 @@ async function pair(): Promise<Pair> {
   copy.exec(readFileSync(join(repo, 'migrations', MIGRATION), 'utf8'));
   // LMS wave 6 (contract on PIL-257, section 11 item 3): the candidate reads due dates, so its copy gains that migration too (none stored).
   copy.exec(readFileSync(join(repo, 'migrations', '0015_due_dates.sql'), 'utf8'));
+  // LMS wave 7 (W7-2, contract v2 on PIL-261, section 11 item 3): the candidate's subject pages read quizzes, so the copy gains that migration too (none stored).
+  copy.exec(readFileSync(join(repo, 'migrations', '0016_quizzes.sql'), 'utf8'));
   const cand = await inProcess({ sqlite: copy, files: b.worker.files });
   const [{ n }] = (await cand.sql('SELECT COUNT(*) AS n FROM announcement')) as { n: number }[];
   if (Number(n) !== 0) {
@@ -322,9 +324,11 @@ function extraReads(r: Result, spaces: string[]): number {
   // LMS wave 6 (W6-1b, product-contract v2 on PIL-257, AT-3.4b): the learner home and the preview home also read the
   // to-do list once (W5-main's count plus exactly one). Named in CANDIDATE READY (outside section 11; the Lead decides).
   if (rest === '' && ['Salma', 'Omar C', 'Karim Test', 'Youssef', 'Load learner'].includes(r.who)) return 1 + 1;
-  if (/^\/learn\/[^/]+$/.test(rest)) return 1; // the subject's /learn page (learner, admin, publisher)
+  // LMS wave 7 (W7-2, contract v2 on PIL-261, section 11 item 4): the subject's /learn page and the preview subject page
+  // also read the subject's quizzes once (exactly one more statement).
+  if (/^\/learn\/[^/]+$/.test(rest)) return 1 + 1; // the subject's /learn page (learner, admin, publisher)
   if (rest === '/preview') return 1 + 1; // the preview home (and wave 6's to-do read)
-  if (/^\/preview\/learn\/[^/]+$/.test(rest)) return 1; // the preview subject page
+  if (/^\/preview\/learn\/[^/]+$/.test(rest)) return 1 + 1; // the preview subject page (and wave 7's quiz read)
   if (/^\/publish\/edit\/[^/]+$/.test(rest) || /^\/admin\/topics\/[^/]+$/.test(rest)) return 1; // the editor and the subject admin page (the card's list)
   // LMS wave 6 (W6-1c, product-contract v3 addendum on PIL-265, G9.5): a linked learner's page reads that learner's
   // to-do list once while lesson activity is on in its space (W5-main's count plus exactly one, AT-6.4).
@@ -464,7 +468,8 @@ describe('W5 AT-4.1 base comparison: with no announcements every page is main b8
     const amalHome = none.find((r) => r.who === 'Amal' && r.path === `/s/${p.w.school.id}`)!;
     assert.equal(amalHome.reads.cand, amalHome.reads.base, 'Amal (admin and learner): her admin home is main\'s count');
     const amalLearn = none.find((r) => r.who === 'Amal' && r.path === `/s/${p.w.school.id}/learn/${p.w.school.math}`)!;
-    assert.equal(amalLearn.reads.cand, amalLearn.reads.base + 1, 'Amal (admin and learner): her /learn page is main\'s plus one');
+    // LMS wave 7 (W7-2, section 11 item 4): plus wave 7's one quiz read.
+    assert.equal(amalLearn.reads.cand, amalLearn.reads.base + 1 + 1, 'Amal (admin and learner): her /learn page is main\'s plus one (and wave 7\'s quiz read)');
     assert.ok(maxParams <= 20, `at most 20 bound parameters in any statement (${maxParams}); no IN list of subject ids`);
     // The blocks really showed in crawl C (so the counts above are with announcements on the page).
     const salmaHome = small.find((r) => r.who === 'Salma' && r.path === `/s/${p.w.school.id}`)!;
