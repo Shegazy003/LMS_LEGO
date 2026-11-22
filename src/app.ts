@@ -43,6 +43,13 @@ import {
 } from './views/announcements.ts';
 import { DUE_MAX_DAYS, TODO_MAX_PER_GROUP, dueChoice, dueItem, dueOutline, isDueKind, todoGroups, todoWindow, writeDue, type DueChapter, type DueWriter } from './due.ts';
 import { dueCard, duePage, type DueRefusal, type DueStatus } from './views/due.ts';
+import {
+  ANSWER_FIELDS, QUIZ_OPTIONS_MAX, QUIZ_OPTIONS_MIN, QUIZ_OPTION_MAX, QUIZ_PER_SUBJECT_MAX, QUIZ_QUESTIONS_MAX, QUIZ_RESULTS_PAGE, QUIZ_TEXT_MAX, QUIZ_TITLE_MAX,
+  cleanTitle, copyQuiz, createQuiz, isStateAction, questionFrom, quizAttemptOf, quizCount, quizOf, quizResults, quizSummary, quizzesOf, readQuestion,
+  withNewIds, writeQuestions, writeRemoved, writeRestored, writeState, writeTitle,
+  type QuestionInput, type QuizListRow, type QuizQuestion, type QuizRow, type QuizWriter,
+} from './quiz.ts';
+import { quizAnswersPage, quizCard, quizEditorPage, quizListPage, quizResultsPage, type QuestionKept, type QuizEditorRefusal, type QuizEditorStatus, type QuizListStatus } from './views/quizzes.ts';
 import { normaliseCountryCode, normaliseMobile } from './phone.ts';
 import {
   addChapter, addLesson, addMaterial, editableChapter, editableLesson, editableMaterial, editableSubject, isDirection,
@@ -1856,6 +1863,8 @@ async function renderTopic(
     announcements,
     // LMS wave 6 (section 4.2): the due card, after the announcement card (a link only, no read).
     due: dueCard(t, lang, `/s/${view.id}/admin/topics/${topic.id}/due`),
+    // LMS wave 7 (section 4.2): the quiz card, after the due card (a link only, no read).
+    quizzes: quizCard(t, lang, `/s/${view.id}/admin/topics/${topic.id}/quizzes`, topic.title),
     topic,
     publishers: await publishersOf(db, view.id),
     sets: (await setsOf(db, view.id)).map((s) => ({ id: s.id, display_name: s.name })),
@@ -2015,7 +2024,7 @@ async function renderSubjectEditor(c: C, subject: SubjectRow, error?: LabelKey, 
   const parts = await outline(c.get('db'), view.id, subject.id);
   // LMS wave 5 (section 4.1): the announcement card after the card of Publish, Preview and the setting.
   const card = await announcementsOf(c, { subjectId: subject.id, role: 'publisher', page: subjectEditorPath(view.id, subject.id), published: subject.is_published === 1 }, refusal);
-  return page(c, subjectEditor(t, lang, view, subject, parts, error && t(error), notice, orderStatus(c, subject.chapters_in_order), card, dueCard(t, lang, `${subjectEditorPath(view.id, subject.id)}/due`)), error || refusal ? 400 : 200);
+  return page(c, subjectEditor(t, lang, view, subject, parts, error && t(error), notice, orderStatus(c, subject.chapters_in_order), card, dueCard(t, lang, `${subjectEditorPath(view.id, subject.id)}/due`), quizCard(t, lang, `${subjectEditorPath(view.id, subject.id)}/quizzes`, subject.title)), error || refusal ? 400 : 200);
 }
 
 // LMS wave 4 (product-contract v2 on PIL-238, section 4): the subject's "open
@@ -2316,6 +2325,332 @@ function dueRoutes(prefix: string, placeOf: (c: C) => Promise<DuePlace | null>) 
 
 dueRoutes('/s/:spaceId/publish/edit/:subjectId', publisherDuePlace);
 dueRoutes('/s/:spaceId/admin/topics/:subjectId', adminDuePlace);
+
+// ------------------------------------------------------------- quizzes ----
+// LMS wave 7, W7-1 (product-contract v2 on PIL-261, sections 4, 5.5 and 7):
+// a subject's quiz list and quiz editor, reached from the quiz card on the
+// responsible publisher's editor and on the admin's subject page, each behind
+// its own gate (publisher, admin; access ended and another site refused before
+// any lookup). The gate checks the address's subject first (403 when it is not
+// theirs here), then the quiz (404 unless it is this subject's; a removed quiz
+// is 404 but for Restore and the list). Each write is one gate read, one quiz
+// read and one write statement that repeats the gate; then 303 back to the
+// changed place with ?quiz=<status>. Only the responsible publisher, through
+// the publisher address, reads results (the admin address has no results page
+// until the owner decides, section 16 Q1). A quiz names no person.
+
+/** Where the quiz pages live: the subject, who writes, the page the list is reached from, the list itself, and whether results show. */
+interface QuizPlace extends DuePlace {
+  writer: QuizWriter;
+  list: string;
+  results: boolean;
+}
+
+async function publisherQuizPlace(c: C): Promise<QuizPlace | null> {
+  const place = await publisherDuePlace(c);
+  return place && { ...place, list: `${place.from}/quizzes`, results: true };
+}
+
+async function adminQuizPlace(c: C): Promise<QuizPlace | null> {
+  const place = await adminDuePlace(c);
+  return place && { ...place, list: `${place.from}/quizzes`, results: false };
+}
+
+const todayOf = () => utcDate(now());
+
+/** The list's status (section 4.2): ?quiz=removed / restored only when that quiz is so; failed always. */
+function quizListStatus(c: C, rows: QuizListRow[]): QuizListStatus {
+  const said = c.req.query('quiz');
+  const row = rows.find((r) => r.id === (c.req.query('id') ?? ''));
+  // A failed create has no quiz yet: the failed line shows without one.
+  if (said === 'failed') return { said, title: row?.title ?? '' };
+  if (!row) return null;
+  if (said === 'removed' && row.removed_at !== null) return { said, title: row.title };
+  if (said === 'restored' && row.removed_at === null) return { said, title: row.title };
+  return null;
+}
+
+async function renderQuizList(c: C, place: QuizPlace, refusal: { kept: string; error: string } | null = null, restoreRefused: string | null = null) {
+  const { t, lang, view } = spaceLabel(c);
+  const rows = await quizzesOf(c.get('db'), view.id, place.subjectId, place.results ? todayOf() : null);
+  const body = quizListPage(t, lang, view, {
+    subjectTitle: place.subjectTitle, back: place.from, path: place.list, rows, publisher: place.results,
+    status: refusal || restoreRefused ? null : quizListStatus(c, rows), refusal, restoreRefused,
+  });
+  return page(c, body, refusal || restoreRefused ? 400 : 200);
+}
+
+/** The editor's status (section 4.2): shown only when it matches the stored state of the quiz or question. */
+function quizEditorStatus(c: C, quiz: QuizRow): QuizEditorStatus {
+  const said = c.req.query('quiz') ?? '';
+  const question = c.req.query('q') ?? '';
+  const has = quiz.questions.some((x) => x.id === question);
+  switch (said) {
+    case 'created': return quiz.state === 'draft' ? { at: 'state', key: 'quizCreated' } : null;
+    case 'copied': return quiz.state === 'draft' ? { at: 'state', key: 'quizCopied' } : null;
+    case 'saved': return { at: 'state', key: 'quizSaved' };
+    case 'opened': return quiz.state === 'open' ? { at: 'state', key: 'quizOpened' } : null;
+    case 'closed': return quiz.state === 'closed' ? { at: 'state', key: 'quizClosed' } : null;
+    case 'failed': return has ? { at: 'question', key: 'markFailed', question } : { at: 'state', key: 'markFailed' };
+    case 'question-saved': return has ? { at: 'question', key: 'quizQuestionSaved', question } : null;
+    case 'question-removed': return question && !has ? { at: 'questions', key: 'quizQuestionRemoved' } : null;
+    default: return null;
+  }
+}
+
+function renderQuizEditor(
+  c: C,
+  place: QuizPlace,
+  quiz: QuizRow,
+  opts: { refusal?: QuizEditorRefusal; message?: { at: 'questions' | 'state'; text: string }; status?: 400 | 409 } = {},
+) {
+  const { t, lang, view } = spaceLabel(c);
+  const refused = Boolean(opts.refusal || opts.message);
+  const body = quizEditorPage(t, lang, view, {
+    list: place.list, subjectTitle: place.subjectTitle, quiz,
+    status: refused ? null : quizEditorStatus(c, quiz), refusal: opts.refusal ?? null, message: opts.message ?? null,
+  });
+  return page(c, body, opts.status ?? 200);
+}
+
+/** The values a refused question form keeps: what was typed, as typed (UX-71). */
+function keptQuestion(body: Record<string, unknown>): QuestionKept {
+  const str = (name: string) => (typeof body[name] === 'string' ? (body[name] as string) : '');
+  return { text: str('text').replace(/\r\n?/g, '\n'), answers: ANSWER_FIELDS.map(str), right: str('right') };
+}
+
+/** The quiz an address names, not removed (404 otherwise); with its place. */
+async function quizHere(c: C, place: QuizPlace, allowRemoved = false): Promise<QuizRow | null> {
+  const quiz = await quizOf(c.get('db'), c.get('space').id, place.subjectId, c.req.param('quizId') ?? '');
+  if (!quiz || (quiz.removed_at !== null && !allowRemoved)) return null;
+  return quiz;
+}
+
+/** Before a question write (add, change, remove): the lock first, then the loaded rev (409 with the latest version); null when both hold. */
+function questionGuard(c: C, place: QuizPlace, quiz: QuizRow, body: Record<string, unknown>) {
+  const { t } = spaceLabel(c);
+  if (quiz.locked) return renderQuizEditor(c, place, quiz, { message: { at: 'questions', text: t('quizLocked') }, status: 409 });
+  if (field(body, 'rev') !== String(quiz.rev)) return renderQuizEditor(c, place, quiz, { message: { at: 'questions', text: t('quizStale') }, status: 409 });
+  return null;
+}
+
+/** The question write itself: one statement guarded by the loaded rev and "no attempt exists"; null when stored. */
+async function questionSave(c: C, place: QuizPlace, quiz: QuizRow, questions: QuizQuestion[], at: string) {
+  const { t } = spaceLabel(c);
+  const db = c.get('db');
+  const spaceId = c.get('space').id;
+  try {
+    if (!(await writeQuestions(db, spaceId, place.subjectId, quiz.id, questions, quiz.rev, place.writer))) {
+      // The guard did not hold: an attempt arrived, another window saved, or the gate no longer holds (one more read, on this path only).
+      const now = await quizOf(db, spaceId, place.subjectId, quiz.id);
+      if (!now || now.removed_at !== null) return refuse(c, 404, 'notFound');
+      if (now.locked) return renderQuizEditor(c, place, now, { message: { at: 'questions', text: t('quizLocked') }, status: 409 });
+      if (now.rev !== quiz.rev) return renderQuizEditor(c, place, now, { message: { at: 'questions', text: t('quizStale') }, status: 409 });
+      return refuse(c, 403, 'noAccess');
+    }
+  } catch {
+    logError('quiz write failed');
+    return c.redirect(`${place.list}/${quiz.id}?quiz=failed${at}`, 303);
+  }
+  return null;
+}
+
+function quizRoutes(prefix: string, placeOf: (c: C) => Promise<QuizPlace | null>) {
+  const list = `${prefix}/quizzes`;
+  app.get(list, async (c) => {
+    const place = await placeOf(c);
+    if (!place) return refuse(c, 403, 'noAccess');
+    return renderQuizList(c, place);
+  });
+  // Create a draft (AT-1.1): one gate read, one write; 303 to its editor.
+  app.post(list, async (c) => {
+    const at = now();
+    const place = await placeOf(c);
+    if (!place) return refuse(c, 403, 'noAccess');
+    const { t } = spaceLabel(c);
+    const posted = await c.req.parseBody();
+    const typed = typeof posted.title === 'string' ? posted.title : '';
+    const clean = cleanTitle(typed);
+    if (clean === null) return renderQuizList(c, place, { kept: typed, error: t('quizTitleInvalid', { max: String(QUIZ_TITLE_MAX) }) });
+    const db = c.get('db');
+    const spaceId = c.get('space').id;
+    let id: string | null;
+    try {
+      id = await createQuiz(db, spaceId, place.subjectId, clean, place.writer, at);
+    } catch {
+      logError('quiz write failed');
+      return c.redirect(`${place.list}?quiz=failed`, 303);
+    }
+    if (id === null) {
+      // Refused: the subject is full (one read on this path only), or the gate no longer holds.
+      if ((await quizCount(db, spaceId, place.subjectId)) >= QUIZ_PER_SUBJECT_MAX) {
+        return renderQuizList(c, place, { kept: typed, error: t('quizLimit', { subjectTitle: place.subjectTitle, max: String(QUIZ_PER_SUBJECT_MAX) }) });
+      }
+      return refuse(c, 403, 'noAccess');
+    }
+    return c.redirect(`${place.list}/${id}?quiz=created`, 303);
+  });
+  app.get(`${list}/:quizId`, async (c) => {
+    const place = await placeOf(c);
+    if (!place) return refuse(c, 403, 'noAccess');
+    const quiz = await quizHere(c, place);
+    if (!quiz) return refuse(c, 404, 'notFound');
+    return renderQuizEditor(c, place, quiz);
+  });
+  // Add a question (AT-1.1, AT-1.2): the new question goes last; 303 to it.
+  app.post(`${list}/:quizId/question`, async (c) => {
+    const place = await placeOf(c);
+    if (!place) return refuse(c, 403, 'noAccess');
+    const quiz = await quizHere(c, place);
+    if (!quiz) return refuse(c, 404, 'notFound');
+    const { t } = spaceLabel(c);
+    const body = await c.req.parseBody();
+    const guard = questionGuard(c, place, quiz, body);
+    if (guard) return guard;
+    if (quiz.questions.length >= QUIZ_QUESTIONS_MAX) return renderQuizEditor(c, place, quiz, { message: { at: 'questions', text: t('quizFull', { max: String(QUIZ_QUESTIONS_MAX) }) }, status: 400 });
+    const input = readQuestion(body);
+    if (!input.ok) return renderQuizEditor(c, place, quiz, { refusal: questionRefusal(t, 'new', input, body), status: 400 });
+    const added = questionFrom(input);
+    const refused = await questionSave(c, place, quiz, [...quiz.questions, added], '');
+    if (refused) return refused;
+    return c.redirect(`${place.list}/${quiz.id}?quiz=question-saved&q=${added.id}#question-${added.id}`, 303);
+  });
+  // Change one question (AT-1.1, AT-1.5): each answer box keeps the id of the answer it showed.
+  app.post(`${list}/:quizId/question/:questionId`, async (c) => {
+    const place = await placeOf(c);
+    if (!place) return refuse(c, 403, 'noAccess');
+    const quiz = await quizHere(c, place);
+    if (!quiz) return refuse(c, 404, 'notFound');
+    const { t } = spaceLabel(c);
+    const qid = c.req.param('questionId');
+    const body = await c.req.parseBody();
+    const guard = questionGuard(c, place, quiz, body);
+    if (guard) return guard;
+    const i = quiz.questions.findIndex((x) => x.id === qid);
+    if (i < 0) return refuse(c, 404, 'notFound');
+    const input = readQuestion(body);
+    if (!input.ok) return renderQuizEditor(c, place, quiz, { refusal: questionRefusal(t, qid, input, body), status: 400 });
+    const out = [...quiz.questions];
+    out[i] = questionFrom(input, qid, quiz.questions[i].answers.map((a) => a.id));
+    const refused = await questionSave(c, place, quiz, out, `&q=${qid}#question-${qid}`);
+    if (refused) return refused;
+    return c.redirect(`${place.list}/${quiz.id}?quiz=question-saved&q=${qid}#question-${qid}`, 303);
+  });
+  app.post(`${list}/:quizId/question/:questionId/remove`, async (c) => {
+    const place = await placeOf(c);
+    if (!place) return refuse(c, 403, 'noAccess');
+    const quiz = await quizHere(c, place);
+    if (!quiz) return refuse(c, 404, 'notFound');
+    const qid = c.req.param('questionId');
+    const body = await c.req.parseBody();
+    const guard = questionGuard(c, place, quiz, body);
+    if (guard) return guard;
+    if (!quiz.questions.some((x) => x.id === qid)) return refuse(c, 404, 'notFound');
+    const refused = await questionSave(c, place, quiz, quiz.questions.filter((x) => x.id !== qid), '');
+    if (refused) return refused;
+    return c.redirect(`${place.list}/${quiz.id}?quiz=question-removed&q=${qid}#quiz-questions`, 303);
+  });
+  // The title, the state actions, remove, restore and copy (AT-1.3, AT-1.4, AT-1.7): allowed when locked.
+  app.post(`${list}/:quizId/:action`, async (c) => {
+    const at = now();
+    const place = await placeOf(c);
+    if (!place) return refuse(c, 403, 'noAccess');
+    const action = c.req.param('action');
+    if (!['title', 'open', 'close', 'reopen', 'remove', 'restore', 'copy'].includes(action)) return refuse(c, 404, 'notFound');
+    const quiz = await quizHere(c, place, action === 'restore');
+    if (!quiz) return refuse(c, 404, 'notFound');
+    const { t } = spaceLabel(c);
+    const db = c.get('db');
+    const spaceId = c.get('space').id;
+    const editor = `${place.list}/${quiz.id}`;
+    const body = await c.req.parseBody();
+    try {
+      if (action === 'title') {
+        const typed = typeof body.title === 'string' ? body.title : '';
+        const clean = cleanTitle(typed);
+        if (clean === null) return renderQuizEditor(c, place, quiz, { refusal: { form: 'title', kept: typed, error: t('quizTitleInvalid', { max: String(QUIZ_TITLE_MAX) }) }, status: 400 });
+        if (!(await writeTitle(db, spaceId, place.subjectId, quiz.id, clean, place.writer))) return refuse(c, 403, 'noAccess');
+        return c.redirect(`${editor}?quiz=saved#quiz-state`, 303);
+      }
+      if (isStateAction(action)) {
+        if (action === 'open' && quiz.questions.length === 0) return renderQuizEditor(c, place, quiz, { message: { at: 'state', text: t('quizNotReady') }, status: 400 });
+        // A press that no longer applies (another window moved the state) stores nothing; the status then shows nothing false.
+        await writeState(db, spaceId, place.subjectId, quiz.id, action, place.writer);
+        return c.redirect(`${editor}?quiz=${action === 'close' ? 'closed' : 'opened'}#quiz-state`, 303);
+      }
+      if (action === 'remove') {
+        await writeRemoved(db, spaceId, place.subjectId, quiz.id, place.writer, at);
+        return c.redirect(`${place.list}?quiz=removed&id=${quiz.id}`, 303);
+      }
+      const limit = t('quizLimit', { subjectTitle: place.subjectTitle, max: String(QUIZ_PER_SUBJECT_MAX) });
+      if (action === 'restore') {
+        if (quiz.removed_at !== null && quiz.inSubject >= QUIZ_PER_SUBJECT_MAX) return renderQuizList(c, place, null, limit);
+        await writeRestored(db, spaceId, place.subjectId, quiz.id, place.writer);
+        return c.redirect(`${place.list}?quiz=restored&id=${quiz.id}`, 303);
+      }
+      // copy
+      if (quiz.inSubject >= QUIZ_PER_SUBJECT_MAX) return renderQuizEditor(c, place, quiz, { refusal: { form: 'copy', error: limit }, status: 400 });
+      const id = await copyQuiz(db, spaceId, place.subjectId, quiz.id, withNewIds(quiz.questions), place.writer, at);
+      if (id === null) return refuse(c, 403, 'noAccess');
+      return c.redirect(`${place.list}/${id}?quiz=copied`, 303);
+    } catch {
+      logError('quiz write failed');
+      return c.redirect(action === 'remove' || action === 'restore' ? `${place.list}?quiz=failed&id=${quiz.id}` : `${editor}?quiz=failed#quiz-state`, 303);
+    }
+  });
+}
+
+/** A refused question form (400): the message beside the field it concerns, every typed value kept. */
+function questionRefusal(t: Label, question: string, input: Extract<QuestionInput, { ok: false }>, body: Record<string, unknown>): QuizEditorRefusal {
+  const error = input.error === 'quizTextInvalid'
+    ? t('quizTextInvalid', { max: String(QUIZ_TEXT_MAX) })
+    : input.error === 'quizOptionsInvalid'
+      ? t('quizOptionsInvalid', { min: String(QUIZ_OPTIONS_MIN), max: String(QUIZ_OPTIONS_MAX), len: String(QUIZ_OPTION_MAX) })
+      : t('quizCorrectInvalid');
+  return { form: 'question', question, field: input.field, error, kept: keptQuestion(body) };
+}
+
+quizRoutes('/s/:spaceId/publish/edit/:subjectId', publisherQuizPlace);
+quizRoutes('/s/:spaceId/admin/topics/:subjectId', adminQuizPlace);
+
+// The results (section 5.5, AT-2): the responsible publisher only, through the publisher address. The admin address has
+// no results page (AT-2.3). Pages of QUIZ_RESULTS_PAGE names; a page past the end is 404.
+const PUBLISHER_QUIZZES = '/s/:spaceId/publish/edit/:subjectId/quizzes';
+
+// The admin address has no results page (AT-2.3a): the admin, like anyone but the responsible publisher, gets 403.
+app.get('/s/:spaceId/admin/topics/:subjectId/quizzes/:quizId/results', (c) => refuse(c, 403, 'noAccess'));
+app.get('/s/:spaceId/admin/topics/:subjectId/quizzes/:quizId/results/:learnerId', (c) => refuse(c, 403, 'noAccess'));
+
+app.get(`${PUBLISHER_QUIZZES}/:quizId/results`, async (c) => {
+  const place = await publisherQuizPlace(c);
+  if (!place) return refuse(c, 403, 'noAccess');
+  const quiz = await quizHere(c, place);
+  if (!quiz) return refuse(c, 404, 'notFound');
+  const asked = c.req.query('page') ?? '1';
+  if (!/^[1-9]\d{0,4}$/.test(asked)) return refuse(c, 404, 'notFound');
+  const pageNo = Number(asked);
+  const db = c.get('db');
+  const today = todayOf();
+  const summary = await quizSummary(db, c.get('space').id, quiz.id, today, quiz.questions.length);
+  const pages = Math.max(1, Math.ceil(summary.n / QUIZ_RESULTS_PAGE));
+  if (pageNo > pages) return refuse(c, 404, 'notFound');
+  const rows = summary.n === 0 ? [] : await quizResults(db, c.get('space').id, quiz.id, today, pageNo);
+  const { t, lang, view } = spaceLabel(c);
+  return page(c, quizResultsPage(t, lang, view, { list: place.list, quiz, rows, count: summary.n, right: summary.right, page: pageNo, pages }));
+});
+
+app.get(`${PUBLISHER_QUIZZES}/:quizId/results/:learnerId`, async (c) => {
+  const place = await publisherQuizPlace(c);
+  if (!place) return refuse(c, 403, 'noAccess');
+  const quiz = await quizHere(c, place);
+  if (!quiz) return refuse(c, 404, 'notFound');
+  const attempt = await quizAttemptOf(c.get('db'), c.get('space').id, quiz.id, c.req.param('learnerId'), todayOf());
+  if (!attempt) return refuse(c, 404, 'notFound');
+  const { t, lang, view } = spaceLabel(c);
+  return page(c, quizAnswersPage(t, lang, view, {
+    results: `${place.list}/${quiz.id}/results`, quiz, name: attempt.display_name, answers: attempt.answers, score: attempt.score, total: attempt.question_count,
+  }));
+});
 
 /** The add-material chooser's state as the editor is asked for it (LMS wave 1, L2, section 8.2). */
 interface AddAsked {

@@ -19,7 +19,7 @@ import { UI } from '../../src/i18n/ui.ts';
 import type { World } from '../at9/world.ts';
 import {
   A, B, G1, G2, EXEMPT_KEYS, UPLOADED, activityIn, as, crawl, doneHits, doneWords, exemptRemoved, guardianPaths, isExemptPage, privacyWorld, resultsSection,
-  annHits, lockHits, todoHits, uploadHits, useLanguage, visible, withAnnouncements, withDoneMarks, withDueDates, withLocks, withUpload,
+  annHits, lockHits, quizHits, todoHits, uploadHits, useLanguage, visible, withAnnouncements, withDoneMarks, withDueDates, withLocks, withQuizzes, withUpload,
 } from './pages.ts';
 import { HADEER } from '../at9/world.ts';
 
@@ -77,6 +77,8 @@ describe('AT-13a the running product: guardian pages carry no activity, and open
     await withAnnouncements(w as Parameters<typeof withAnnouncements>[0]);
     // LMS wave 6 (W6-1b, AT-3.1): due dates on A's Arabic and on Mathematics are present too (A's to-do block on her home).
     await withDueDates(w as Parameters<typeof withDueDates>[0]);
+    // LMS wave 7 (W7-1, AT-4.3): a quiz on A's Arabic with A's attempt is present too.
+    await withQuizzes(w as Parameters<typeof withQuizzes>[0]);
   });
   after(async () => {
     await w?.close();
@@ -120,6 +122,8 @@ describe('AT-13a the running product: guardian pages carry no activity, and open
           assert.deepEqual(annHits(p.body), [], `${person.username} ${lang} ${p.path}: no announcement`);
           // LMS wave 6 (AT-3.1): no to-do block, group word, item line or due line on any guardian page.
           assert.deepEqual(todoHits(p.body), [], `${person.username} ${lang} ${p.path}: no to-do state or due date`);
+          // LMS wave 7 (AT-4.3): no quiz word, title, question, score or marker on any guardian page.
+          assert.deepEqual(quizHits(p.body), [], `${person.username} ${lang} ${p.path}: no quiz or score`);
         }
       }
     }

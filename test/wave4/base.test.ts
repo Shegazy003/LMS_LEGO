@@ -30,6 +30,7 @@ import { signedIn } from '../support/seed.ts';
 import { inProcess, startProductWith, type Product } from '../support/product.ts';
 import type { InProcessWorker } from '../support/in-process.ts';
 import { HADEER, MONA, OMAR, SALMA, YOUSSEF, adminOrder, publisherOrder, wave4World, type Wave1World } from './world.ts';
+import { QUIZ_CARD, cutWave7Style } from '../wave7/world.ts';
 
 const repo = fileURLToPath(new URL('../..', import.meta.url));
 /** The pinned base: main b4ad669 (wave 3b merged), the contract's "main". */
@@ -127,8 +128,11 @@ function styleHandled(base: string, cand: string, what: string): { base: string;
   const sc = HEAD_STYLE.exec(cand);
   assert.equal(Boolean(sc), Boolean(sb), `${what}: a <style> on both sides or neither`);
   if (!sb || !sc) return { base, cand };
-  assert.ok(sc[2].startsWith(sb[2]), `${what}: the candidate's style starts with main's`);
-  const block = sc[2].slice(sb[2].length);
+  // LMS wave 7 (W7 contract on PIL-261, section 11 item 3): wave 7's block follows wave 6's; it is checked and cut off first.
+  const w7 = cutWave7Style(sc[2]);
+  assert.equal(w7.problem, null, `${what}: the wave 7 block`);
+  assert.ok(w7.rest.startsWith(sb[2]), `${what}: the candidate's style starts with main's`);
+  const block = w7.rest.slice(sb[2].length);
   if (block) {
     assert.ok(block.startsWith(W5_MARK), `${what}: the added style is the wave 5 block`);
     const at6 = block.indexOf(W6_MARK);
@@ -150,7 +154,9 @@ function withoutCard(body: string): { body: string; card: boolean } {
   const out = body.replace(/\n?[ \t]*<section id="order-state"[\s\S]*?<\/section>/g, '')
     .replace(/<section id="announcements"[\s\S]*?<\/section>/g, '')
     // LMS wave 6 (contract on PIL-257, section 11 item 3): the due card, on the same pages.
-    .replace(/<section id="due-dates"[\s\S]*?<\/section>/g, '');
+    .replace(/<section id="due-dates"[\s\S]*?<\/section>/g, '')
+    // LMS wave 7 (W7 contract on PIL-261, section 11 item 3): the quiz card, on the same pages.
+    .replace(QUIZ_CARD, '');
   return { body: out, card: out !== body };
 }
 

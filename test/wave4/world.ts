@@ -22,6 +22,10 @@ import type { Lang } from '../../src/labels.ts';
 
 export * from '../wave2/world.ts';
 
+/** UX-49's deny list (whole words, diacritics ignored). LMS wave 7 (ux-plan on PIL-261, UX-77) imports this one list, so it
+ * lives here rather than in test/wave4/ux.test.ts; its words are unchanged. */
+export const UX49_DENY = ['توقفت', 'بدأت', 'بدأته', 'أنت', 'لك', 'عليك', 'هذا', 'هذه', 'مقفل', 'مقفلة', 'مغلقة', 'متاحة', 'السابق', 'السابقة', 'التالية', 'الجديد', 'الجديدة'];
+
 /** A fixed instant before T1, for the mark on Old decimals made before it was removed (W4-c). */
 export const T0 = Date.UTC(2031, 2, 1, 8, 0, 0, 0);
 

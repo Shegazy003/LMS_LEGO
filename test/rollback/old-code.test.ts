@@ -373,4 +373,39 @@ describe('AT-14a old code on a release 2 database shows a guardian nothing, expo
     }
     assert.deepEqual(await dates(), before, 'old code wrote no due date and deleted none');
   });
+
+  // LMS wave 7 (W7-1, product-contract v2 on PIL-261, AT-6.3): stored quizzes and attempts.
+  it('W7 AT-6.3 old code shows no quiz or score anywhere, has no quiz address and writes nothing to the quiz tables', async () => {
+    assert.ok((await tableExists('quiz')) && (await tableExists('quiz_attempt')), 'the rollback job gave the old code the wave 7 migration');
+    const salmaId = String((await worker.sql(`SELECT id FROM user WHERE username = '${SALMA.username}'`))[0].id);
+    const questions = JSON.stringify([{ id: 'rbq', text: 'Rollback question (wave 7)', answers: [{ id: 'rba', text: 'Rollback yes' }, { id: 'rbb', text: 'Rollback no' }], rightId: 'rba' }]);
+    await worker.sql(`INSERT INTO quiz (id, space_id, subject_id, title, questions_json, rev, state, created_at) VALUES ('rb-quiz', '${spaceId}', '${content.subject}', 'Rollback check (wave 7)', '${questions}', 0, 'open', 1)`);
+    await worker.sql(`INSERT INTO quiz (id, space_id, subject_id, title, created_at) VALUES ('rb-draft', '${spaceId}', '${content.subject}', 'Rollback draft (wave 7)', 2)`);
+    await worker.sql(`INSERT INTO quiz_attempt (id, space_id, quiz_id, learner_user_id, rev, answers_json, right_flags, score, question_count, sent_at) VALUES ('rb-attempt', '${spaceId}', 'rb-quiz', '${salmaId}', 0, '{"rbq":"rba"}', '1', 1, 1, 3)`);
+    const rows = async () => [...(await worker.sql('SELECT * FROM quiz ORDER BY id')), ...(await worker.sql('SELECT * FROM quiz_attempt ORDER BY id'))].map((r) => JSON.stringify(r));
+    const before = await rows();
+    const signs = ['Rollback check (wave 7)', 'Rollback draft (wave 7)', 'Rollback question (wave 7)', 'Rollback yes', 'id="quizzes"', 'quiz-', 'Quizzes', 'الاختبارات', '/quizzes'];
+    const salma = await signedIn(worker.url, SALMA.username, SALMA.password);
+    const hadeer = await signedIn(worker.url, HADEER.username, HADEER.password);
+    const admin = await signedIn(worker.url, ADMIN.username, ADMIN.password);
+    const editor = `/s/${spaceId}/publish/edit/${content.subject}`;
+    const topic = `/s/${spaceId}/admin/topics/${content.subject}`;
+    for (const [who, c, path] of [
+      ['Salma', salma, `/s/${spaceId}`], ['Salma', salma, `/s/${spaceId}/learn/${content.subject}`], ['Salma', salma, `/s/${spaceId}/read/${content.lesson}`],
+      ['Hadeer', hadeer, editor], ['Hadeer', hadeer, `/s/${spaceId}/learn/${content.subject}`], ['Amal', admin, topic], ['Amal', admin, `/s/${spaceId}/learn/${content.subject}`],
+    ] as const) {
+      const res = await c.get(path);
+      assert.equal(res.status, 200, `${who} ${path}`);
+      const body = (await res.text()).replace(/<style>[\s\S]*?<\/style>/g, '');
+      for (const sign of signs) assert.ok(!body.includes(sign), `${who} ${path}: no quiz (${sign})`);
+    }
+    // Wave 7's addresses do not exist in old code: nothing is written.
+    for (const [c, path] of [[hadeer, editor], [admin, topic]] as const) {
+      for (const [method, sub] of [['GET', '/quizzes'], ['POST', '/quizzes'], ['GET', '/quizzes/rb-quiz'], ['POST', '/quizzes/rb-quiz/question'], ['POST', '/quizzes/rb-quiz/close'], ['POST', '/quizzes/rb-quiz/copy'], ['GET', '/quizzes/rb-quiz/results']] as const) {
+        const res = method === 'GET' ? await c.get(path + sub) : await c.post(path + sub, { title: 'Written by old code?', rev: '0' });
+        assert.ok(res.status >= 400, `${method} ${path}${sub} is not an address of old code (${res.status})`);
+      }
+    }
+    assert.deepEqual(await rows(), before, 'old code wrote nothing to the quiz tables and deleted nothing');
+  });
 });

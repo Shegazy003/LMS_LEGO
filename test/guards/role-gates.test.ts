@@ -210,6 +210,17 @@ test('role guard: every route that changes data or serves an admin or publisher 
     }
     assert.ok(!handlers.some((r) => r.method !== 'POST' && r.path === `${base}/due/:kind/:itemId`), `${base}/due/:kind/:itemId answers POST only (GET and HEAD have no route)`);
   }
+  // LMS wave 7 (product-contract v2 on PIL-261, AT-1.6 and AT-2.3): every quiz address is in the table, so this check and the sweep cover them.
+  for (const base of ['/s/:spaceId/publish/edit/:subjectId', '/s/:spaceId/admin/topics/:subjectId']) {
+    for (const [method, path] of [['GET', '/quizzes'], ['POST', '/quizzes'], ['GET', '/quizzes/:quizId'], ['POST', '/quizzes/:quizId/:action'],
+      ['POST', '/quizzes/:quizId/question'], ['POST', '/quizzes/:quizId/question/:questionId'], ['POST', '/quizzes/:quizId/question/:questionId/remove'],
+      ['GET', '/quizzes/:quizId/results'], ['GET', '/quizzes/:quizId/results/:learnerId']]) {
+      assert.ok(handlers.some((r) => r.method === method && r.path === base + path), `the quiz address ${method} ${base}${path} is a gated route`);
+    }
+    for (const path of ['/quizzes/:quizId/:action', '/quizzes/:quizId/question', '/quizzes/:quizId/question/:questionId', '/quizzes/:quizId/question/:questionId/remove']) {
+      assert.ok(!handlers.some((r) => r.method !== 'POST' && r.path === base + path), `${base}${path} answers POST only (GET and HEAD have no route)`);
+    }
+  }
   assert.deepEqual(ungated(routes, declared), [], 'register role routes under their gated prefix, after the gate');
 });
 

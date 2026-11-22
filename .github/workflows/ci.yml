@@ -1699,6 +1699,178 @@ jobs:
         with:
           name: evidence-wave-6
           path: evidence/
+  # LMS wave 7, W7-1 (product-contract v2 on PIL-261): the teacher builds, copies and sees quiz results. Each labelled
+  # expectation is its own step; the product runs in this process so the statement spy is available.
+  wave-7:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      WRANGLER_SEND_METRICS: "false"
+      LMS_TEST_RUNTIME: in-process
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install (lockfile only, when present)
+        run: if [ -f package-lock.json ]; then npm ci; fi
+      - name: Read the Playwright version
+        id: playwright
+        run: |
+          echo "version=$(node -p "require('playwright/package.json').version")" >> "$GITHUB_OUTPUT"
+          echo "image=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
+      - name: Cache Chromium for the browser test
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.image }}-${{ steps.playwright.outputs.version }}-chromium
+      - name: Install Chromium for the browser test
+        timeout-minutes: 10
+        run: |
+          npx playwright install-deps chromium
+          for attempt in 1 2 3; do
+            timeout 180 npx playwright install chromium && exit 0
+            echo "::warning::Chromium install attempt $attempt did not finish; retrying"
+            sleep 10
+          done
+          exit 1
+      - name: W7 buildAttempt the pure scorer, limits, text rules and shapes (unit)
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W7 (buildAttempt|limits|shapes) ' test/wave7/unit.test.ts
+      - name: W7 AT-4.1c random ids, a copy gets every id new (unit)
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-4\.1c ' test/wave7/unit.test.ts
+      - name: W7 AT-1.1 create and add from the editor and the subject admin page
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-1\.1 ' test/wave7/at1.test.ts
+      - name: W7 AT-1.2 limits, each refused with its key, values kept, nothing stored
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-1\.2 ' test/wave7/at1.test.ts
+      - name: W7 AT-1.3 states open, close, reopen, remove and restore
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-1\.3 ' test/wave7/at1.test.ts
+      - name: W7 AT-1.4 lock after answers
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-1\.4 ' test/wave7/at1.test.ts
+      - name: W7 AT-1.5 two windows, the stale save refused
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-1\.5 ' test/wave7/at1.test.ts
+      - name: W7 AT-1.6 refused, nothing stored, role-gates lists every new address
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-1\.6 ' test/wave7/at1.test.ts && npm run test:wave3b -- test/guards/role-gates.test.ts
+      - name: W7 AT-1.7 copy as a new draft
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-1\.7 ' test/wave7/at1.test.ts
+      - name: W7 AT-2.1 results page, table, summary and answers view
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-2\.1 ' test/wave7/at2.test.ts
+      - name: W7 AT-2.2 pages of 50 at W7-e
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-2\.2 ' test/wave7/at2.test.ts
+      - name: W7 AT-2.3 (a and b) only the responsible publisher sees results, W7-f included
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-2\.3[ab] ' test/wave7/at2.test.ts
+      - name: W7 AT-2.4 access and removal
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-2\.4 ' test/wave7/at2.test.ts
+      - name: W7 AT-2.5 no score on other staff pages
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-2\.5 ' test/wave7/at2.test.ts
+      - name: W7 AT-4.2 safe text on the staff pages (quiz list, editor and results)
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-4\.2 ' test/wave7/at4.test.ts
+      - name: W7 AT-4.3 scores stay private, the staff, guardian, owner and learner crawl with W7-b
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-4\.3 ' test/wave7/at4.test.ts
+      - name: W7 AT-4.3 AT-13a and AT-13b with the quiz words forbidden on guardian pages
+        if: success() || failure()
+        run: npm run test:wave3b -- test/at13/at13a.test.ts test/at13/at13b.test.ts
+      - name: W7 AT-6.1 the forward migration 0016_quizzes.sql
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-6\.1 ' test/wave7/at6.test.ts
+      - name: W7 AT-6.2 the down script migrations-down/0016_quizzes.down.sql
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-6\.2 ' test/wave7/at6.test.ts
+      - name: W7 AT-6.3 the README's rollback text (the old-code case is in the rollback job)
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-6\.3 ' test/wave7/at6.test.ts
+      - name: W7 AT-6.4 deletion lists, child-first with foreign keys on
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-6\.4 ' test/wave7/at6.test.ts
+      - name: W7 AT-6.5 the README on export, backup and personal data
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-6\.5 ' test/wave7/at6.test.ts
+      - name: W7 deploy note
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W7 deploy note' test/wave7/at6.test.ts
+      - name: UX-68 quiz card place, order and labels
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-68 ' test/wave7/ux.test.ts
+      - name: UX-69 quiz list order, states, results link only for the publisher, removed fold
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-69 ' test/wave7/ux.test.ts
+      - name: UX-70 editor fields, labels, limits, open help, copy, locked view
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-70 ' test/wave7/ux.test.ts
+      - name: UX-71 teacher status, focus and errors
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-71 ' test/wave7/ux.test.ts
+      - name: UX-75 results table, pages, summary and answers view
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-75 ' test/wave7/ux.test.ts
+      - name: UX-77 language check by key (three kits)
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-77 language check by key' test/wave7/ux.test.ts
+      - name: UX-77 bare kit values, deny list, pronouns and placeholder neighbours
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-77 bare kit values' test/wave7/ux.test.ts
+      - name: UX-77 no spaced slash, no literal constants, no subject kit placeholder, same placeholders
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-77 no spaced slash' test/wave7/ux.test.ts
+      - name: UX-77 bdi and dir auto on quiz text
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-77 bdi and dir auto' test/wave7/ux.test.ts
+      - name: UX-78 states table
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-78 ' test/wave7/ux.test.ts
+      - name: UX-79 widths, targets, contrast and keyboard
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-79 ' test/wave7/ux.test.ts
+      # AT-5.1, AT-5.2 and AT-4.3's byte-identical guardian and owner pages: W6-main 6ce8366 (pinned) runs beside this commit,
+      # in the same process, on a copy of the same database (test/wave7/base.test.ts reads it from LMS_BASE_ROOT).
+      - name: Check out W6-main 6ce8366 for the base comparison (code only, never run but by the comparison)
+        if: success() || failure()
+        uses: actions/checkout@v4
+        with:
+          ref: 6ce83669c286d1fd1c7742380c4f76df27a3184a
+          path: .base-w7
+          persist-credentials: false
+      - name: W7 AT-5.1a (teacher pages) every editor and subject admin page differs from W6-main 6ce8366 only by the quiz card
+        if: success() || failure()
+        env:
+          LMS_BASE_ROOT: ${{ github.workspace }}/.base-w7
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-5\.1a ' test/wave7/base.test.ts
+      - name: W7 AT-5.1b (every other page) same status and body as W6-main 6ce8366
+        if: success() || failure()
+        env:
+          LMS_BASE_ROOT: ${{ github.workspace }}/.base-w7
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-5\.1b ' test/wave7/base.test.ts
+      - name: W7 AT-5.2 reads on the teacher side against W6-main 6ce8366 and at W7-e, the figures printed
+        if: success() || failure()
+        env:
+          LMS_BASE_ROOT: ${{ github.workspace }}/.base-w7
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-5\.2 ' test/wave7/base.test.ts
+      - name: W7 AT-4.3 (guardian and owner) every page of Mona and the owner byte-identical to W6-main 6ce8366's with W7-a and W7-b
+        if: success() || failure()
+        env:
+          LMS_BASE_ROOT: ${{ github.workspace }}/.base-w7
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-4\.3 \(guardian' test/wave7/base.test.ts
+      - name: Upload evidence (wave 7 screenshots)
+        if: always() && hashFiles('evidence/**') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-wave-7
+          path: evidence/
   # AT-14a: rollback holds. The code live before release 2 (main at f3b1fa7,
   # the H-1 version 528786a4, the rollback target) is checked out beside this
   # commit and given this commit's migrations, so the old code runs on a
@@ -1780,6 +1952,10 @@ jobs:
         if: success() || failure()
         working-directory: release-1.1
         run: node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./test/support/github-reporter.mjs --test-reporter-destination=stdout --test-name-pattern='^W6 AT-5\.3 ' test/rollback/old-code.test.ts
+      - name: W7 AT-6.3 release 1.1 code on the database with quizzes and attempts shows no quiz or score, has no quiz address and writes nothing to the quiz tables
+        if: success() || failure()
+        working-directory: release-1.1
+        run: node --test --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./test/support/github-reporter.mjs --test-reporter-destination=stdout --test-name-pattern='^W7 AT-6\.3 ' test/rollback/old-code.test.ts
       - name: AT-14a release 1.1 suite on the release 2 database - AT-1
         if: success() || failure()
         working-directory: release-1.1

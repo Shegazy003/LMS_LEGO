@@ -43,6 +43,7 @@ import {
   type Load, type Wave1World,
 } from './world.ts';
 import { onLocalD1, todoOf, withW6d, withW6e, withoutGuardianTodo } from './todo.ts';
+import { QUIZ_CARD, cutWave7Style } from '../wave7/world.ts';
 
 const repo = fileURLToPath(new URL('../..', import.meta.url));
 /** The pinned base: W5-main f0125980 (wave 5 merged, main CI run 44864862736 green), the contract's "main". */
@@ -199,7 +200,10 @@ async function same(p: Pair, who: Who, method: 'GET' | 'POST', path: string, out
   const sb = HEAD_STYLE.exec(bb);
   const sc = HEAD_STYLE.exec(cb);
   if (sb && sc) {
-    const bad = styleCheck(sb[2], sc[2]);
+    // LMS wave 7 (W7 contract on PIL-261, section 11 item 3): wave 7's block follows wave 6's; it is checked and cut off first.
+    const w7 = cutWave7Style(sc[2]);
+    if (w7.problem) problems.push(`style: ${w7.problem}`);
+    const bad = styleCheck(sb[2], w7.rest);
     if (bad) problems.push(`style: ${bad}`);
     bb = bb.replace(HEAD_STYLE, '$1[style]$3');
     cb = cb.replace(HEAD_STYLE, '$1[style]$3');
@@ -209,10 +213,13 @@ async function same(p: Pair, who: Who, method: 'GET' | 'POST', path: string, out
   // W6-1c (contract v3 addendum on PIL-265, G9.2): in AT-3.1 only, the allowed difference of a linked learner's page while lesson
   // activity is on is the #guardian-todo element (test/wave6/base-guardian.test.ts checks what is inside it, AT-7.2 and AT-7.4).
   if (opts.guardianTodo && LINKED_PAGE.test(path)) cb = withoutGuardianTodo(cb);
-  const cut = cb.replace(CARD, '');
-  const card = cut !== cb;
+  const dueCut = cb.replace(CARD, '');
+  const card = dueCut !== cb;
   const teacher = isTeacherPage(path);
   if (card && !teacher) problems.push('a due card on a page that is not a teacher page');
+  // LMS wave 7 (W7 contract on PIL-261, section 11 item 3): the quiz card, right after the due card, is the teacher pages' other allowed difference.
+  const cut = dueCut.replace(QUIZ_CARD, '');
+  if (cut !== dueCut && !teacher) problems.push('a quiz card on a page that is not a teacher page');
   if (cut !== bb) problems.push(`another body ${firstDifference(bb, cut)}`);
   // Wave 5's announcement blocks, byte-identical (AT-4.1b): compared on both sides.
   const annB = annBlock(bb);
@@ -501,7 +508,11 @@ describe('W6 AT-3.4b reads, learner side, load worlds: with W6-d and W6-e the ho
     assert.ok(rows <= 30, `W6-e: the to-do statement returns at most 30 rows (${rows})`);
     assert.ok(Number(eRead.meta.rows_read) <= 5000, `W6-e: at most 5,000 rows read (${eRead.meta.rows_read})`);
     assert.ok(e.maxParams <= 20, `W6-e: no statement has more than 20 bound parameters (${e.maxParams})`);
-    assert.ok(e.bytes <= base.bytes + 16 * 1024, `W6-e: the home at most W5-main's on W5-d plus 16 KB (${e.bytes} vs ${base.bytes})`);
+    // LMS wave 7 (W7 contract on PIL-261, section 11 item 5): the wave 7 style block is checked and left out of the candidate's size, nothing else.
+    const w7 = cutWave7Style(HEAD_STYLE.exec(e.body)?.[2] ?? '');
+    assert.equal(w7.problem, null, 'W6-e: the wave 7 style block');
+    const eBytes = Buffer.byteLength(e.body.replace(HEAD_STYLE, (_m, a: string, _s: string, z: string) => a + w7.rest + z));
+    assert.ok(eBytes <= base.bytes + 16 * 1024, `W6-e: the home at most W5-main's on W5-d plus 16 KB (${eBytes} vs ${base.bytes})`);
     const v = todoOf(e.body)!;
     const overdue = v.groups.find((g) => g.key === 'overdue')!;
     assert.equal(overdue.items.length, 10, 'W6-e: 10 overdue items drawn');
