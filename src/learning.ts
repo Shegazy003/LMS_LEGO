@@ -35,7 +35,9 @@ export interface SubjectItem {
 export interface OutlineChapter {
   id: string;
   title: string;
-  lessons: { id: string; title: string }[];
+  lessons: { id: string; title: string; due_on?: string | null }[];
+  /** LMS wave 6 (section 5.5): the due date of the chapter (null without one), from the same outline read; each lesson carries its own. */
+  due_on?: string | null;
 }
 
 export interface LessonRow {
@@ -177,6 +179,116 @@ export function previewAnnouncements(db: Db, spaceId: string, previewer: Preview
         WHERE n.space_id = ? AND n.removed_at IS NULL AND n.created_at >= ? AND s.is_published = 1 AND s.publisher_user_id = ?
         ORDER BY n.created_at DESC, n.id DESC LIMIT ?`,
       spaceId, since, previewer.userId, limit,
+    );
+}
+
+/** One row of the to-do statement (LMS wave 6, section 5): a listed lesson or
+ * chapter of a group, with the full count of the group; a chapter carries how many
+ * of its shown lessons there are and how many this learner marked done. */
+export interface TodoRow {
+  kind: 'lesson' | 'chapter';
+  id: string;
+  title: string;
+  due_on: string;
+  subject_id: string;
+  subject_title: string;
+  chapter_id: string;
+  total: number;
+  done: number;
+  /** 0 overdue, 1 today, 2 the next days (section 5.3). */
+  grp: number;
+  /** The full count of the group (after the rules of section 5.2). */
+  n: number;
+}
+
+/* The to-do read of a learner (learnerTodo, LMS wave 6) is in src/progress.ts, the only module that names the done-mark table. */
+
+/** LMS wave 6 (section 5.6): the preview home's to-do list, as a made-up
+ * learner assigned exactly the subjects of previewCards (every published
+ * subject for an admin; the published subjects a publisher is responsible
+ * for) with no done marks sees it: the statement of learnerTodo with that subject
+ * rule, every chapter counted with none of its lessons done, and in a subject
+ * with chapters in order only the items of a chapter no earlier shown chapter
+ * with a shown lesson comes before (chapterLocks with no marks). */
+export function previewTodo(db: Db, spaceId: string, previewer: Previewer, today: string, last: string, cap: number): Promise<TodoRow[]> {
+  return previewer.kind === 'admin'
+    ? db.all<TodoRow>(
+      `WITH item AS (
+         SELECT 'lesson' AS kind, l.id AS id, l.title AS title, l.due_on AS due_on, s.id AS subject_id, s.title AS subject_title,
+                c.id AS chapter_id, c.position AS c_pos, c.title AS c_title, 1 AS k, l.position AS l_pos, l.title AS l_title, 0 AS total, 0 AS done
+           FROM lesson l
+           JOIN chapter c ON c.id = l.chapter_id AND +c.space_id = l.space_id AND c.removed_at IS NULL
+           JOIN subject s ON s.id = c.subject_id AND +s.space_id = c.space_id
+          WHERE l.space_id = ? AND l.removed_at IS NULL AND l.due_on IS NOT NULL AND l.due_on <= ? AND s.is_published = 1
+            AND (s.chapters_in_order <> 1 OR NOT EXISTS (
+              SELECT 1 FROM chapter pc
+               WHERE pc.space_id = c.space_id AND pc.subject_id = c.subject_id AND pc.removed_at IS NULL
+                 AND pc.position <= c.position AND (pc.position < c.position OR (pc.position = c.position AND (pc.title < c.title OR (pc.title = c.title AND pc.id < c.id))))
+                     AND EXISTS (SELECT 1 FROM lesson pl WHERE pl.space_id = pc.space_id AND pl.chapter_id = pc.id AND pl.removed_at IS NULL)))
+         UNION ALL
+         SELECT 'chapter', x.id, x.title, x.due_on, x.subject_id, x.subject_title, x.id, x.position, x.title, 0, NULL, NULL, x.total, 0
+           FROM (
+             SELECT c.id, c.title, c.due_on, c.position, s.id AS subject_id, s.title AS subject_title,
+                    (SELECT COUNT(*) FROM lesson tl WHERE tl.space_id = c.space_id AND tl.chapter_id = c.id AND tl.removed_at IS NULL) AS total
+               FROM chapter c
+               JOIN subject s ON s.id = c.subject_id AND +s.space_id = c.space_id
+              WHERE c.space_id = ? AND c.removed_at IS NULL AND c.due_on IS NOT NULL AND c.due_on <= ? AND s.is_published = 1
+                AND (s.chapters_in_order <> 1 OR NOT EXISTS (
+                  SELECT 1 FROM chapter pc
+                   WHERE pc.space_id = c.space_id AND pc.subject_id = c.subject_id AND pc.removed_at IS NULL
+                     AND pc.position <= c.position AND (pc.position < c.position OR (pc.position = c.position AND (pc.title < c.title OR (pc.title = c.title AND pc.id < c.id))))
+                     AND EXISTS (SELECT 1 FROM lesson pl WHERE pl.space_id = pc.space_id AND pl.chapter_id = pc.id AND pl.removed_at IS NULL)))
+           ) x
+          WHERE x.total > 0
+       ),
+       grouped AS (SELECT item.*, CASE WHEN item.due_on < ? THEN 0 WHEN item.due_on = ? THEN 1 ELSE 2 END AS grp FROM item),
+       ranked AS (
+         SELECT grouped.*, ROW_NUMBER() OVER w AS rn,
+                COUNT(*) OVER (w ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS n
+           FROM grouped
+           WINDOW w AS (PARTITION BY grp ORDER BY due_on, subject_title, subject_id, c_pos, c_title, chapter_id, k, l_pos, l_title, id)
+       )
+       SELECT kind, id, title, due_on, subject_id, subject_title, chapter_id, total, done, grp, n FROM ranked WHERE rn <= ? ORDER BY grp, rn`,
+      spaceId, last, spaceId, last, today, today, cap,
+    )
+    : db.all<TodoRow>(
+      `WITH item AS (
+         SELECT 'lesson' AS kind, l.id AS id, l.title AS title, l.due_on AS due_on, s.id AS subject_id, s.title AS subject_title,
+                c.id AS chapter_id, c.position AS c_pos, c.title AS c_title, 1 AS k, l.position AS l_pos, l.title AS l_title, 0 AS total, 0 AS done
+           FROM lesson l
+           JOIN chapter c ON c.id = l.chapter_id AND +c.space_id = l.space_id AND c.removed_at IS NULL
+           JOIN subject s ON s.id = c.subject_id AND +s.space_id = c.space_id
+          WHERE l.space_id = ? AND l.removed_at IS NULL AND l.due_on IS NOT NULL AND l.due_on <= ? AND s.is_published = 1 AND s.publisher_user_id = ?
+            AND (s.chapters_in_order <> 1 OR NOT EXISTS (
+              SELECT 1 FROM chapter pc
+               WHERE pc.space_id = c.space_id AND pc.subject_id = c.subject_id AND pc.removed_at IS NULL
+                 AND pc.position <= c.position AND (pc.position < c.position OR (pc.position = c.position AND (pc.title < c.title OR (pc.title = c.title AND pc.id < c.id))))
+                     AND EXISTS (SELECT 1 FROM lesson pl WHERE pl.space_id = pc.space_id AND pl.chapter_id = pc.id AND pl.removed_at IS NULL)))
+         UNION ALL
+         SELECT 'chapter', x.id, x.title, x.due_on, x.subject_id, x.subject_title, x.id, x.position, x.title, 0, NULL, NULL, x.total, 0
+           FROM (
+             SELECT c.id, c.title, c.due_on, c.position, s.id AS subject_id, s.title AS subject_title,
+                    (SELECT COUNT(*) FROM lesson tl WHERE tl.space_id = c.space_id AND tl.chapter_id = c.id AND tl.removed_at IS NULL) AS total
+               FROM chapter c
+               JOIN subject s ON s.id = c.subject_id AND +s.space_id = c.space_id
+              WHERE c.space_id = ? AND c.removed_at IS NULL AND c.due_on IS NOT NULL AND c.due_on <= ? AND s.is_published = 1 AND s.publisher_user_id = ?
+                AND (s.chapters_in_order <> 1 OR NOT EXISTS (
+                  SELECT 1 FROM chapter pc
+                   WHERE pc.space_id = c.space_id AND pc.subject_id = c.subject_id AND pc.removed_at IS NULL
+                     AND pc.position <= c.position AND (pc.position < c.position OR (pc.position = c.position AND (pc.title < c.title OR (pc.title = c.title AND pc.id < c.id))))
+                     AND EXISTS (SELECT 1 FROM lesson pl WHERE pl.space_id = pc.space_id AND pl.chapter_id = pc.id AND pl.removed_at IS NULL)))
+           ) x
+          WHERE x.total > 0
+       ),
+       grouped AS (SELECT item.*, CASE WHEN item.due_on < ? THEN 0 WHEN item.due_on = ? THEN 1 ELSE 2 END AS grp FROM item),
+       ranked AS (
+         SELECT grouped.*, ROW_NUMBER() OVER w AS rn,
+                COUNT(*) OVER (w ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS n
+           FROM grouped
+           WINDOW w AS (PARTITION BY grp ORDER BY due_on, subject_title, subject_id, c_pos, c_title, chapter_id, k, l_pos, l_title, id)
+       )
+       SELECT kind, id, title, due_on, subject_id, subject_title, chapter_id, total, done, grp, n FROM ranked WHERE rn <= ? ORDER BY grp, rn`,
+      spaceId, last, previewer.userId, spaceId, last, previewer.userId, today, today, cap,
     );
 }
 
@@ -413,8 +525,9 @@ export async function readableSubject(db: Db, space: CurrentSpace, userId: strin
  * (if any) is settled by title, then id, so the order is stable (wave 1,
  * section 5.1; the learner home uses the same order). */
 export async function outline(db: Db, spaceId: string, subjectId: string): Promise<OutlineChapter[]> {
-  const rows = await db.all<{ chapter_id: string; chapter_title: string; lesson_id: string | null; lesson_title: string | null }>(
-    `SELECT c.id AS chapter_id, c.title AS chapter_title, l.id AS lesson_id, l.title AS lesson_title
+  // LMS wave 6 (section 6.1): the outline read gains the two due_on columns, no new statement.
+  const rows = await db.all<{ chapter_id: string; chapter_title: string; chapter_due: string | null; lesson_id: string | null; lesson_title: string | null; lesson_due: string | null }>(
+    `SELECT c.id AS chapter_id, c.title AS chapter_title, c.due_on AS chapter_due, l.id AS lesson_id, l.title AS lesson_title, l.due_on AS lesson_due
        FROM chapter c LEFT JOIN lesson l ON l.chapter_id = c.id AND l.space_id = c.space_id AND l.removed_at IS NULL
       WHERE c.space_id = ? AND c.subject_id = ? AND c.removed_at IS NULL
       ORDER BY c.position, c.title, c.id, l.position, l.title, l.id`,
@@ -423,8 +536,8 @@ export async function outline(db: Db, spaceId: string, subjectId: string): Promi
   const chapters: OutlineChapter[] = [];
   for (const r of rows) {
     let ch = chapters.at(-1);
-    if (!ch || ch.id !== r.chapter_id) chapters.push((ch = { id: r.chapter_id, title: r.chapter_title, lessons: [] }));
-    if (r.lesson_id) ch.lessons.push({ id: r.lesson_id, title: r.lesson_title ?? '' });
+    if (!ch || ch.id !== r.chapter_id) chapters.push((ch = { id: r.chapter_id, title: r.chapter_title, lessons: [], due_on: r.chapter_due ?? null }));
+    if (r.lesson_id) ch.lessons.push({ id: r.lesson_id, title: r.lesson_title ?? '', due_on: r.lesson_due ?? null });
   }
   return chapters;
 }

@@ -212,6 +212,22 @@ a.latest-result.none{color:#3d444d}
 .due-clear{margin:8px 0 0}
 .due-clear .due-button{background:#fff;color:#0b3d91;border:1px solid #8c959f}
 .due-error{margin:6px 0 0}
+.due-line{display:block;color:#57606a;font-size:.9rem;font-weight:400;overflow-wrap:anywhere;min-width:0}
+.due-dated>.due-line{margin:0 0 8px}
+.due-dated.is-done{flex-wrap:wrap}
+.due-dated.is-done>.due-line{flex:1 0 100%}
+#todo{border-inline-start:4px solid #57606a}
+#todo>h2{margin:0 0 8px}
+.todo-group{margin:12px 0 0;min-width:0}
+.todo-group>h3{margin:0 0 4px;font-size:1.05rem}
+.todo-list{list-style:none;margin:0;padding:0}
+.todo-item{padding:8px 0;border-top:1px solid #e3e6ea;min-width:0}
+.todo-item>p{margin:0}
+.todo-link{display:inline-flex;align-items:center;box-sizing:border-box;min-height:44px;min-width:44px;max-width:100%;font-weight:600;color:#0b3d91;overflow-wrap:anywhere}
+.todo-line,.todo-progress{color:#57606a;font-size:.9rem;overflow-wrap:anywhere}
+.todo-more{margin:4px 0 0}
+.todo-more>summary{display:flex;align-items:center;min-height:44px;cursor:pointer;font-weight:600;color:#0b3d91}
+.todo-capped{margin:8px 0 0;color:#57606a;font-size:.9rem;overflow-wrap:anywhere}
 `;
 
 export interface LayoutOptions {

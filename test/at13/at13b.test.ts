@@ -19,7 +19,7 @@ import { issueLink } from '../support/admin.ts';
 import { ADMIN, C, D, HADEER, KARIM, OTHER_ADMIN, SHIMAA, personPath } from '../at9/world.ts';
 import { OWNER } from '../support/seed.ts';
 import {
-  A, B, G1, G2, UPLOADED, annHits, crawl, doneHits, doneWords, guardianPaths, lockHits, privacyWorld, resultPaths, uploadHits, useLanguage, withAnnouncements, withDoneMarks, withLocks, withUpload, type PrivacyWorld,
+  A, B, G1, G2, UPLOADED, annHits, crawl, doneHits, doneWords, guardianPaths, lockHits, privacyWorld, resultPaths, todoHits, uploadHits, useLanguage, withAnnouncements, withDoneMarks, withDueDates, withLocks, withUpload, type PrivacyWorld,
 } from './pages.ts';
 import { corrected } from '../at12/corrections.ts';
 
@@ -80,6 +80,8 @@ describe('AT-13b the forbidden-string scan finds nothing a guardian or learner c
     await withLocks(w);
     // LMS wave 5 (W5-1b, AT-3.1): announcements on A's Arabic and on Mathematics are present too.
     await withAnnouncements(w);
+    // LMS wave 6 (W6-1b, AT-3.1): due dates on A's Arabic and on Mathematics are present too (A's to-do block on her home).
+    await withDueDates(w);
   });
   after(async () => {
     await w?.close();
@@ -134,6 +136,8 @@ describe('AT-13b the forbidden-string scan finds nothing a guardian or learner c
           if (text && viewer !== A) assert.deepEqual(lockHits(page.body), [], `lock state: ${lang} ${page.path} (${page.status})`);
           // LMS wave 5 (AT-3.1): no announcement on a guardian page: every page of G1 and G2, and the dual-role B's guardian pages.
           if (text && (viewer === G1 || viewer === G2 || (viewer === B && page.path.includes('/linked')))) assert.deepEqual(annHits(page.body), [], `announcements: ${lang} ${page.path} (${page.status})`);
+          // LMS wave 6 (AT-3.1): no to-do state or due date on a guardian page (the same pages).
+          if (text && (viewer === G1 || viewer === G2 || (viewer === B && page.path.includes('/linked')))) assert.deepEqual(todoHits(page.body), [], `to-do and due dates: ${lang} ${page.path} (${page.status})`);
         }
       }
       assert.ok(scanned >= 30, `${viewer.username}: bodies scanned ${scanned}`);

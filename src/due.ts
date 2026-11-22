@@ -17,6 +17,57 @@ export const TODO_AHEAD_DAYS = 7;
 /** At most this many items are drawn per to-do group (section 5.3). */
 export const TODO_MAX_PER_GROUP = 10;
 
+// ------------------------------------------------------- the to-do list ----
+// W6-1b (sections 5.2 to 5.4): worked out at each page load from the due dates
+// and the learner's own done marks (one statement: progress.ts learnerTodo, or
+// learning.ts previewTodo for the preview); nothing about it is stored.
+
+/** The days of one request (section 5.4): today is the UTC date of its one `now()`; the list looks up to TODO_AHEAD_DAYS after it. */
+export function todoWindow(nowMs: number): { today: string; last: string } {
+  const today = utcDate(nowMs);
+  return { today, last: addDays(today, TODO_AHEAD_DAYS) };
+}
+
+/** The three groups in their order (section 5.3); the statement numbers them 0, 1, 2. */
+export const TODO_GROUPS = ['overdue', 'today', 'next'] as const;
+export type TodoGroupKey = (typeof TODO_GROUPS)[number];
+
+/** One listed item, as the block draws it. */
+export interface TodoItem {
+  kind: DueKind;
+  id: string;
+  title: string;
+  dueOn: string;
+  subjectId: string;
+  subjectTitle: string;
+  /** A chapter item: its shown lessons and how many of them this learner marked done (wave 2's count). */
+  progress: { done: number; total: number } | null;
+}
+
+/** A group that has items: its full count (the heading) and its first TODO_MAX_PER_GROUP items in order. */
+export interface TodoGroup {
+  key: TodoGroupKey;
+  count: number;
+  items: TodoItem[];
+}
+
+/** The statement's rows as groups, in order; an empty group is absent, so no group at all means no block (section 5.3). */
+export function todoGroups(rows: { kind: string; id: string; title: string; due_on: string; subject_id: string; subject_title: string; total: number; done: number; grp: number; n: number }[]): TodoGroup[] {
+  const groups: TodoGroup[] = [];
+  for (const r of rows) {
+    const key = TODO_GROUPS[Number(r.grp)];
+    let g = groups.find((x) => x.key === key);
+    if (!g) groups.push((g = { key, count: Number(r.n), items: [] }));
+    if (g.items.length >= TODO_MAX_PER_GROUP) continue;
+    const kind: DueKind = r.kind === 'chapter' ? 'chapter' : 'lesson';
+    g.items.push({
+      kind, id: r.id, title: r.title, dueOn: r.due_on, subjectId: r.subject_id, subjectTitle: r.subject_title,
+      progress: kind === 'chapter' ? { done: Number(r.done), total: Number(r.total) } : null,
+    });
+  }
+  return TODO_GROUPS.map((key) => groups.find((g) => g.key === key)).filter((g): g is TodoGroup => Boolean(g));
+}
+
 /** The two kinds of item that carry a due date; the address names one of them. */
 export const DUE_KINDS = ['lesson', 'chapter'] as const;
 export type DueKind = (typeof DUE_KINDS)[number];

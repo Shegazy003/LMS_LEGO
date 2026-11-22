@@ -1,0 +1,201 @@
+// LMS wave 6, W6-1b (product-contract v2 on PIL-257, sections 3 and 5): the
+// learner side's test helpers. Reading the home's to-do block (UX-62) and the
+// outline's due lines (UX-63) as a reader gets them, and the expected list
+// worked out independently from the rows and the product's own chapterLocks
+// (AT-2.6). Made-up data only.
+import assert from 'node:assert/strict';
+import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { chapterLocks } from '../../src/learning.ts';
+import type { Wave1World } from './world.ts';
+
+const unescape = (s: string) => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
+export const textOf = (fragment: string) => unescape(fragment.replace(/<[^>]*>/g, '')).replace(/\s+/g, ' ').trim();
+
+/** One item of the to-do block, as a reader gets it. */
+export interface TodoItemView {
+  kind: 'lesson' | 'chapter';
+  id: string;
+  subject: string;
+  title: string;
+  href: string;
+  line: string;
+  /** A chapter item's done count (wave 2's words), or null. */
+  progress: string | null;
+  /** Inside the group's fold. */
+  folded: boolean;
+  raw: string;
+}
+
+export interface TodoGroupView {
+  key: 'overdue' | 'today' | 'next';
+  heading: string;
+  items: TodoItemView[];
+  /** The fold's summary text, or null without a fold. */
+  more: string | null;
+  /** Whether the fold is open by default (it must not be). */
+  moreOpen: boolean;
+  capped: string | null;
+}
+
+export interface TodoView {
+  /** The whole block's markup. */
+  block: string;
+  at: number;
+  heading: string;
+  groups: TodoGroupView[];
+}
+
+function itemsOf(fragment: string, folded: boolean): TodoItemView[] {
+  return [...fragment.matchAll(/<li class="todo-item" data-kind="(lesson|chapter)" data-item="([^"]+)" data-subject="([^"]+)"><a class="todo-link" href="([^"]+)">([\s\S]*?)<\/a>\n<p class="todo-line">([\s\S]*?)<\/p>(?:\n<p class="todo-progress">([\s\S]*?)<\/p>)?<\/li>/g)].map((m) => ({
+    kind: m[1] as 'lesson' | 'chapter', id: m[2], subject: m[3], href: unescape(m[4]), title: textOf(m[5]), line: textOf(m[6]), progress: m[7] === undefined ? null : textOf(m[7]), folded, raw: m[0],
+  }));
+}
+
+/** The to-do block of a page (id="todo"), or null when the page has none. */
+export function todoOf(html: string): TodoView | null {
+  const start = html.indexOf('<section id="todo"');
+  if (start < 0) return null;
+  const end = html.indexOf('</section>', start);
+  const block = html.slice(start, end + '</section>'.length);
+  const groups = [...block.matchAll(/<div class="todo-group" data-group="(overdue|today|next)">\n<h3 id="todo-[a-z]+">([\s\S]*?)<\/h3>([\s\S]*?)\n<\/div>/g)].map((m) => {
+    const inner = m[3];
+    const foldAt = inner.indexOf('<details class="todo-more"');
+    const top = foldAt < 0 ? inner : inner.slice(0, foldAt);
+    const fold = foldAt < 0 ? '' : inner.slice(foldAt);
+    const summary = /<details class="todo-more"([^>]*)><summary>([\s\S]*?)<\/summary>/.exec(fold);
+    const capped = /<p class="todo-capped">([\s\S]*?)<\/p>/.exec(fold);
+    return {
+      key: m[1] as TodoGroupView['key'], heading: textOf(m[2]),
+      items: [...itemsOf(top, false), ...itemsOf(fold, true)],
+      more: summary ? textOf(summary[2]) : null, moreOpen: summary ? /\bopen\b/.test(summary[1]) : false,
+      capped: capped ? textOf(capped[1]) : null,
+    };
+  });
+  return { block, at: start, heading: textOf(/<h2 id="todo-heading">([\s\S]*?)<\/h2>/.exec(block)?.[1] ?? ''), groups };
+}
+
+/** The group keys and item ids of a block, compactly (for assertions and messages). */
+export const shape = (v: TodoView | null) => (v ? v.groups.map((g) => ({ key: g.key, count: g.heading, ids: g.items.map((i) => i.id) })) : null);
+export const idsIn = (v: TodoView | null, key: TodoGroupView['key']) => v?.groups.find((g) => g.key === key)?.items.map((i) => i.id) ?? [];
+
+/** The due lines of an outline page (UX-63): chapter id or lesson id → the line's text. */
+export function dueLinesOf(html: string): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const m of html.matchAll(/<details class="card fold[^"]*" id="chapter-([^"]+)"[\s\S]*?<summary>([\s\S]*?)<\/summary>([\s\S]*?)<\/details>/g)) {
+    const chapterLine = /<span class="due-line">([\s\S]*?)<\/span><\/span> <span class="count/.exec(m[2]);
+    if (chapterLine) out.set(m[1], textOf(chapterLine[1]));
+    for (const li of m[3].matchAll(/<li class="(?:is-done )?due-dated">[\s\S]*?data-lesson="([^"]+)"[\s\S]*?<span class="due-line">([\s\S]*?)<\/span><\/li>/g)) out.set(li[1], textOf(li[2]));
+  }
+  return out;
+}
+
+// ------------------------------------------------------- W6-d and W6-e ----
+
+type Sql = (q: string) => Promise<Record<string, unknown>[]>;
+
+/** W6-d (contract section 3): the W5-d load space with 2 due lessons per subject, D+1 and D+5 (300 items): each subject's lesson gets D+1, and a second lesson in its chapter gets D+5. */
+export async function withW6d(sql: Sql, load: { id: string; subjects: string[] }, dPlus: (n: number) => string): Promise<void> {
+  const rows = await sql(`SELECT l.id, l.chapter_id, c.subject_id FROM lesson l JOIN chapter c ON c.id = l.chapter_id WHERE l.space_id = '${load.id}' AND l.removed_at IS NULL ORDER BY c.subject_id`);
+  assert.equal(rows.length, 150, 'W5-d: one lesson per subject');
+  await sql(`UPDATE lesson SET due_on = '${dPlus(1)}' WHERE space_id = '${load.id}'`);
+  const values = rows.map((r, i) => `('w6d-${i}', '${load.id}', '${r.chapter_id}', 'Second lesson ${i + 1}', 20, '${dPlus(5)}')`);
+  for (let i = 0; i < values.length; i += 50) await sql(`INSERT INTO lesson (id, space_id, chapter_id, title, position, due_on) VALUES ${values.slice(i, i + 50).join(', ')}`);
+}
+
+/** W6-e: W6-d with all 300 lesson dates at D-3 (written directly), one dated chapter per subject (D-2, two lessons each, after the first chapter), and chapters in order on in 75 of the 150 subjects; the learner has no done marks. */
+export async function withW6e(sql: Sql, load: { id: string; subjects: string[] }, dPlus: (n: number) => string): Promise<void> {
+  await sql(`UPDATE lesson SET due_on = '${dPlus(-3)}' WHERE space_id = '${load.id}' AND due_on IS NOT NULL`);
+  const chapters = load.subjects.map((s, i) => `('w6e-c${i}', '${load.id}', '${s}', 'Dated unit ${i + 1}', 100, '${dPlus(-2)}')`);
+  for (let i = 0; i < chapters.length; i += 50) await sql(`INSERT INTO chapter (id, space_id, subject_id, title, position, due_on) VALUES ${chapters.slice(i, i + 50).join(', ')}`);
+  const lessons = load.subjects.flatMap((_s, i) => [1, 2].map((k) => `('w6e-c${i}-l${k}', '${load.id}', 'w6e-c${i}', 'Dated unit lesson ${k}', ${k * 10})`));
+  for (let i = 0; i < lessons.length; i += 50) await sql(`INSERT INTO lesson (id, space_id, chapter_id, title, position) VALUES ${lessons.slice(i, i + 50).join(', ')}`);
+  const inOrder = load.subjects.slice(0, 75).map((s) => `'${s}'`).join(', ');
+  await sql(`UPDATE subject SET chapters_in_order = 1 WHERE id IN (${inOrder})`);
+  const marks = await sql(`SELECT COUNT(*) AS n FROM done_mark WHERE space_id = '${load.id}'`);
+  assert.equal(Number(marks[0].n), 0, 'W6-e: the learner has no done marks');
+}
+
+// ------------------------------------------- rows read (a local D1 copy) ----
+// The in-process SQLite reports no rows read; D1 does. AT-3.4b copies the
+// candidate's database, as it is at the step, into a local Miniflare D1 (the
+// D1 simulator Wrangler ships, no network, no account) and runs the captured
+// to-do statement there with its own bound parameters, reading D1's own
+// `meta.rows_read`. If D1 reports none, the step fails.
+// The copy is the whole database file: SQLite's `VACUUM INTO` writes it where
+// the local D1 keeps its file (copying row by row through D1 is about 180 ms
+// a row and closes the local D1's socket after a few seconds on Windows).
+
+type LocalD1 = { prepare(q: string): { bind(...p: unknown[]): { all(): Promise<{ results: unknown[]; meta: unknown }> }; all(): Promise<{ results: unknown[]; meta: unknown }> } };
+
+/** Runs one statement with its parameters on a local D1 holding a copy of `source`; returns D1's result meta and rows. */
+export async function onLocalD1(source: { exec(q: string): void }, statement: { sql: string; params: unknown[] }): Promise<{ meta: Record<string, unknown>; rows: unknown[] }> {
+  const { Miniflare, convertV4MiniflareOptions } = (await import('miniflare')) as unknown as {
+    Miniflare: new (o: unknown) => { getD1Database(n: string): Promise<LocalD1>; dispose(): Promise<void> };
+    convertV4MiniflareOptions(o: unknown): unknown;
+  };
+  const dir = mkdtempSync(join(tmpdir(), 'lms-w6-d1-'));
+  const options = () => convertV4MiniflareOptions({ modules: true, script: 'export default { fetch() { return new Response(null, { status: 404 }); } }', d1Databases: ['DB'], resourcePersistencePath: dir, compatibilityDate: '2026-10-01' });
+  try {
+    // 1. Start the local D1 once so it creates its database file; find it.
+    let mf = new Miniflare(options());
+    try {
+      await (await mf.getD1Database('DB')).prepare('SELECT 1').all();
+    } finally {
+      await mf.dispose();
+    }
+    const all = readdirSync(dir, { recursive: true, withFileTypes: true });
+    const files = all.filter((f) => f.isFile() && f.name.endsWith('.sqlite') && f.name !== 'metadata.sqlite');
+    assert.equal(files.length, 1, `the local D1 keeps one database file (found: ${all.map((f) => f.name).join(', ') || 'nothing'} in ${dir})`);
+    const file = join(files[0].parentPath, files[0].name);
+    // 2. Replace it with a copy of the candidate's database.
+    for (const f of [file, `${file}-wal`, `${file}-shm`]) rmSync(f, { force: true });
+    source.exec(`VACUUM INTO '${file.replace(/'/g, "''")}'`);
+    // 3. Start it again on the copy and run the statement.
+    mf = new Miniflare(options());
+    try {
+      const r = await (await mf.getD1Database('DB')).prepare(statement.sql).bind(...statement.params).all();
+      return { meta: r.meta as Record<string, unknown>, rows: r.results };
+    } finally {
+      await mf.dispose();
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// ------------------------------------------------------- the expectation ----
+
+/** Every dated item of a subject that the learner's list must hold, worked out from the rows with the product's own chapterLocks (AT-2.6): not removed, due by `last`, not done (a chapter: some shown lesson not done), and its chapter not locked for this learner. */
+export async function expectedItems(w: Wave1World, spaceId: string, subjectId: string, learnerId: string | null, last: string): Promise<Set<string>> {
+  const subject = (await w.p.sql(`SELECT chapters_in_order FROM subject WHERE id = '${subjectId}'`))[0];
+  const rows = await w.p.sql(`SELECT c.id AS cid, c.title AS ct, c.due_on AS cdue, l.id AS lid, l.title AS lt, l.due_on AS ldue FROM chapter c
+    LEFT JOIN lesson l ON l.chapter_id = c.id AND l.space_id = c.space_id AND l.removed_at IS NULL
+    WHERE c.space_id = '${spaceId}' AND c.subject_id = '${subjectId}' AND c.removed_at IS NULL ORDER BY c.position, c.title, c.id, l.position, l.title, l.id`);
+  const marks = learnerId
+    ? new Set((await w.p.sql(`SELECT lesson_id FROM done_mark WHERE space_id = '${spaceId}' AND learner_user_id = '${learnerId}'`)).map((r) => String(r.lesson_id)))
+    : new Set<string>();
+  const chapters: { id: string; title: string; due: string | null; lessons: { id: string; title: string; due: string | null }[] }[] = [];
+  for (const r of rows) {
+    let ch = chapters.at(-1);
+    if (!ch || ch.id !== r.cid) chapters.push((ch = { id: String(r.cid), title: String(r.ct), due: (r.cdue as string | null) ?? null, lessons: [] }));
+    if (r.lid) ch.lessons.push({ id: String(r.lid), title: String(r.lt), due: (r.ldue as string | null) ?? null });
+  }
+  const locked = Number(subject.chapters_in_order) === 1 ? chapterLocks(chapters, marks).locked : new Map();
+  const out = new Set<string>();
+  for (const ch of chapters) {
+    if (locked.has(ch.id)) continue;
+    if (ch.due && ch.due <= last && ch.lessons.some((l) => !marks.has(l.id))) out.add(ch.id);
+    for (const l of ch.lessons) if (l.due && l.due <= last && !marks.has(l.id)) out.add(l.id);
+  }
+  return out;
+}
+
+/** Every item id a block lists (all groups, also folded). */
+export const listed = (v: TodoView | null) => new Set(v ? v.groups.flatMap((g) => g.items.map((i) => i.id)) : []);
+
+/** Asserts a block lists exactly the expected ids (as sets, with a readable message). */
+export function sameItems(v: TodoView | null, expected: Set<string>, what: string): void {
+  assert.deepEqual([...listed(v)].sort(), [...expected].sort(), what);
+}

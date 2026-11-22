@@ -442,13 +442,16 @@ describe('W2 AT-3.7 no route returns done marks but the learner\'s own pages; th
     const exported = [...progress.matchAll(/export (?:async )?function (\w+)/g)].map((m) => m[1]).sort();
     // W2-1b adds doneLessonIds: the signed-in learner's own lesson ids, for their outline only (never a count, a time or another person's marks).
     // W2-2 adds markOrder: the same lesson ids, newest press first, for the learner's own home (never the time itself).
-    assert.deepEqual(exported, ['doneLessonIds', 'isDone', 'markDone', 'markNotDone', 'markOrder', 'readsAsLearner', 'setMarkClock', 'signedInLearner'], 'progress.ts gives out a yes/no per lesson, the learner\'s own done lesson ids (and whether a subject is read as a learner), never a count or time (AT-2.5 guards the rest)');
+    // LMS wave 6 (W6-1b, AT-2.1 and AT-3.4b) adds learnerTodo: the signed-in learner's own to-do rows for their own home (W2 AT-2.5 keeps done_mark in this file), never the time.
+    assert.deepEqual(exported, ['doneLessonIds', 'isDone', 'learnerTodo', 'markDone', 'markNotDone', 'markOrder', 'readsAsLearner', 'setMarkClock', 'signedInLearner'],'progress.ts gives out a yes/no per lesson, the learner\'s own done lesson ids (and whether a subject is read as a learner), never a count or time (AT-2.5 guards the rest)');
     assert.match(progress, /export async function doneLessonIds\(db: Db, who: Learner\)/, 'doneLessonIds takes only the signed-in learner (the branded Learner)');
     assert.doesNotMatch(progress.match(/export async function doneLessonIds[\s\S]*?\n\}/)?.[0] ?? '', /marked_at/, 'doneLessonIds never reads the time');
     assert.match(progress, /export async function markOrder\(db: Db, who: Learner\)/, 'markOrder takes only the signed-in learner (the branded Learner)');
     const order = progress.match(/export async function markOrder[\s\S]*?\n\}/)?.[0] ?? '';
     assert.match(order, /SELECT d\.lesson_id, DENSE_RANK\(\) OVER \(ORDER BY d\.marked_at DESC\) AS recency\s/, 'markOrder selects the lesson id and its rank only: the time orders the rows and never leaves the statement');
     assert.doesNotMatch(order.replace('ORDER BY d.marked_at DESC', ''), /marked_at/, 'markOrder names the time nowhere else');
+    assert.match(progress, /export function learnerTodo\(db: Db, who: Learner,/, 'learnerTodo takes only the signed-in learner (the branded Learner)');
+    assert.doesNotMatch(progress.match(/export function learnerTodo[\s\S]*?\n\}/)?.[0] ?? '', /marked_at/, 'learnerTodo never reads the time');
     const app = readFileSync(join(root, 'src', 'app.ts'), 'utf8');
     assert.deepEqual([...app.matchAll(/\bisDone\(/g)].length, 1, 'one reader: the lesson page');
     // LMS wave 4 (product-contract v2 on PIL-238, Code facts and section 5.2): the lock gate learnerLocks (lesson, mark and file) is the second reader.

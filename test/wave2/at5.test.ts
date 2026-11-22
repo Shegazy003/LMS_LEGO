@@ -433,7 +433,9 @@ describe('W2 AT-5.5 the home reads the database a fixed number of times, sends n
         assert.equal(thirty.n, Number(zero.split(': ')[1]), `${variant}: the same reads with 0 and 30 marks`);
         first ??= thirty.n;
         assert.equal(thirty.n, first, 'the same reads with 4 and 8 subjects');
-        assert.ok(thirty.n <= 4 + 2, `at most 2 more than today's 4 (${thirty.n})`);
+        // LMS wave 6 (product-contract v2 on PIL-257, AT-3.4b): the home gains exactly one statement, the to-do list,
+        // on top of wave 2's and wave 5's; named in W6-1b's CANDIDATE READY (section 11, last line). Fixed count unchanged.
+        assert.ok(thirty.n <= 4 + 2 + 1, `at most 2 more than today's 4, plus wave 6's to-do statement (${thirty.n})`);
         // The 30 marks are on the page (Reading club all done), and none of their stored times is, in any form.
         assert.equal(cardFor(thirty.body, s.reading).count, doneText('en', 30, 30), 'the card counts the 30 marks');
         const leaks = (await marks(w)).flatMap((m) => timeForms(m.marked_at)).filter((f) => thirty.body.includes(f) || thirty.headers.includes(f));

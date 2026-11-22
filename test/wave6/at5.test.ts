@@ -3,8 +3,8 @@
 // the production configuration (no account), as wave 4's and wave 5's;
 // AT-5.3 (code rollback) is test/rollback/old-code.test.ts in the rollback job,
 // with its README line checked here; AT-5.4 deletion; AT-5.5 export and
-// backup. Also `W6 deploy note` (contract section 12): the README sentence
-// that W6-1a is not deployed on its own (W6-1b removes both). Made-up data only.
+// backup. (W6-1a's `W6 deploy note` check was removed by W6-1b, contract
+// section 11 item 7.) Made-up data only.
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -315,12 +315,5 @@ describe('W6 AT-5.5 export and backup in the README and Later', () => {
     const later = readFileSync(join(root, 'docs/04-LATER.md'), 'utf8');
     const row = later.split('\n').find((l) => l.includes('Per-space data export'))!;
     assert.ok(row.includes('would carry each lesson\'s and chapter\'s due date (LMS wave 6) with it'), 'Later\'s export row');
-  });
-});
-
-// ------------------------------------------------------------ deploy note -----
-describe('W6 deploy note', () => {
-  it('W6 deploy note the README says W6-1a is not deployed on its own (contract section 12; W6-1b removes it)', () => {
-    assert.ok(readme().includes('Wave 6 part 1 (W6-1a) is not deployed on its own; deploy only after W6-1b is merged.'), 'the deploy note');
   });
 });
