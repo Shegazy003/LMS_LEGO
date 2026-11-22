@@ -201,8 +201,26 @@ export function doneMarkOffences(files: Map<string, string>): string[] {
     if (!/\bspace_id\b/.test(sql) || !/\blearner_user_id\b/.test(sql)) out.push(`a statement without space_id and learner_user_id: ${sql.slice(0, 60)}`);
     if (!/^\s*who\.spaceId,\s*who\.userId\b/.test(args)) out.push(`a statement not bound from the signed-in learner first: ${args.trim().slice(0, 60)}`);
   }
-  if ((progress.match(/as Learner\b/g) ?? []).length !== 1) out.push('progress.ts: a Learner is made somewhere other than signedInLearner');
+  // LMS wave 6, W6-1c (contract v3 addendum on PIL-265, G4.2 and G4.3; a change outside its G9, named for the Lead): a second
+  // maker, linkedAsLearner, gives the learner that guardians.ts linkedLearner found for the session's person, so a linked
+  // guardian sees that learner's to-do list read-only. Exactly these two makers; the second takes the person only from
+  // linkedLearner's answer, and the router calls it once, right after that check.
+  if ((progress.match(/as Learner\b/g) ?? []).length !== 2) out.push('progress.ts: a Learner is made somewhere other than signedInLearner and linkedAsLearner');
   if (!/c\.get\('space'\)\.id, userId: c\.get\('user'\)!\.id/.test(progress)) out.push('signedInLearner does not take the space and the person from the request context');
+  if (!/export function linkedAsLearner\(c: Context<AppEnv>, linked: LinkedLearner\): Learner \{\s*return \{ spaceId: c\.get\('space'\)\.id, userId: linked\.id \} as Learner;\s*\}/.test(progress)) {
+    out.push('linkedAsLearner does not take the space from the request context and the person from linkedLearner\'s answer');
+  }
+  const app = files.get('app.ts') ?? '';
+  const uses = [...app.matchAll(/\blinkedAsLearner\(/g)];
+  const use = /\blinkedAsLearner\(c, (\w+)\)/.exec(app);
+  if (uses.length !== 1 || !use) out.push(`app.ts: linkedAsLearner is called ${uses.length} times, not once with a found learner`);
+  else {
+    const handler = app.slice(app.lastIndexOf('app.get(', use.index), use.index);
+    const name = use[1];
+    if (!new RegExp(`const ${name} = await linkedLearner\\(db, view\\.id, c\\.get\\('user'\\)!\\.id, `).test(handler) || !handler.includes(`if (!${name}) return refuse(c, 403, 'noAccess');`)) {
+      out.push('app.ts: linkedAsLearner is not called right after the link check of the session\'s person');
+    }
+  }
   if (/\bc\.req\b|\breq\.(param|query|parseBody|header)/.test(progress)) out.push('progress.ts reads the request');
   return out;
 }
@@ -230,6 +248,14 @@ describe('W2 AT-2.5 (code guard) done_mark is named only in src/progress.ts, and
     assert.ok(planted('progress.ts', progress.replace("'DELETE FROM done_mark WHERE space_id = ? AND learner_user_id = ? AND lesson_id = ?'", "'DELETE FROM done_mark WHERE lesson_id = ?'")).length >= 1, 'a statement without the two columns');
     assert.ok(planted('progress.ts', progress.replace('who.spaceId, who.userId, lessonId,\n  );\n}\n\n/** Whether', 'who.spaceId, c.req.query(\'learner\'), lessonId,\n  );\n}\n\n/** Whether')).length >= 1, 'a learner id from the request');
     assert.ok(planted('progress.ts', `${progress}\nexport const anyone = (id: string) => ({ spaceId: 'x', userId: id }) as Learner;`).length >= 1, 'a Learner made from an id');
+    // W6-1c: the second maker's own rules.
+    const app = files.get('app.ts')!;
+    assert.ok(planted('progress.ts', progress.replace('userId: linked.id } as Learner', "userId: c.req.param('learnerId') } as Learner")).length >= 1, 'linkedAsLearner taking the person from the address');
+    assert.ok(planted('app.ts', app.replace('linkedAsLearner(c, learner)', "linkedAsLearner(c, { id: c.req.param('learnerId'), display_name: '' })")).length >= 1, 'linkedAsLearner given an id from the address');
+    const unchecked = app.replace(/if \(!learner\) return refuse\(c, 403, 'noAccess'\);(\r?\n {2}\/\/ R2-c)/, '$1');
+    assert.notEqual(unchecked, app, 'the plant applies');
+    assert.ok(planted('app.ts', unchecked).length >= 1, 'linkedAsLearner without the link check before it');
+    assert.ok(planted('app.ts', `${app}\nconst again = (c: C) => linkedAsLearner(c, { id: 'x', display_name: '' });`).length >= 1, 'a second call');
   });
 });
 

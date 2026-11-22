@@ -8,7 +8,9 @@
 //   on it names space_id and learner_user_id, and both are bound from a
 //   Learner, which only signedInLearner makes: the space from the address
 //   (already checked by the space middleware) and the person from the session.
-//   No learner id is ever taken from a request.
+//   No learner id is ever taken from a request. From W6-1c a second maker,
+//   linkedAsLearner, gives the learner a guardian is linked to, as the
+//   session's link check found them, for that learner's to-do list only.
 // - Nothing is recorded implicitly: only markDone writes a row and only
 //   markNotDone deletes one; the router calls them only for a POST to the mark
 //   address, after the reading-as-a-learner gate.
@@ -17,6 +19,7 @@
 import type { Context } from 'hono';
 import type { AppEnv, CurrentSpace } from './app-env.ts';
 import type { Db } from './db.ts';
+import type { LinkedLearner } from './guardians.ts';
 import { readableSubject, type SubjectRow, type TodoRow } from './learning.ts';
 
 /** Whether this person reads a subject readableSubject gave them as a learner
@@ -46,6 +49,16 @@ export interface Learner {
 /** The learner of this request: the current space and the signed-in person, never anything from the request itself. */
 export function signedInLearner(c: Context<AppEnv>): Learner {
   return { spaceId: c.get('space').id, userId: c.get('user')!.id } as Learner;
+}
+
+/** LMS wave 6, W6-1c (product-contract v3 addendum on PIL-265, G4.3): the
+ * learner a guardian may see now, as guardians.ts linkedLearner found them for
+ * the session's person (an active link, the learner's access active today);
+ * the space is the current one. Only the router makes it, right after that
+ * check, and only to read that learner's to-do list (learnerTodo): never a
+ * write, never a time, never an id taken from the address alone. */
+export function linkedAsLearner(c: Context<AppEnv>, linked: LinkedLearner): Learner {
+  return { spaceId: c.get('space').id, userId: linked.id } as Learner;
 }
 
 // The time a mark is stored (milliseconds since 1970, UTC). Production uses

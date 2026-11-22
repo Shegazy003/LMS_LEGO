@@ -94,6 +94,15 @@ From the Later list of the frozen contract `product-contract-r2` (PIL-120, secti
 | Lesson activity for publishers or admins; time of day, duration or count of an open; per-person opt-out; a deletion screen; keeping activity when switched off; any automatic retention limit | Release 2 records the least it can (AT-15); each widens it |
 | Announcements (LMS wave 5): one message instead of two after a too-long text is sent. With script on, the refused page shows the server's error line and the count's own "Too long: <n> of 500" together | Both lines are correct and tied to the field (UX-53). Merging them changes the count's behaviour, which the frozen ux-plan fixes (from the W5-1a Lead stamp) |
 
+## From LMS wave 6 (22 November 2026)
+
+From the Later list of the frozen `product-contract` v3 addendum (PIL-265, section G11). Each waits for its own decision.
+
+| Idea | Why it waits |
+|---|---|
+| C1-2: a notice to the learner of what linked guardians can see (results, activity and now the to-do list) | Today learners are not told that guardians see their results, so this belongs to one notice covering every guardian view, not a line on the to-do block alone. It matters most in the Company and University kits, where the learner may be an adult |
+| A one-line to-do summary on the guardian home's glance card | Needs its own decision, because it would put lateness on the first guardian screen |
+
 ## From the brainstorm comparison
 
 | Idea | Why it waits |

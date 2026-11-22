@@ -24,8 +24,9 @@ const dateOf = (iso: string) => html`<bdi dir="ltr" class="due-date"><time datet
 
 /** The due card (section 4.2, UX-59): heading, help line, the link to the due-dates page. A link only: no count, no read. */
 export function dueCard(t: Label, lang: Lang, href: string): Html {
-  const low = (key: 'chapter' | 'lesson' | 'subject' | 'learner') => t(key).toLocaleLowerCase(lang);
-  const help = t('dueCardHelp', { chapter: low('chapter'), lesson: low('lesson'), subject: low('subject'), learner: low('learner'), days: String(TODO_AHEAD_DAYS) });
+  const low = (key: 'chapter' | 'lesson' | 'subject' | 'learner' | 'guardian') => t(key).toLocaleLowerCase(lang);
+  // W6-1c (UX-81): the last sentence names who sees lateness: the learner and, where a link exists, the guardian.
+  const help = t('dueCardHelp', { chapter: low('chapter'), lesson: low('lesson'), subject: low('subject'), learner: low('learner'), guardian: low('guardian'), days: String(TODO_AHEAD_DAYS) });
   return html`<section id="due-dates" class="card" aria-labelledby="due-card-title"><h2 id="due-card-title">${t('dueCardTitle')}</h2>
 <p class="due-help">${help}</p>
 <p class="due-set"><a class="due-link" href="${href}">${t('dueSetLink')}</a></p>

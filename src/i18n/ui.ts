@@ -556,7 +556,7 @@ const en = {
   // LMS wave 6, W6-1a (product-contract v2 on PIL-257, section 8; ux-plan UX-64 key table, the single source).
   // Kit words inside a sentence come in lower case; {days} is TODO_AHEAD_DAYS and {date} a date (src/due.ts), never literal.
   dueCardTitle: 'Due dates',
-  dueCardHelp: 'Give any {chapter} or {lesson} an optional due date. It shows in the {subject} outline at once, and on each {learner}\'s to-do list from {days} days before. Each day ends at midnight UTC (2 or 3 a.m. in Egypt). Nobody else is shown who is late.',
+  dueCardHelp: 'Give any {chapter} or {lesson} an optional due date. It shows in the {subject} outline at once, and on each {learner}\'s to-do list from {days} days before. Each day ends at midnight UTC (2 or 3 a.m. in Egypt). Lateness is shown only on the {learner}\'s list and, where a link exists, on the {guardian}\'s page.',
   dueSetLink: 'Set due dates',
   duePageTitle: 'Due dates: {subjectTitle}',
   dueLabel: 'Due date for {title}',
@@ -577,6 +577,10 @@ const en = {
   todoMore: 'More ({n})',
   todoCapped: 'Other items not shown: {n}. Every due date is in its {subject} outline.',
   todoItemLine: '{kind} · {subjectTitle} · Due {date}',
+  // LMS wave 6, W6-1c (ux-plan v3 addendum on PIL-265, UX-81): the guardian's read-only view on the linked learner's page.
+  guardianTodoTitle: 'To do: {name}',
+  guardianTodoNote: 'Read only. An item leaves the list when it is done.',
+  guardianTodoCapped: 'Other items not shown: {n}.',
 };
 
 export type UiKey = keyof typeof en;
@@ -1124,7 +1128,7 @@ const ar: Record<UiKey, string> = {
   annTooLong: 'النص أطول من المسموح: {n} من {max} حرف.',
   // LMS wave 6, W6-1a (ux-plan UX-64 key table).
   dueCardTitle: 'مواعيد الإنجاز',
-  dueCardHelp: 'يمكن تحديد موعد إنجاز اختياري لأي {chapter} أو {lesson}. يظهر الموعد في فهرس {subject} فورًا، ويدخل قائمة المهام لكل {learner} قبل الموعد بمدة {days} أيام. ينتهي اليوم عند منتصف الليل بالتوقيت العالمي (الساعة 2 أو 3 فجرًا بتوقيت مصر). لا يُعرض التأخّر لأي شخص آخر.',
+  dueCardHelp: 'يمكن تحديد موعد إنجاز اختياري لأي {chapter} أو {lesson}. يظهر الموعد في فهرس {subject} فورًا، ويدخل قائمة المهام لكل {learner} قبل الموعد بمدة {days} أيام. ينتهي اليوم عند منتصف الليل بالتوقيت العالمي (الساعة 2 أو 3 فجرًا بتوقيت مصر). لا يظهر التأخّر إلا في قائمة {learner}، وفي صفحة {guardian} عند وجود ربط.',
   dueSetLink: 'تحديد مواعيد الإنجاز',
   duePageTitle: 'مواعيد الإنجاز: {subjectTitle}',
   dueLabel: 'موعد إنجاز {title}',
@@ -1145,6 +1149,9 @@ const ar: Record<UiKey, string> = {
   todoMore: 'المزيد ({n})',
   todoCapped: 'مهام أخرى غير معروضة: {n}. تظهر كل المواعيد في فهرس {subject}.',
   todoItemLine: '{kind} · {subjectTitle} · الموعد {date}',
+  guardianTodoTitle: 'قائمة المهام: {name}',
+  guardianTodoNote: 'للاطلاع فقط. تخرج كل مهمة من القائمة عند الإنجاز.',
+  guardianTodoCapped: 'مهام أخرى غير معروضة: {n}.',
 };
 
 export const UI: Record<'ar' | 'en', Record<UiKey, string>> = { en, ar };

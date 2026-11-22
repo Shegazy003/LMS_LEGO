@@ -26,7 +26,7 @@ import {
   previewableSubject, readableSubject,
   subjectsForPublisher, type ChapterLocks, type OutlineChapter, type Previewer, type SubjectRow,
 } from './learning.ts';
-import { doneLessonIds, isDone, learnerTodo, markDone, markNotDone, markOrder, readsAsLearner, signedInLearner } from './progress.ts';
+import { doneLessonIds, isDone, learnerTodo, linkedAsLearner, markDone, markNotDone, markOrder, readsAsLearner, signedInLearner } from './progress.ts';
 import { previewFrame, type PreviewScope } from './views/preview.ts';
 import { isGuardianHere, isLearnerHere, link, linkedLearner, linkedLearners, linksOf, subjectsSeenBy, subjectsSeenByLinked, unlink } from './guardians.ts';
 import { activityOf, activitySetting, lastOpenedOfLinked, linkedSince, recordOpen, recordingSince, switchOff, switchOn, type ActivitySetting } from './activity.ts';
@@ -935,7 +935,12 @@ app.get('/s/:spaceId/linked/:learnerId', async (c) => {
   // R2-c (AT-11d): the learner's own published results, read only once the link is checked.
   const results = await ownResults(db, view.id, learner.id);
   const activity = (await activitySetting(db, view.id)).enabled;
-  return page(c, guardianLearnerPage(t, lang, view, { learner, subjects: await subjectsSeenBy(db, view.id, learner.id) }, results, activity));
+  const subjects = await subjectsSeenBy(db, view.id, learner.id);
+  // LMS wave 6, W6-1c (contract v3 addendum on PIL-265, G4): while lesson activity is on, that learner's own
+  // to-do list, read only now that the link is checked, for the learner linkedLearner found (one more read).
+  const day = todoWindow(now());
+  const todo = activity ? todoGroups(await learnerTodo(db, linkedAsLearner(c, learner), day.today, day.last, TODO_MAX_PER_GROUP)) : [];
+  return page(c, guardianLearnerPage(t, lang, view, { learner, subjects }, results, activity, todo));
 });
 
 // One linked learner's lesson activity (R2-d, AT-15c): read only once the link

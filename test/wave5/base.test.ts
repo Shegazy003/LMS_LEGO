@@ -321,8 +321,14 @@ function extraReads(r: Result, spaces: string[]): number {
   if (rest === '/preview') return 1 + 1; // the preview home (and wave 6's to-do read)
   if (/^\/preview\/learn\/[^/]+$/.test(rest)) return 1; // the preview subject page
   if (/^\/publish\/edit\/[^/]+$/.test(rest) || /^\/admin\/topics\/[^/]+$/.test(rest)) return 1; // the editor and the subject admin page (the card's list)
+  // LMS wave 6 (W6-1c, product-contract v3 addendum on PIL-265, G9.5): a linked learner's page reads that learner's
+  // to-do list once while lesson activity is on in its space (W5-main's count plus exactly one, AT-6.4).
+  if (/^\/linked\/[^/]+$/.test(rest) && activityOn.has(space)) return 1;
   return 0;
 }
+
+/** The spaces with lesson activity on (read once from the candidate before the counts are checked; W6-1c G9.5). */
+let activityOn = new Set<string>();
 
 /** The requests whose counts break the rule, at most five. */
 function readProblems(rs: Result[], spaces: string[]): string {
@@ -411,6 +417,7 @@ describe('W5 AT-4.1 base comparison: with no announcements every page is main b8
     const none = await noneYet();
     const { small, load, loadNone } = await withAnnouncements();
     const spaces = [p.w.school.id, p.w.company.id, p.w.university.id, p.load.id];
+    activityOn = new Set((await p.cand.sql('SELECT space_id FROM lesson_view_setting WHERE enabled = 1')).map((r) => String(r.space_id)));
     for (const [name, rs] of [['no announcements', none], ['with announcements', small], ['load world, no announcements', loadNone], ['load world, 300 announcements', load]] as const) {
       // Pages that exist only on the candidate (the card's own edit and remove pages) have no main count to compare.
       const comparable = rs.filter((r) => !/\/announcements(\/|$)/.test(r.path));
