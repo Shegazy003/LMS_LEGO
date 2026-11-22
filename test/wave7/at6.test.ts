@@ -2,9 +2,9 @@
 // AT-6.1 and AT-6.2 apply the migrations with Wrangler on a fresh local D1 of
 // the production configuration (no account), as waves 4 to 6; AT-6.3 (code
 // rollback) is test/rollback/old-code.test.ts in the rollback job, with its
-// README line checked here; AT-6.4 deletion lists; AT-6.5 the README and Later;
-// `W7 deploy note` the README's "not deployed alone" line (removed by W7-2,
-// contract section 11 item 8). Made-up data only.
+// README line checked here; AT-6.4 deletion lists; AT-6.5 the README and Later.
+// W7-2 removed W7-1's "not deployed alone" note and its step `W7 deploy note`
+// (contract section 11 item 8). Made-up data only.
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
@@ -282,11 +282,5 @@ describe('W7 AT-6.5 the README on export, backup and personal data; Later\'s exp
     const later = readFileSync(join(root, 'docs/04-LATER.md'), 'utf8');
     const row = later.split('\n').find((l) => l.includes('Per-space data export'))!;
     assert.ok(row.includes("would carry quizzes (LMS wave 7) with their subject as content, and a learner's quiz attempts only to the people who may read them"), 'Later\'s export row');
-  });
-});
-
-describe('W7 deploy note', () => {
-  it('W7 deploy note the README says wave 7 part 1 is not deployed on its own', () => {
-    assert.ok(readme().includes('Wave 7 part 1 (W7-1) is not deployed on its own; deploy only after W7-2 is merged.'), 'the deploy note');
   });
 });

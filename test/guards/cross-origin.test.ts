@@ -54,7 +54,10 @@ function placeOf(path: string): { client: Client; address: string } | null {
     path === '/owner' || path.startsWith('/owner/') ? owner
       : path.startsWith('/s/:spaceId/admin') ? admin
         : path.startsWith('/s/:spaceId/publish') ? publisher
-          : path.startsWith('/account') || path === '/signout' || path.startsWith('/s/:spaceId/read/') ? learner
+          // LMS wave 7 (W7-2): the preview's quiz sending is the admin's or publisher's (it stores nothing anyway).
+          : path.startsWith('/s/:spaceId/preview/') ? admin
+          // LMS wave 7 (W7-2): a quiz sending is the learner's.
+          : path.startsWith('/account') || path === '/signout' || path.startsWith('/s/:spaceId/read/') || path.startsWith('/s/:spaceId/quiz/') ? learner
             : ['/setup', '/signin', '/recover', '/r/:token'].includes(path) ? anonymous
               : null;
   assert.ok(client, `the sweep does not know who uses POST ${path}: add it here`);
@@ -200,6 +203,8 @@ describe('AT-5 guard: every form refuses a cross-origin post', { concurrency: fa
       '/s/:spaceId/admin/topics/:subjectId/announcements/:annId', '/s/:spaceId/admin/topics/:subjectId/announcements/:annId/remove',
       // LMS wave 6 (AT-1.4): a lesson's or a chapter's due date, from the editor's and the subject admin page's due-dates page.
       '/s/:spaceId/publish/edit/:subjectId/due/:kind/:itemId', '/s/:spaceId/admin/topics/:subjectId/due/:kind/:itemId',
+      // LMS wave 7 (W7-2): a learner's quiz sending and the preview's.
+      '/s/:spaceId/quiz/:quizId', '/s/:spaceId/preview/quiz/:quizId',
     ]) assert.ok(posts.includes(must), `POST ${must} exists and is in the sweep`);
 
     const dataBefore: Snapshot = await snapshot(worker);

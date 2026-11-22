@@ -281,6 +281,9 @@ a.latest-result.none{color:#3d444d}
 @media (max-width:600px){.quiz-table thead{display:none}.quiz-table tr{display:block;padding:8px 0;border-bottom:1px solid #e3e6ea}.quiz-table td{display:block;border:0;padding:2px 8px}.quiz-table td::before{content:attr(data-label) ": ";font-weight:600}}
 .quiz-pager{display:flex;flex-wrap:wrap;align-items:center;gap:8px 16px;margin:12px 0}
 .quiz-stats{margin:0;padding-inline-start:20px}
+#quiz-take legend{font-weight:600;padding:0 4px;overflow-wrap:anywhere}
+.quiz-form .quiz-choice{display:flex;align-items:center;gap:8px;min-height:44px;cursor:pointer;font-weight:400}
+.quiz-choice>span{min-width:0;overflow-wrap:anywhere}
 `;
 
 export interface LayoutOptions {

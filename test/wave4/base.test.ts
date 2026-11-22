@@ -90,6 +90,8 @@ async function pair(): Promise<Pair> {
   copy.exec(readFileSync(join(repo, 'migrations', '0014_announcements.sql'), 'utf8'));
   // LMS wave 6 (contract on PIL-257, section 11 item 3): and the due-date migration (none stored).
   copy.exec(readFileSync(join(repo, 'migrations', '0015_due_dates.sql'), 'utf8'));
+  // LMS wave 7 (W7-2, contract v2 on PIL-261, section 11 item 3): the candidate's subject pages read quizzes, so the copy gains that migration too (none stored).
+  copy.exec(readFileSync(join(repo, 'migrations', '0016_quizzes.sql'), 'utf8'));
   const cand = await inProcess({ sqlite: copy, files: b.worker.files });
   const off = await cand.sql('SELECT COUNT(*) AS n FROM subject WHERE chapters_in_order <> 0');
   assert.equal(Number(off[0].n), 0, 'every setting off on the candidate');

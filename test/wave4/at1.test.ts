@@ -268,6 +268,11 @@ const WAVE5_CARD_READS: Record<string, number> = {
 // LMS wave 6 (W6-1b, product-contract v2 on PIL-257, AT-3.4b): the learner home reads its to-do list once (W5-main's count
 // plus exactly one); every other page here keeps its count. Named in CANDIDATE READY (outside section 11; the Lead decides).
 const WAVE6_TODO_READS: Record<string, number> = { 'Salma home': 1 };
+// LMS wave 7 (W7-2, product-contract v2 on PIL-261, section 11.4): every learner and preview subject page reads its open
+// quizzes once, so exactly one more there; every other page keeps its count. Named in CANDIDATE READY (the Lead decides).
+const WAVE7_QUIZ_READS: Record<string, number> = {
+  'Salma outline': 1, 'Salma outline open=all': 1, 'Amal outline': 1, 'Hadeer preview outline': 1, 'Amal preview outline': 1,
+};
 
 describe('W4 AT-1.4 with the setting off no page makes more reads than main\'s (statement spy)', { concurrency: false }, () => {
   it('W4 AT-1.4 (d) the read counts with every setting off are at most main\'s, page by page', async (t) => {
@@ -309,7 +314,7 @@ describe('W4 AT-1.4 with the setting off no page makes more reads than main\'s (
       t.diagnostic(`AT-1.4 (d) reads with the setting off: ${counts.map((x) => `${x.name}: ${x.n} (main ${MAIN_READS[x.name]})`).join('; ')}`);
       for (const x of counts) {
         assert.ok(x.status === 200 || x.status === 303, `${x.name}: ${x.status}`);
-        const allowed = MAIN_READS[x.name] + (WAVE5_CARD_READS[x.name] ?? 0) + (WAVE6_TODO_READS[x.name] ?? 0);
+        const allowed = MAIN_READS[x.name] + (WAVE5_CARD_READS[x.name] ?? 0) + (WAVE6_TODO_READS[x.name] ?? 0) + (WAVE7_QUIZ_READS[x.name] ?? 0);
         assert.ok(x.n <= allowed, `${x.name}: ${x.n} reads, main ${MAIN_READS[x.name]}, allowed ${allowed}`);
       }
     } finally {

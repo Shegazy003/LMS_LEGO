@@ -417,6 +417,80 @@ export async function quizSummary(db: Db, spaceId: string, quizId: string, today
   return { n: Number(row?.n ?? 0), right: Array.from({ length: questionCount }, (_, i) => Number(row?.[`r${i + 1}`] ?? 0)) };
 }
 
+// ------------------------------------------------------------- learners ----
+// W7-2 (sections 5.1 to 5.4, 5.6): the learners side. The subject page reads one statement (the open quizzes and
+// the closed ones this learner took, with their own score, never a question text); the take and result pages read
+// one quiz with this learners own attempt; a sending is one insert that re-checks the state, the rev and the removal.
+
+/** One quiz of the subject page (section 5.1): `score` and `total` only when this learner took it. */
+export interface LearnerQuizRow { id: string; title: string; questions: number; score: number | null; total: number | null }
+
+/** The subject pages quizzes for one learner (one statement, section 6.1): open quizzes not taken first, then taken
+ * ones (open or closed), each group in creation order; never drafts or removed quizzes. A made-up learner (the
+ * preview, or staff reading the subject) passes an id that has no attempt. The question count comes from
+ * json_array_length, so no question text, answer or key is returned. */
+export async function learnerQuizzes(db: Db, spaceId: string, subjectId: string, learnerId: string): Promise<LearnerQuizRow[]> {
+  const rows = await db.all<{ id: string; title: string; questions: number; score: number | null; total: number | null }>(
+    `SELECT quiz.id, quiz.title, json_array_length(quiz.questions_json) AS questions, a.score, a.question_count AS total
+       FROM quiz LEFT JOIN quiz_attempt a ON a.quiz_id = quiz.id AND a.space_id = quiz.space_id AND a.learner_user_id = ?
+      WHERE quiz.space_id = ? AND quiz.subject_id = ? AND quiz.removed_at IS NULL
+        AND (quiz.state = 'open' OR (quiz.state = 'closed' AND a.id IS NOT NULL))
+      ORDER BY a.id IS NOT NULL, quiz.created_at, quiz.id`,
+    learnerId, spaceId, subjectId,
+  );
+  return rows.map((r) => ({ id: r.id, title: r.title, questions: Number(r.questions), score: r.score === null ? null : Number(r.score), total: r.total === null ? null : Number(r.total) }));
+}
+
+/** A quiz as the take and result pages read it, with this learners own attempt (null when none). */
+export interface TakeRow {
+  id: string;
+  subject_id: string;
+  title: string;
+  state: QuizState;
+  rev: number;
+  removed_at: number | null;
+  questions: QuizQuestion[];
+  attempt: { answers: Record<string, string>; score: number; total: number; sent_at: number } | null;
+}
+
+/** The quiz an address names in this space (one read), removed ones too (the caller decides); null when there is none. */
+export async function quizToTake(db: Db, spaceId: string, quizId: string, learnerId: string): Promise<TakeRow | null> {
+  const r = await db.first<{ id: string; subject_id: string; title: string; state: QuizState; rev: number; removed_at: number | null; questions_json: string; answers_json: string | null; score: number | null; total: number | null; sent_at: number | null }>(
+    `SELECT quiz.id, quiz.subject_id, quiz.title, quiz.state, quiz.rev, quiz.removed_at, quiz.questions_json,
+            a.answers_json, a.score, a.question_count AS total, a.sent_at
+       FROM quiz LEFT JOIN quiz_attempt a ON a.quiz_id = quiz.id AND a.space_id = quiz.space_id AND a.learner_user_id = ?
+      WHERE quiz.id = ? AND quiz.space_id = ?`,
+    learnerId, quizId, spaceId,
+  );
+  if (!r) return null;
+  return {
+    id: r.id, subject_id: r.subject_id, title: r.title, state: r.state, rev: Number(r.rev), removed_at: r.removed_at,
+    questions: parseQuestions(r.questions_json),
+    attempt: r.answers_json === null ? null : { answers: parseAnswers(r.answers_json), score: Number(r.score), total: Number(r.total), sent_at: Number(r.sent_at) },
+  };
+}
+
+/** The posted answers of a take form: `q-<question id>` to the chosen answer id (section 5.3). */
+export function postedAnswers(body: Record<string, unknown>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [name, value] of Object.entries(body)) {
+    if (name.startsWith('q-') && typeof value === 'string' && value !== '') out[name.slice(2)] = value;
+  }
+  return out;
+}
+
+/** Stores one sending in one statement (section 5.3): only while the quiz is open, not removed and at the loaded rev;
+ * a second sending by the same learner stores nothing (the unique pair). True when the row was stored. */
+export async function insertAttempt(db: Db, v: { spaceId: string; quizId: string; learnerId: string; rev: number; built: BuiltAttempt; nowMs: number }): Promise<boolean> {
+  return (await db.run(
+    `INSERT INTO quiz_attempt (id, space_id, quiz_id, learner_user_id, rev, answers_json, right_flags, score, question_count, sent_at)
+     SELECT ?, quiz.space_id, quiz.id, ?, quiz.rev, ?, ?, ?, ?, ?
+       FROM quiz WHERE quiz.id = ? AND quiz.space_id = ? AND quiz.state = 'open' AND quiz.removed_at IS NULL AND quiz.rev = ?
+     ON CONFLICT DO NOTHING`,
+    newQuizId(), v.learnerId, v.built.answers_json, v.built.right_flags, v.built.score, v.built.question_count, v.nowMs, v.quizId, v.spaceId, v.rev,
+  )) === 1;
+}
+
 /** One listed learners attempt on the quiz (their answers page), or null (no attempt, another space, or access ended). */
 export interface QuizAttemptRow { id: string; display_name: string; username: string; answers: Record<string, string>; score: number; question_count: number; sent_at: number }
 

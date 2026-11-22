@@ -166,6 +166,8 @@ const GONE = [
   'Gone worksheet', 'Gone picture', 'Gone link', 'Gone note',
   'Gone lesson', 'Gone lesson sheet', 'Gone chapter', 'Gone chapter lesson', 'Gone chapter sheet',
   'Hidden lesson', 'Hidden lesson sheet', 'Hidden chapter', 'Hidden chapter lesson', 'Hidden chapter note',
+  // LMS wave 7 (W7-2, AT-3.7): a quiz removed through the publisher's page.
+  'Gone quiz',
 ];
 
 let worker: RunningWorker;
@@ -174,7 +176,7 @@ let hadeer: Client;
 let salma: Client;
 let admin: Client;
 const ids: Record<string, string> = {};
-const goneIds: { kind: 'chapter' | 'lesson' | 'material'; id: string }[] = [];
+const goneIds: { kind: 'chapter' | 'lesson' | 'material' | 'quiz'; id: string }[] = [];
 const etags: Record<string, string> = {};
 
 interface RouteEntry { method: string; path: string; handler: unknown }
@@ -196,7 +198,7 @@ function addresses(path: string): { address: string; gone: boolean }[] {
   if (!params.length) return [{ address: base, gone: false }];
   assert.equal(params.length, 1, `GET ${path}: the sweep knows routes with one item id; add this one here`);
   const [name] = params;
-  const kind = ({ subjectId: 'subject', lessonId: 'lesson', materialId: 'material', chapterId: 'chapter' } as Record<string, string>)[name];
+  const kind = ({ subjectId: 'subject', lessonId: 'lesson', materialId: 'material', chapterId: 'chapter', quizId: 'quiz' } as Record<string, string>)[name];
   assert.ok(kind, `GET ${path}: the sweep does not know the parameter :${name}; add it here`);
   if (kind === 'subject') return [{ address: base.replace(`:${name}`, ids.subject), gone: false }];
   const gone = goneIds.filter((g) => g.kind === kind);
@@ -314,6 +316,16 @@ describe('removed guard: no learner read path shows removed content', { concurre
       { kind: 'lesson', id: ids.hiddenLesson }, { kind: 'material', id: ids.hiddenLessonSheet },
       { kind: 'chapter', id: ids.hiddenChapter }, { kind: 'lesson', id: ids.hiddenChapterLesson }, { kind: 'material', id: ids.hiddenChapterNote },
     );
+    // LMS wave 7 (W7-2, AT-3.7): an open quiz with a question, then removed through the publisher's page.
+    const quizzes = `/s/${spaceId}/publish/edit/${ids.subject}/quizzes`;
+    const made = await hadeer.post(quizzes, { title: 'Gone quiz' });
+    assert.equal(made.status, 303, 'the quiz is created');
+    const quiz = (made.headers.get('location') ?? '').split('?')[0].split('/').pop()!;
+    assert.equal((await hadeer.post(`${quizzes}/${quiz}/question`, { text: 'Gone question', answer1: 'Yes', answer2: 'No', right: '1', rev: '0' })).status, 303);
+    assert.equal((await hadeer.post(`${quizzes}/${quiz}/open`, { rev: '1' })).status, 303);
+    assert.ok((await read(salma, `/s/${spaceId}/learn/${ids.subject}`)).body.includes('Gone quiz'), 'positive control: the learner sees the open quiz');
+    assert.equal((await hadeer.post(`${quizzes}/${quiz}/remove`, { rev: '1' })).status, 303, 'the quiz is removed');
+    goneIds.push({ kind: 'quiz', id: quiz });
     const stored = await worker.sql(`SELECT COUNT(*) AS n FROM material WHERE lesson_id IN ('${ids.adding}', '${ids.goneLesson}', '${ids.hiddenLesson}')`);
     assert.equal(Number(stored[0].n), 7, 'nothing was deleted: every material row is still stored');
   });

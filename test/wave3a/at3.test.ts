@@ -10,6 +10,8 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { chromium, type Browser, type Page } from 'playwright';
 import { OWNER } from '../support/seed.ts';
+import { QA_QUESTIONS, W7A, withW7a } from '../wave7/world.ts';
+import { answersFor, writeAttempt } from '../wave7/attempts.ts';
 import {
   ADMIN, CONTROLS, HADEER, SALMA, activity, as, assertInert, browserAs, element, ownerPreview, previewHome, wave3aWorld, type Wave3aWorld,
 } from './world.ts';
@@ -195,6 +197,11 @@ async function run(): Promise<Journey> {
   ] as const) {
     await world.p.sql(`UPDATE ${table} SET due_on = '${day(n)}' WHERE id = '${id}'`);
   }
+  // LMS wave 7 (contract v2 on PIL-261, W7 AT-4.4d): the journey runs with quizzes present (W7-a, and Salma's attempt on QA),
+  // so the preview subject pages show the quiz section, the journey opens each preview take page, and the snapshots hold
+  // the quiz and quiz_attempt tables with rows.
+  await withW7a(world);
+  await writeAttempt((q) => world.p.sql(q), { space: world.school.id, quiz: W7A.QA, learner: world.ids[SALMA.username], questions: QA_QUESTIONS, posted: answersFor(QA_QUESTIONS, (i) => (i === 0 ? 'right' : null)), sentAt: Date.now() - 60_000 });
   const ownerId = String((await world.p.sql(`SELECT id FROM user WHERE username = '${OWNER.username}'`))[0].id);
   const j: Journey = {
     before: {}, after: {}, schemaBefore: '', schemaAfter: '', previewers: new Set([world.ids[ADMIN.username], world.ids[HADEER.username], ownerId]),
@@ -244,12 +251,16 @@ async function run(): Promise<Journey> {
       const starts = await hrefs(page, 'li.card[data-subject] a.start');
       for (const t of titles) {
         await visit(t);
+        // LMS wave 7 (W7 AT-4.4d): the quiz section's links, the preview take pages (opened, never sent).
+        const quizzes = await hrefs(page, '#quizzes a.quiz-row-link');
         const all = await hrefs(page, '#expand-all');
         if (all.length) {
           await visit(all[0]);
           await visit((await hrefs(page, '#collapse-all'))[0]);
         }
+        for (const q of quizzes) await visit(q);
       }
+      assert.ok(j.postForms.some((f) => f.startsWith(name)), `${name}: a preview take page was opened (W7 AT-4.4d)`);
       let pdfOpened = false;
       for (const s of starts) {
         await visit(s);
@@ -370,7 +381,10 @@ describe('W3a AT-3 the preview changes nothing', { concurrency: false }, () => {
     const j = await theJourney();
     const sent = j.steps.filter((s) => s.method !== 'GET' && s.method !== 'HEAD').map((s) => `${s.who} ${s.method} ${s.url}`);
     assert.deepEqual(sent, [], 'no request other than GET or HEAD, whatever is clicked');
-    assert.deepEqual(j.postForms, [], 'no preview page holds a <form method="post">');
+    // LMS wave 7 (contract on PIL-261, section 11 item 6): exactly the preview quiz POST is allowed (it scores and stores nothing, W7 AT-4.4c).
+    const quizPost = /^<form id="quiz-take" class="quiz-form" method="post" action="\/s\/[^/"]+\/preview\/quiz\/[^/"?]+(\?from=[^"]*)?">$/;
+    assert.deepEqual(j.postForms.filter((f) => !quizPost.test(f.slice(f.indexOf(': ') + 2))), [], 'no preview page holds a <form method="post"> but the preview quiz POST');
+    assert.ok(j.postForms.length > 0, 'the preview take pages were met');
     assert.ok(j.inert.length > 0, 'the inert controls were clicked');
     for (const kind of ['brand', 'sign-out', 'my-account', 'got-it', 'done']) assert.ok(j.inert.some((x) => x.kind === kind), `${kind} was met and clicked`);
     for (const x of j.inert) {

@@ -28,7 +28,7 @@ import type { SpaceView } from './space.ts';
 const low = (t: Label, lang: Lang, key: 'learner') => t(key).toLocaleLowerCase(lang);
 
 /** A product sentence whose values are ready markup (a title in <bdi>). */
-function filled(t: Label, key: LabelKey, values: Record<string, Html | string>): (Html | string)[] {
+export function filled(t: Label, key: LabelKey, values: Record<string, Html | string>): (Html | string)[] {
   const names = Object.keys(values);
   const markers = Object.fromEntries(names.map((n, i) => [n, `\u0001${i}\u0002`]));
   return t(key, markers).split(/\u0001(\d+)\u0002/).map((part, i) => (i % 2 === 1 ? values[names[Number(part)]] : part));
@@ -158,6 +158,8 @@ export function quizEditorPage(
   v: {
     /** The quiz list (the back link; every post address is under it). */
     list: string;
+    /** W7-2 (section 5.6): the preview take page of this quiz, Back returning to where the editor was reached from. */
+    preview: string;
     subjectTitle: string;
     quiz: QuizRow;
     status: QuizEditorStatus;
@@ -183,6 +185,7 @@ export function quizEditorPage(
   const stateLine = html`<section id="quiz-state" class="quiz-state-line card">${stateStatus}${topMessage('state')}
 <p class="quiz-state-now"><span class="quiz-state">${t(STATE_KEY[q.state])}</span></p>
 ${q.state === 'draft' ? html`<p class="quiz-help">${t('quizDraftHelp', { learner: low(t, lang, 'learner') })}</p>` : ''}${q.locked ? '' : html`<p class="quiz-help quiz-open-help">${t('quizOpenHelp')}</p>`}
+<p class="quiz-manage"><a id="quiz-preview-link" class="quiz-link-button" href="${v.preview}">${t('quizPreviewLink', { learner: low(t, lang, 'learner') })}</a></p>
 <div class="quiz-actions">${actions}${action('remove', 'quizRemove', false)}</div>
 </section>`;
   // The questions: each its own form (UX-70), or read-only when locked.
@@ -270,7 +273,7 @@ export function quizResultBody(t: Label, questions: readonly QuizQuestion[], ans
       const isRight = a.id === q.rightId;
       const isChosen = a.id === chosen;
       const shape = isRight ? '✓' : isChosen ? '✗' : '';
-      return html`<li class="quiz-answer${isRight ? ' quiz-is-right' : ''}${isChosen ? ' quiz-is-chosen' : ''}">${shape ? html`<span class="quiz-shape" aria-hidden="true">${shape}</span> ` : ''}<span class="quiz-answer-text" dir="auto">${a.text}</span>${isChosen ? html` <span class="quiz-tag">${t('quizChosen')}</span>` : ''}${isRight ? html` <span class="quiz-tag">${t('quizRightMark')}</span>` : ''}</li>`;
+      return html`<li class="quiz-answer${isRight ? ' quiz-is-right' : ''}${isChosen ? ' quiz-is-chosen' : ''}">${shape ? html`<span class="quiz-shape" aria-hidden="true">${shape}</span> ` : ''}<span class="quiz-answer-text" dir="auto">${a.text}</span>${isChosen ? html` · <span class="quiz-tag">${t('quizChosen')}</span>` : ''}${isRight ? html` · <span class="quiz-tag">${t('quizRightMark')}</span>` : ''}</li>`;
     };
     return html`<section class="quiz-question card"><h2>${sentence(t, 'quizQuestionHeading', { n: String(i + 1) })}</h2>
 <p class="quiz-text" dir="auto">${q.text}</p>

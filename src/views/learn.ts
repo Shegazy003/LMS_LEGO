@@ -306,6 +306,8 @@ export function subjectPage(
   t: Label, lang: Lang, space: SpaceView, head: { id: string; title: string }, parts: OutlineChapter[], open?: string, marks: Set<string> = new Set(),
   locks: ChapterLocks | null = null,
   announcements: Html | string = '',
+  /** LMS wave 7 (section 5.1, UX-72): the quiz section, after the announcements and before the outline; '' draws today's page. */
+  quizzes: Html | string = '',
 ): Html {
   const opened = openChapters(parts, open);
   const ids = parts.flatMap((ch) => ch.lessons.map((l) => l.id));
@@ -316,7 +318,7 @@ export function subjectPage(
     ? html`<p id="fold-all" class="fold-all"><a id="expand-all" class="button plain" href="${learnerUrl(space, `/learn/${head.id}?open=all`)}">${t('expandAll')}</a><a id="collapse-all" class="button plain" href="${learnerUrl(space, `/learn/${head.id}?open=none`)}">${t('collapseAll')}</a></p>`
     : '';
   const body = html`<p class="muted">${t('subject')}</p>
-<h1 id="subject-title" dir="auto">${head.title}</h1>${progressLine(t, lang, done.size, ids.length)}${locks ? orderBox(t, lang, space, locks) : ''}${announcements}
+<h1 id="subject-title" dir="auto">${head.title}</h1>${progressLine(t, lang, done.size, ids.length)}${locks ? orderBox(t, lang, space, locks) : ''}${announcements}${quizzes}
 ${fold}
 <div id="outline">${blocks}</div>`;
   return spacePage(t, lang, space, head.title, body);

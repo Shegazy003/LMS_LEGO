@@ -45,11 +45,13 @@ import { DUE_MAX_DAYS, TODO_MAX_PER_GROUP, dueChoice, dueItem, dueOutline, isDue
 import { dueCard, duePage, type DueRefusal, type DueStatus } from './views/due.ts';
 import {
   ANSWER_FIELDS, QUIZ_OPTIONS_MAX, QUIZ_OPTIONS_MIN, QUIZ_OPTION_MAX, QUIZ_PER_SUBJECT_MAX, QUIZ_QUESTIONS_MAX, QUIZ_RESULTS_PAGE, QUIZ_TEXT_MAX, QUIZ_TITLE_MAX,
-  cleanTitle, copyQuiz, createQuiz, isStateAction, questionFrom, quizAttemptOf, quizCount, quizOf, quizResults, quizSummary, quizzesOf, readQuestion,
+  buildAttempt, cleanTitle, copyQuiz, createQuiz, insertAttempt, isStateAction, learnerQuizzes, parseAnswers, postedAnswers, questionFrom, quizAttemptOf, quizCount, quizOf,
+  quizResults, quizSummary, quizToTake, quizzesOf, readQuestion,
   withNewIds, writeQuestions, writeRemoved, writeRestored, writeState, writeTitle,
-  type QuestionInput, type QuizListRow, type QuizQuestion, type QuizRow, type QuizWriter,
+  type QuestionInput, type QuizListRow, type QuizQuestion, type QuizRow, type QuizWriter, type TakeRow,
 } from './quiz.ts';
 import { quizAnswersPage, quizCard, quizEditorPage, quizListPage, quizResultsPage, type QuestionKept, type QuizEditorRefusal, type QuizEditorStatus, type QuizListStatus } from './views/quizzes.ts';
+import { quizResultPage, quizSection, quizTakePage } from './views/quiz-take.ts';
 import { normaliseCountryCode, normaliseMobile } from './phone.ts';
 import {
   addChapter, addLesson, addMaterial, editableChapter, editableLesson, editableMaterial, editableSubject, isDirection,
@@ -817,6 +819,15 @@ use('/s/:spaceId/preview/*', async (c, next) => {
 // so before any done mark is read; a learner's press is then checked against
 // the lesson as the reading page checks it.
 use('/s/:spaceId/read/:lessonId/done', requireSpaceRole('learner'));
+// LMS wave 7, W7-2 (product-contract v2 on PIL-261, sections 5.3 and 7): the
+// learner's quiz addresses. A sending is a learner's only: anyone without the
+// learner role here today gets today's plain 403 before any lookup, and nothing
+// is stored. Reading stays open to everyone who reads the subject (AT-3.8: an
+// admin or publisher opening the take address is sent to the preview).
+use('/s/:spaceId/quiz/*', async (c, next) => {
+  if (c.req.method !== 'GET' && c.req.method !== 'HEAD' && !c.get('space').roles.includes('learner')) return refuse(c, 403, 'noAccess');
+  await next();
+});
 
 /** Who previews (section 4.1): with the widest role held here today, admin then publisher. */
 function previewerOf(c: C): Previewer | null {
@@ -1086,8 +1097,10 @@ app.get('/s/:spaceId/preview/learn/:subjectId', async (c) => {
   const parts = await outline(db, space.id, subject.id);
   // LMS wave 5 (section 5.4): the block exactly as a learner sees it (an unpublished subject's as it will be once published), one more read.
   const ann = subjectBlock(t, lang, await subjectRows(db, space.id, subject.id));
+  // LMS wave 7 (section 5.6): the quiz section of a made-up learner with no attempt, one more read.
+  const quizzes = quizSection(t, view, await learnerQuizzes(db, space.id, subject.id, PREVIEW_LEARNER));
   // LMS wave 4 (section 5.5): a subject in order shows a new learner's locks (no marks); no done mark is read.
-  return page(c, subjectPage(t, lang, view, subject, parts, c.req.query('open'), undefined, newLearnerLocks(subject, parts), ann));
+  return page(c, subjectPage(t, lang, view, subject, parts, c.req.query('open'), undefined, newLearnerLocks(subject, parts), ann, quizzes));
 });
 
 /** LMS wave 4 (section 5.5): the locks a new learner with no marks meets in a subject in order (the preview's made-up learner); null with the setting off. */
@@ -1145,8 +1158,10 @@ app.get('/s/:spaceId/learn/:subjectId', async (c) => {
   const locks = subject.chapters_in_order === 1 && marks ? chapterLocks(parts, marks) : null;
   // LMS wave 5 (sections 5.1, 5.2): the subject's announcements for everyone who reads it here, one more read.
   const ann = subjectBlock(t, lang, await subjectRows(db, space.id, subject.id));
+  // LMS wave 7 (section 5.1): the quiz section, one more read, with this person's own scores (staff have none).
+  const quizzes = quizSection(t, view, await learnerQuizzes(db, space.id, subject.id, c.get('user')!.id));
   // Wave 1 (section 6): ?open=all, ?open=none or one chapter of this subject; any other value is ignored.
-  return page(c, subjectPage(t, lang, view, subject, parts, c.req.query('open'), marks, locks, ann));
+  return page(c, subjectPage(t, lang, view, subject, parts, c.req.query('open'), marks, locks, ann, quizzes));
 });
 
 /** LMS wave 4 (sections 5.1 to 5.4): for a subject in order read as a learner,
@@ -2406,8 +2421,10 @@ function renderQuizEditor(
 ) {
   const { t, lang, view } = spaceLabel(c);
   const refused = Boolean(opts.refusal || opts.message);
+  // W7-2 (section 5.6): the preview take page; its Back returns to the page the quiz list is reached from.
+  const preview = `/s/${view.id}/preview/quiz/${quiz.id}?from=${place.results ? 'subject' : 'topic'}:${place.subjectId}`;
   const body = quizEditorPage(t, lang, view, {
-    list: place.list, subjectTitle: place.subjectTitle, quiz,
+    list: place.list, preview, subjectTitle: place.subjectTitle, quiz,
     status: refused ? null : quizEditorStatus(c, quiz), refusal: opts.refusal ?? null, message: opts.message ?? null,
   });
   return page(c, body, opts.status ?? 200);
@@ -2652,6 +2669,139 @@ app.get(`${PUBLISHER_QUIZZES}/:quizId/results/:learnerId`, async (c) => {
   const { t, lang, view } = spaceLabel(c);
   return page(c, quizAnswersPage(t, lang, view, {
     results: `${place.list}/${quiz.id}/results`, quiz, name: attempt.display_name, answers: attempt.answers, score: attempt.score, total: attempt.question_count,
+  }));
+});
+
+// ------------------------------------------------------ quizzes: learners ----
+// LMS wave 7, W7-2 (product-contract v2 on PIL-261, sections 5.1 to 5.4, 5.6
+// and 7): the take page and the result page under /s/<space>/quiz/<quiz>. The
+// gate is the subject's: a quiz of a subject this person cannot read here (or
+// no such quiz) answers today's 403, so an address reveals nothing; a removed
+// quiz answers 404 to someone who can read its subject. Only a person reading
+// the subject as a learner takes it; anyone else who reads it (an admin, the
+// responsible publisher) is sent to the preview, and their POST is refused. A
+// sending is scored on the server from the stored quiz (buildAttempt) and
+// stored in one statement that re-checks the state, the rev and the removal;
+// one attempt per learner per quiz. Each learner reads only their own attempt
+// (the address carries no learner id).
+
+/** The quiz a learner address names, with its subject and whether this person reads it as a learner; or the refusal. */
+async function learnerQuiz(c: C): Promise<{ quiz: TakeRow; subject: SubjectRow; learner: boolean } | Response> {
+  const db = c.get('db');
+  const space = c.get('space');
+  const userId = c.get('user')!.id;
+  const quiz = await quizToTake(db, space.id, c.req.param('quizId') ?? '', userId);
+  const subject = quiz && (await readableSubject(db, space, userId, quiz.subject_id));
+  if (!quiz || !subject) return refuse(c, 403, 'noAccess');
+  if (quiz.removed_at !== null) return refuse(c, 404, 'notFound');
+  return { quiz, subject, learner: await readsAsLearner(db, space, userId, subject) };
+}
+
+/** The answers of a refused sending that still fit the quiz drawn (their question and answer ids exist). */
+function keptAnswers(questions: readonly QuizQuestion[], posted: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(questions.filter((q) => q.answers.some((a) => a.id === posted[q.id])).map((q) => [q.id, posted[q.id]]));
+}
+
+/** The take page drawn again after a refused sending (UX-73): the message at the top, the fitting answers checked. */
+function takeRefused(c: C, quiz: { id: string; title: string; rev: number; questions: QuizQuestion[] }, posted: Record<string, string>, key: LabelKey, status: 400 | 409) {
+  const { t, lang, view } = spaceLabel(c);
+  return page(c, quizTakePage(t, lang, view, { quiz, checked: keptAnswers(quiz.questions, posted), message: t(key) }), status);
+}
+
+const quizAddress = (c: C, quizId: string) => `/s/${c.get('space').id}/quiz/${quizId}`;
+
+app.get('/s/:spaceId/quiz/:quizId', async (c) => {
+  const got = await learnerQuiz(c);
+  if (got instanceof Response) return got;
+  const { quiz } = got;
+  // AT-3.8: staff reading the subject see the quiz as a learner would, in the preview.
+  if (!got.learner) return c.redirect(`/s/${c.get('space').id}/preview/quiz/${quiz.id}`, 303);
+  if (quiz.attempt) return c.redirect(`${quizAddress(c, quiz.id)}/result`, 303);
+  if (quiz.state !== 'open') return refuse(c, 404, 'notFound');
+  const { t, lang, view } = spaceLabel(c);
+  return page(c, quizTakePage(t, lang, view, { quiz, checked: {}, message: c.req.query('quiz') === 'failed' ? t('markFailed') : null }));
+});
+
+app.post('/s/:spaceId/quiz/:quizId', async (c) => {
+  const got = await learnerQuiz(c);
+  if (got instanceof Response) return got;
+  const { quiz } = got;
+  if (!got.learner) return refuse(c, 403, 'noAccess');
+  const result = `${quizAddress(c, quiz.id)}/result`;
+  // AT-3.4: one attempt; a second sending stores nothing and the first one counts.
+  if (quiz.attempt) return c.redirect(`${result}?quiz=already`, 303);
+  if (quiz.state === 'draft') return refuse(c, 404, 'notFound');
+  const body = await c.req.parseBody();
+  const posted = postedAnswers(body);
+  if (quiz.state !== 'open') return takeRefused(c, quiz, posted, 'quizNowClosed', 409);
+  if (field(body, 'rev') !== String(quiz.rev)) return takeRefused(c, quiz, posted, 'quizChanged', 409);
+  const built = buildAttempt(quiz.questions, posted);
+  if (!built) return takeRefused(c, quiz, posted, 'quizAnswerInvalid', 400);
+  const db = c.get('db');
+  const spaceId = c.get('space').id;
+  const learnerId = c.get('user')!.id;
+  try {
+    if (await insertAttempt(db, { spaceId, quizId: quiz.id, learnerId, rev: quiz.rev, built, nowMs: now() })) return c.redirect(result, 303);
+  } catch {
+    return quizFailed(c, `${quizAddress(c, quiz.id)}?quiz=failed`);
+  }
+  // Not stored: the quiz changed since it was read (AT-3.10c), or this learner's other sending came first.
+  const fresh = await quizToTake(db, spaceId, quiz.id, learnerId);
+  if (!fresh || fresh.removed_at !== null) return refuse(c, 404, 'notFound');
+  if (fresh.attempt) return c.redirect(`${result}?quiz=already`, 303);
+  return takeRefused(c, fresh, posted, fresh.state === 'open' ? 'quizChanged' : 'quizNowClosed', 409);
+});
+
+app.get('/s/:spaceId/quiz/:quizId/result', async (c) => {
+  const got = await learnerQuiz(c);
+  if (got instanceof Response) return got;
+  const { quiz, subject } = got;
+  // Before any sending (and for staff, who never send here): the take page.
+  if (!quiz.attempt) return c.redirect(quizAddress(c, quiz.id), 303);
+  const { t, lang, view } = spaceLabel(c);
+  return page(c, quizResultPage(t, lang, view, {
+    quiz, subject, answers: quiz.attempt.answers, score: quiz.attempt.score, total: quiz.attempt.total, sentAt: quiz.attempt.sent_at,
+    status: c.req.query('quiz') === 'already' ? 'quizAlreadySent' : null,
+  }));
+});
+
+// LMS wave 7 (section 5.6): the preview's take page, as a made-up learner with no attempt sees it, also for a draft
+// (from the editor's preview link). Its sending is scored on the server and drawn with quizPreviewNotSaved; nothing is
+// written (no attempt, no record).
+const PREVIEW_LEARNER = '';
+
+async function previewQuiz(c: C): Promise<{ quiz: TakeRow; subject: SubjectRow } | Response> {
+  const db = c.get('db');
+  const space = c.get('space');
+  const quiz = await quizToTake(db, space.id, c.req.param('quizId') ?? '', PREVIEW_LEARNER);
+  const subject = quiz && (await previewableSubject(db, space.id, previewerOf(c)!, quiz.subject_id));
+  if (!quiz || !subject) return refuse(c, 403, 'noAccess');
+  if (quiz.removed_at !== null) return refuse(c, 404, 'notFound');
+  return { quiz, subject };
+}
+
+app.get('/s/:spaceId/preview/quiz/:quizId', async (c) => {
+  const got = await previewQuiz(c);
+  if (got instanceof Response) return got;
+  const { t, lang } = spaceLabel(c);
+  const view = await previewView(c, previewerOf(c)!, 'one', got.subject.is_published !== 1);
+  return page(c, quizTakePage(t, lang, view, { quiz: got.quiz, checked: {}, message: null }));
+});
+
+app.post('/s/:spaceId/preview/quiz/:quizId', async (c) => {
+  const got = await previewQuiz(c);
+  if (got instanceof Response) return got;
+  const { quiz, subject } = got;
+  const { t, lang } = spaceLabel(c);
+  const view = await previewView(c, previewerOf(c)!, 'one', subject.is_published !== 1);
+  const body = await c.req.parseBody();
+  const posted = postedAnswers(body);
+  const redraw = (key: LabelKey, status: 400 | 409) => page(c, quizTakePage(t, lang, view, { quiz, checked: keptAnswers(quiz.questions, posted), message: t(key) }), status);
+  if (field(body, 'rev') !== String(quiz.rev)) return redraw('quizChanged', 409);
+  const built = buildAttempt(quiz.questions, posted);
+  if (!built) return redraw('quizAnswerInvalid', 400);
+  return page(c, quizResultPage(t, lang, view, {
+    quiz, subject, answers: parseAnswers(built.answers_json), score: built.score, total: built.question_count, sentAt: now(), status: 'quizPreviewNotSaved',
   }));
 });
 

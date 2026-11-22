@@ -1,5 +1,6 @@
 // LMS wave 7, W7-1 (product-contract v2 on PIL-261, AT-4.2 for the staff pages
-// and AT-4.3 with W7-b): teacher text is shown only as text, and scores stay
+// and AT-4.3 with W7-b; W7-2 widened the crawl to the learner's own quiz
+// pages, AT-4.3's learner crawl): teacher text is shown only as text, and scores stay
 // private. AT-4.3's byte-identical guardian and owner pages are in
 // test/wave7/base.test.ts (against W6-main); the AT-13a and AT-13b scans gain
 // the quiz words (test/at13/pages.ts). Each labelled expectation is its own CI
@@ -118,7 +119,7 @@ describe('W7 AT-4.3 scores stay private (W7-b): the crawl of every staff, guardi
   });
   after(() => closeWave6(w));
 
-  it('W7 AT-4.3 (crawl) Salma\'s score appears only on Hadeer\'s QA results pages; no guardian, owner, learner or other-space page shows a quiz string; Arabic and English', async (t) => {
+  it('W7 AT-4.3 (crawl) Salma\'s score appears only on Hadeer\'s QA results pages and her own pages; a learner sees only their own result; no guardian, owner or other-space page shows a quiz string; Arabic and English', async (t) => {
     const s = w.school;
     // A score is shown where the results table, a score line or the summary is (their markers), or where Salma's name is
     // followed by her score "1 of 3" (quizScoreCell). Word matching alone is not used: «إجابات» and "<n> of <m>" are
@@ -133,6 +134,7 @@ describe('W7 AT-4.3 scores stay private (W7-b): the crawl of every staff, guardi
     ] as const;
     const counts: Record<string, number> = {};
     let hadeerScores = 0;
+    let learnerResults = 0;
     for (const lang of ['ar', 'en'] as const) {
       for (const person of [...people, { who: 'owner', p: null, kind: 'owner' } as const]) {
         const c = person.p ? await as(w, person.p, lang) : w.owner;
@@ -141,21 +143,31 @@ describe('W7 AT-4.3 scores stay private (W7-b): the crawl of every staff, guardi
         counts[`${person.who} ${lang}`] = pages.length;
         for (const page of pages) {
           const otherSpace = /^\/s\//.test(page.path) && !page.path.startsWith(`/s/${s.id}`);
+          // W7-2: a learner's own result page shows their own score line (the address carries no learner id, AT-3.6).
+          const ownResult = person.kind === 'learner' && new RegExp(`^/s/${s.id}/quiz/[^/?#]+/result$`).test(page.path);
           if (shown(page.body)) {
-            assert.ok(person.who === 'Hadeer' && page.path.includes(`/quizzes/`) && page.path.includes('/results'), `${person.who} ${lang} ${page.path}: a score only on Hadeer's results pages`);
-            hadeerScores++;
+            const teacher = person.who === 'Hadeer' && page.path.includes(`/quizzes/`) && page.path.includes('/results');
+            assert.ok(teacher || (ownResult && !/id="quiz-results"|id="quiz-stats"/.test(page.body)), `${person.who} ${lang} ${page.path}: a score only on Hadeer's results pages and a learner's own result`);
+            if (teacher) hadeerScores++;
+            else learnerResults++;
           }
-          if (person.kind === 'guardian' || person.kind === 'owner' || person.kind === 'learner' || otherSpace) {
-            // After W7-1 no learner page changes: no quiz string at all on a learner's, guardian's or owner's page, nor in another space.
+          // Salma's score next to her name: only on Hadeer's results pages (her own pages never show it beside another name).
+          if (person.who !== 'Hadeer' && person.who !== 'Salma') assert.ok(!salmaScore.some((re) => re.test(visible(page.body))), `${person.who} ${lang} ${page.path}: not Salma's score`);
+          if (person.kind === 'guardian' || person.kind === 'owner' || otherSpace) {
+            // No quiz string at all on a guardian's or the owner's page, nor in another space.
             assert.deepEqual(quizHits(page.body), [], `${person.who} ${lang} ${page.path}: no quiz string`);
             assert.ok(!page.body.includes('Fractions check'), `${person.who} ${lang} ${page.path}: no quiz title`);
           }
+          // Karim Test reads Arabic grammar only: no quiz of Mathematics on any page of his.
+          if (person.who === 'Karim Test') assert.ok(!page.body.includes('Fractions check'), `Karim Test ${lang} ${page.path}: no Mathematics quiz`);
           if (person.kind !== 'publisher') assert.ok(!page.body.includes('/results/'), `${person.who} ${lang} ${page.path}: no answers link`);
         }
       }
     }
     t.diagnostic(`AT-4.3 crawl with W7-b: pages per person and language ${JSON.stringify(counts)}; ${hadeerScores} of Hadeer's results pages show scores`);
     assert.ok(hadeerScores >= 4, 'positive control: Hadeer\'s results pages show the scores');
+    // W7-2 positive control: the learners' crawls reached their own result pages.
+    assert.ok(learnerResults >= 2, `positive control: learners reached their own results (${learnerResults})`);
     assert.ok((counts['Amal en'] ?? 0) > 20 && (counts['Mona en'] ?? 0) > 3 && (counts['owner en'] ?? 0) > 3, 'the crawls reached their pages');
   });
 });

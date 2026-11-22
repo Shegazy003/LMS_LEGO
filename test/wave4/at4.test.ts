@@ -288,7 +288,10 @@ const WAVE5_READS: Record<Kind, number> = { home: 1, outline: 1, lesson: 0, mark
 // LMS wave 6 (W6-1b, product-contract v2 on PIL-257, AT-3.4b): the learner home reads its to-do list once (W5-main's count
 // plus exactly one); every other request keeps its count. Named in CANDIDATE READY (outside section 11; the Lead decides).
 const WAVE6_READS: Record<Kind, number> = { home: 1, outline: 0, lesson: 0, mark: 0, file: 0 };
-const MAIN = Object.fromEntries((Object.keys(MAIN_B4AD669) as Kind[]).map((k) => [k, MAIN_B4AD669[k] + WAVE5_READS[k] + WAVE6_READS[k]])) as Record<Kind, number>;
+// LMS wave 7 (W7-2, product-contract v2 on PIL-261, section 11.4): the learner's subject page reads its open quizzes once,
+// so exactly one more there; every other request keeps its count. Named in CANDIDATE READY (the Lead decides).
+const WAVE7_READS: Record<Kind, number> = { home: 0, outline: 1, lesson: 0, mark: 0, file: 0 };
+const MAIN = Object.fromEntries((Object.keys(MAIN_B4AD669) as Kind[]).map((k) => [k, MAIN_B4AD669[k] + WAVE5_READS[k] + WAVE6_READS[k] + WAVE7_READS[k]])) as Record<Kind, number>;
 
 describe('W4 AT-4.6 reads: off exactly main\'s; on at most 1 more on the outline, lesson and home, 2 more on a file and a mark POST, whatever the size', { concurrency: false }, () => {
   it('W4 AT-4.6 the counts with the setting off and on, in the wave 1 world and in a larger one, are printed', async (t) => {
