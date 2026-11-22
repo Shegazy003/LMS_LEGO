@@ -363,12 +363,17 @@ describe('W6 AT-4.1 base comparison: with no due dates every page is W5-main f01
   it('W6 AT-4.2 after setting one date and clearing it, AT-4.1a and AT-4.1b pass again', async (t) => {
     const s = p.w.school;
     const hadeer = p.people.find((x) => x.who === 'Hadeer')!.cand;
-    const salma = p.people.find((x) => x.who === 'Salma')!.cand;
+    const salmaWho = p.people.find((x) => x.who === 'Salma')!;
+    const salma = salmaWho.cand;
     const page = publisherDue(s, s.math);
     const lesson = s.lessons['Adding fractions'];
     const date = utcDatePlusDays(3);
     await saveDue(hadeer, page, 'lesson', lesson, date);
     assert.ok(todoOf(await (await salma.get(`/s/${s.id}`)).text()), 'with the date set, Salma\'s home shows the to-do block');
+    // The same visit on W5-main's side: the home's first visit sets the activity
+    // notice cookie (shown in full once, then folded), so both Salmas carry it.
+    await (await salmaWho.base.get(`/s/${s.id}`)).arrayBuffer();
+    await p.base.worker.settle();
     await saveDue(hadeer, page, 'lesson', lesson, '');
     const [{ n }] = (await p.cand.sql('SELECT (SELECT COUNT(*) FROM lesson WHERE due_on IS NOT NULL) + (SELECT COUNT(*) FROM chapter WHERE due_on IS NOT NULL) AS n')) as { n: number }[];
     assert.equal(Number(n), 0, 'cleared: no due date stored');

@@ -177,6 +177,12 @@ describe('UX-62 learner home to-do block (W6-e and the first phone screen)', { c
     await storedAt(w, { space: s.id, subject: s.arabic, body: long[1], role: 'admin', at: AT.noon - 2 * HOUR });
     await storedAt(w, { space: s.id, subject: s.math, body: long[0], role: 'publisher', at: AT.noon - HOUR });
     assert.equal((await press(await as(w, SALMA, 'en'), s, s.lessons['Adding fractions'], 'done')).status, 303);
+    // W6-e: built here when this test runs alone (its CI step selects it by name), else the capped test's world is reused.
+    if (!(await w.p.sql(`SELECT id FROM space WHERE name = 'Load Test Space'`)).length) {
+      const built = await withW5d(w);
+      await withW6d(w.p.sql, built, dPlus);
+      await withW6e(w.p.sql, built, dPlus);
+    }
     const load = (await w.p.sql(`SELECT id FROM space WHERE name = 'Load Test Space'`))[0];
     const spaces: [string, { username: string; password: string }, string][] = [['W6-a', SALMA, home(s)]];
     if (load) {
