@@ -13,6 +13,7 @@
 // and by "no attempt exists". `buildAttempt` is the pure scorer W7-2s sending
 // and preview use; W7-1 uses it to write test attempts (test/wave7/attempts.ts).
 import type { Db } from './db.ts';
+import { LEARNER_RULE } from './learning.ts';
 
 /** Title: 1 to 120 characters after trimming. */
 export const QUIZ_TITLE_MAX = 120;
@@ -187,12 +188,13 @@ const ownerOf = (w: QuizWriter) => (w.role === 'publisher' ? w.userId : null);
 // - room in the subject: (SELECT COUNT(*) FROM quiz c WHERE c.space_id = ? AND c.subject_id = ? AND c.removed_at IS NULL) < ?;
 // - the next creation stamp: now, or one after the latest of the subject, so creation order is strict within one millisecond.
 
-/** One row of the quiz list. `attempts` only on the responsible publishers list (null on the admins). */
+/** One row of the quiz list. `attempts` is null only when the list is read without `today` (no caller since W7-3 [B]). */
 export interface QuizListRow { id: string; title: string; state: QuizState; questions: number; removed_at: number | null; attempts: number | null }
 
 /** The quiz list (section 4.2), one statement: every quiz not removed, in creation order, and the QUIZ_REMOVED_SHOWN most
- * recently removed. With `today` (the responsible publisher only) each row carries its count of attempts of people
- * whose access is active (the same count as its results page); the admins list reads no attempt (AT-2.5). */
+ * recently removed. With `today` each row carries its count of attempts of people whose access is active (the same count
+ * as its results page): the responsible publisher's list and, since W7-3 [B], the admin's. The unary + keeps SQLite on
+ * the per-quiz unique index, not the space-wide one (W7-3 AT-9.5: 14,080 rows read at W7-e without it). */
 export async function quizzesOf(db: Db, spaceId: string, subjectId: string, today: string | null): Promise<QuizListRow[]> {
   type Row = { id: string; title: string; state: QuizState; questions: number; removed_at: number | null; attempts: number | null };
   const rows = today === null
@@ -208,7 +210,7 @@ export async function quizzesOf(db: Db, spaceId: string, subjectId: string, toda
     )
     : await db.all<Row>(
       `SELECT quiz.id, quiz.title, quiz.state, json_array_length(quiz.questions_json) AS questions, quiz.removed_at,
-              (SELECT COUNT(*) FROM quiz_attempt a WHERE a.quiz_id = quiz.id AND a.space_id = quiz.space_id
+              (SELECT COUNT(*) FROM quiz_attempt a WHERE a.quiz_id = quiz.id AND +a.space_id = quiz.space_id
                   AND EXISTS (SELECT 1 FROM membership m WHERE m.space_id = a.space_id AND m.user_id = a.learner_user_id AND m.role = 'learner'
                                  AND m.ended_on IS NULL AND m.valid_from <= ? AND m.valid_until >= ?)) AS attempts
          FROM quiz
@@ -415,6 +417,57 @@ export async function quizSummary(db: Db, spaceId: string, quizId: string, today
     quizId, spaceId, today, today,
   );
   return { n: Number(row?.n ?? 0), right: Array.from({ length: questionCount }, (_, i) => Number(row?.[`r${i + 1}`] ?? 0)) };
+}
+
+// ------------------------------------------------------- admins' scores ----
+// W7-3, Part B (product-contract v4 amendment on PIL-295, G5.2): the admin's scores page reads its own quiz header (never
+// questions_json) and the count of listed attempts (never right_flags); the rows are quizResults' (no answer column).
+
+/** The quiz an admin scores address names (one read): title, state and removal only; null when it is not this subject's. */
+export async function quizHeadOf(db: Db, spaceId: string, subjectId: string, quizId: string): Promise<{ id: string; title: string; state: QuizState; removed_at: number | null } | null> {
+  return (await db.first<{ id: string; title: string; state: QuizState; removed_at: number | null }>(
+    'SELECT quiz.id, quiz.title, quiz.state, quiz.removed_at FROM quiz WHERE quiz.id = ? AND quiz.space_id = ? AND quiz.subject_id = ?',
+    quizId, spaceId, subjectId,
+  )) ?? null;
+}
+
+/** How many attempts of the quiz a results page lists (people whose access is active), in one count statement. */
+export async function quizAttemptCount(db: Db, spaceId: string, quizId: string, today: string): Promise<number> {
+  const row = await db.first<{ n: number }>(
+    `SELECT COUNT(*) AS n FROM quiz_attempt a
+      WHERE a.quiz_id = ? AND +a.space_id = ?
+        AND EXISTS (SELECT 1 FROM membership m WHERE m.space_id = a.space_id AND m.user_id = a.learner_user_id AND m.role = 'learner'
+                       AND m.ended_on IS NULL AND m.valid_from <= ? AND m.valid_until >= ?)`,
+    quizId, spaceId, today, today,
+  );
+  return Number(row?.n ?? 0);
+}
+
+// ------------------------------------------------------ guardians' scores ----
+// W7-3, Part A (product-contract v3 addendum on PIL-285, G4): the linked learner's quiz scores, one statement.
+
+/** At most this many items are drawn on the guardian's block (5 shown, 20 folded). */
+export const GUARDIAN_QUIZ_DRAWN = 25;
+export const GUARDIAN_QUIZ_SHOWN = 5;
+
+/** One item of the guardian's block: the quiz title, the subject title and the stored score; `count` is the full number listed. */
+export interface GuardianQuizRow { title: string; subject_title: string; score: number; total: number }
+
+/** The SQL text of quizScoresOfLinked: the learner's attempts in this space on quizzes not removed, of subjects they read
+ * under the learner rule (LEARNER_RULE, src/learning.ts), newest sent first; ties by subject title, quiz creation, quiz id.
+ * It reads score and question_count, never the questions, answers or flags. */
+export const QUIZ_SCORES_OF_LINKED_SQL = 'SELECT quiz.title, s.title AS subject_title, att.score, att.question_count AS total, COUNT(*) OVER () AS n\n       FROM quiz_attempt att\n       JOIN quiz ON quiz.id = att.quiz_id AND quiz.space_id = att.space_id\n       JOIN subject s ON s.id = quiz.subject_id AND s.space_id = quiz.space_id\n      WHERE att.space_id = ? AND att.learner_user_id = ? AND quiz.removed_at IS NULL\n        AND ' + LEARNER_RULE + '\n      ORDER BY att.sent_at DESC, s.title, quiz.created_at, quiz.id\n      LIMIT ?';
+
+/** The linked learner's listed quizzes (GUARDIAN_QUIZ_DRAWN at most) and how many are listed in all. Call it only with
+ * the learner linkedLearner returned for the session's person. */
+export async function quizScoresOfLinked(db: Db, spaceId: string, learnerId: string): Promise<{ rows: GuardianQuizRow[]; count: number }> {
+  const rows = await db.all<{ title: string; subject_title: string; score: number; total: number; n: number }>(
+    QUIZ_SCORES_OF_LINKED_SQL, spaceId, learnerId, learnerId, learnerId, GUARDIAN_QUIZ_DRAWN,
+  );
+  return {
+    rows: rows.map((r) => ({ title: r.title, subject_title: r.subject_title, score: Number(r.score), total: Number(r.total) })),
+    count: rows.length ? Number(rows[0].n) : 0,
+  };
 }
 
 // ------------------------------------------------------------- learners ----

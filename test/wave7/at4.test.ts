@@ -15,6 +15,7 @@ import {
   type Wave1World,
 } from './world.ts';
 import { writeAttempt, answersFor } from './attempts.ts';
+import { withoutElement } from './guardian.ts';
 
 const escaped = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
@@ -141,20 +142,26 @@ describe('W7 AT-4.3 scores stay private (W7-b): the crawl of every staff, guardi
         if (!person.p) await c.post('/account/language', { lang });
         const pages = await crawl(c, w.p.url);
         counts[`${person.who} ${lang}`] = pages.length;
-        for (const page of pages) {
+        for (const full of pages) {
+          // W7-3 (contract v3 addendum on PIL-285, G9 item 1): a guardian page is scanned with the #quiz-guardian element
+          // removed (its inside is AT-8.2's allow-list); every other page as it is.
+          const page = person.kind === 'guardian' ? { ...full, body: withoutElement(full.body, 'quiz-guardian') } : full;
           const otherSpace = /^\/s\//.test(page.path) && !page.path.startsWith(`/s/${s.id}`);
           // W7-2: a learner's own result page shows their own score line (the address carries no learner id, AT-3.6).
           const ownResult = person.kind === 'learner' && new RegExp(`^/s/${s.id}/quiz/[^/?#]+/result$`).test(page.path);
+          // W7-3 [B] (contract v4 on PIL-295, G3 and G5.2): Amal's scores pages under the admin address show scores (no
+          // answers page, no per-question summary, no name link).
+          const adminScores = person.who === 'Amal' && /\/admin\/topics\/[^/]+\/quizzes\/[^/]+\/results(\?page=\d+)?$/.test(page.path);
           if (shown(page.body)) {
             const teacher = person.who === 'Hadeer' && page.path.includes(`/quizzes/`) && page.path.includes('/results');
-            assert.ok(teacher || (ownResult && !/id="quiz-results"|id="quiz-stats"/.test(page.body)), `${person.who} ${lang} ${page.path}: a score only on Hadeer's results pages and a learner's own result`);
+            assert.ok(teacher || (adminScores && !/id="quiz-stats"|class="quiz-name"|quiz-result-body/.test(page.body)) || (ownResult && !/id="quiz-results"|id="quiz-stats"/.test(page.body)), `${person.who} ${lang} ${page.path}: a score only on Hadeer's results pages, Amal's scores pages and a learner's own result`);
             if (teacher) hadeerScores++;
-            else learnerResults++;
+            else if (!adminScores) learnerResults++;
           }
-          // Salma's score next to her name: only on Hadeer's results pages (her own pages never show it beside another name).
-          if (person.who !== 'Hadeer' && person.who !== 'Salma') assert.ok(!salmaScore.some((re) => re.test(visible(page.body))), `${person.who} ${lang} ${page.path}: not Salma's score`);
+          // Salma's score next to her name: only on Hadeer's results pages and Amal's scores pages (her own pages never show it beside another name).
+          if (person.who !== 'Hadeer' && person.who !== 'Salma' && !adminScores) assert.ok(!salmaScore.some((re) => re.test(visible(page.body))), `${person.who} ${lang} ${page.path}: not Salma's score`);
           if (person.kind === 'guardian' || person.kind === 'owner' || otherSpace) {
-            // No quiz string at all on a guardian's or the owner's page, nor in another space.
+            // No quiz string at all on a guardian's (outside #quiz-guardian) or the owner's page, nor in another space.
             assert.deepEqual(quizHits(page.body), [], `${person.who} ${lang} ${page.path}: no quiz string`);
             assert.ok(!page.body.includes('Fractions check'), `${person.who} ${lang} ${page.path}: no quiz title`);
           }

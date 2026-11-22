@@ -332,7 +332,9 @@ function extraReads(r: Result, spaces: string[]): number {
   if (/^\/publish\/edit\/[^/]+$/.test(rest) || /^\/admin\/topics\/[^/]+$/.test(rest)) return 1; // the editor and the subject admin page (the card's list)
   // LMS wave 6 (W6-1c, product-contract v3 addendum on PIL-265, G9.5): a linked learner's page reads that learner's
   // to-do list once while lesson activity is on in its space (W5-main's count plus exactly one, AT-6.4).
-  if (/^\/linked\/[^/]+$/.test(rest) && activityOn.has(space)) return 1;
+  // LMS wave 7 (W7-3, contract v3 addendum on PIL-285, G9.5): it also reads the linked learner's quiz scores once, whatever
+  // the activity setting (one bounded statement, with or without attempts).
+  if (/^\/linked\/[^/]+$/.test(rest)) return (activityOn.has(space) ? 1 : 0) + 1;
   return 0;
 }
 

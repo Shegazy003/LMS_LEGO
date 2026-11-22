@@ -412,7 +412,8 @@ describe('W6 AT-4.1 base comparison: with no due dates every page is W5-main f01
     // LMS wave 7 (W7-2, contract v2 on PIL-261, section 11 item 4): the subject's /learn page and the preview subject page
     // read the subject's quizzes once more (exactly one more statement, nothing else).
     const SUBJECT_PAGE = /^\/s\/[^/]+\/(preview\/)?learn\/[^/?#]+(\?|$)/;
-    const quizRead = (r: Result) => (r.status === 200 && r.what.includes(' GET ') && SUBJECT_PAGE.test(r.path) ? 1 : 0);
+    // LMS wave 7 (W7-3, contract v3 addendum on PIL-285, G9.5): a 200 linked learner's page also reads the quiz scores once.
+    const quizRead = (r: Result) => (r.status === 200 && r.what.includes(' GET ') && (SUBJECT_PAGE.test(r.path) || LINKED_PAGE.test(r.path)) ? 1 : 0);
     const off = results.filter((r) => r.reads.cand !== r.reads.base + (plusOne(r) ? 1 : 0) + quizRead(r));
     const homes = results.filter(plusOne);
     t.diagnostic(`AT-3.4b small world: ${results.length} requests counted; ${homes.length} learner and preview homes at W5-main's count plus one (e.g. Salma ${JSON.stringify(homes.find((r) => r.who === 'Salma')?.reads)}), every other page W5-main's count`);

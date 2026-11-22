@@ -70,7 +70,7 @@ function world(opts: { b?: boolean } = {}) {
 }
 
 const sql = (w: Wave1World) => (q: string) => w.p.sql(q);
-const low = (kit: 'school' | 'company' | 'university', lang: Lang) => words(kit, lang)('learner').toLocaleLowerCase(lang);
+const low = (kit: 'school' | 'company' | 'university', lang: Lang, word: 'learner' | 'admin' | 'guardian' = 'learner') => words(kit, lang)(word).toLocaleLowerCase(lang);
 
 // ------------------------------------------------------------------- UX-68 ----
 describe('UX-68 quiz card place, order and labels', { concurrency: false }, () => {
@@ -90,7 +90,8 @@ describe('UX-68 quiz card place, order and labels', { concurrency: false }, () =
       assert.equal((await page.textContent('#quizzes > h2'))?.trim(), t('quizCardTitle'));
       const help = (await page.innerText('#quizzes .quiz-help')).replace(/\s+/g, ' ').trim();
       const subject = (await w.p.sql(`SELECT title FROM subject WHERE id = '${s.math}'`))[0].title as string;
-      assert.equal(help, t('quizCardHelp', { learner: low('school', lang), subjectTitle: subject }), 'the help line');
+      // W7-3 (ux-plan v4 U5, G9.4): the new value names the admin and the guardian too, as lower-case kit words like the learner.
+      assert.equal(help, t('quizCardHelp', { learner: low('school', lang), subjectTitle: subject, admin: low('school', lang, 'admin'), guardian: low('school', lang, 'guardian') }), 'the help line');
       assert.equal((await page.textContent('#quizzes a.quiz-link-button'))?.trim(), t('quizManageLink'));
       assert.equal(await page.getAttribute('#quizzes a.quiz-link-button', 'href'), list);
       assert.equal(await page.$$eval('#quizzes button, #quizzes form', (b) => b.length), 0, 'the card adds no button and no form');
@@ -106,10 +107,10 @@ describe('UX-68 quiz card place, order and labels', { concurrency: false }, () =
 });
 
 // ------------------------------------------------------------------- UX-69 ----
-describe('UX-69 quiz list order, states, results link only for the publisher, removed fold', { concurrency: false }, () => {
+describe('UX-69 quiz list order, states, results link for the responsible publisher and admins, removed fold', { concurrency: false }, () => {
   const x = world({ b: true });
 
-  it('UX-69 h1 and back link first, the new-quiz form, the rows (title link in bdi, state in words, count, results link for the publisher only), the closed removed fold with one named restore per quiz; at the limit the form stays and answers quizLimit', async () => {
+  it('UX-69 h1 and back link first, the new-quiz form, the rows (title link in bdi, state in words, count, results link for the responsible publisher and admins), the closed removed fold with one named restore per quiz; at the limit the form stays and answers quizLimit', async () => {
     const { w, browser } = x;
     const s = w.school;
     for (const [who, list, back, lang, width, shot, publisher] of [
@@ -132,7 +133,10 @@ describe('UX-69 quiz list order, states, results link only for the publisher, re
       for (const r of rows) assert.ok(r.bdi, `${r.id}: the title link holds a <bdi>`);
       assert.deepEqual(rows.map((r) => r.state), [t('quizStateOpen'), t('quizStateDraft'), t('quizStateClosed')], 'the state in words');
       assert.deepEqual(rows.map((r) => r.count), [3, 2, 1].map((n) => t('quizQuestionCount', { n: String(n) })));
-      assert.deepEqual(rows.map((r) => r.results), publisher ? [2, 0, 1].map((n) => t('quizResultsLink', { n: String(n) })) : [null, null, null], publisher ? 'the results link with the count' : 'no results link for the admin');
+      // W7-3 [B] (contract v4 R7 item 3): "results link only for the publisher" became "for the responsible publisher and
+      // admins"; the admin's link leads to the scores page (AT-9).
+      assert.deepEqual(rows.map((r) => r.results), [2, 0, 1].map((n) => t('quizResultsLink', { n: String(n) })), publisher ? 'the results link with the count' : 'the admin\'s results link with the count');
+      void publisher;
       assert.equal(await page.$eval('#quiz-removed', (d) => (d as HTMLDetailsElement).open), false, 'the fold is closed by default');
       assert.equal((await page.textContent('#quiz-removed > summary'))?.trim(), t('quizRemovedTitle', { n: '1' }));
       const restore = await page.$$eval('#quiz-removed form.quiz-restore button', (bs) => bs.map((b) => ({ name: b.getAttribute('aria-label'), text: b.textContent?.trim() })));
@@ -416,7 +420,11 @@ const DEMONSTRATIVES = ['هذا', 'هذه', 'ذلك', 'تلك', 'هؤلاء'];
 const NEIGHBOURS = ['في'];
 const noMarks = (s: string) => s.replace(/[ً-ْ]/g, '');
 const tokensOf = (v: string) => noMarks(v).replace(/{[^}]*}/g, ' ').split(/[\s.,:;()«»"،·؟?]+/).filter(Boolean);
-const TYPED = ['learner', 'title', 'subjectTitle', 'name', 'n', 'm', 'score', 'total', 'right', 'all', 'max', 'min', 'len', 'date'];
+// W7-3 (ux-plan v3 UX-84, v4 U3): `admin` and `guardian` are typed kit words (quizCardHelp; their typed rules: UX-84's steps).
+const TYPED = ['learner', 'title', 'subjectTitle', 'name', 'n', 'm', 'score', 'total', 'right', 'all', 'max', 'min', 'len', 'date', 'admin', 'guardian'];
+/** W7-3 AMBER (named in CANDIDATE READY): the frozen ux-plan v4 (U4) gives quizAdminScoresNote verbatim as «… في هذه الصفحة.»
+ * and runs UX-77 on it; its demonstrative is the frozen wording's own, so the demonstrative check allows exactly that word there. */
+const DEMONSTRATIVE_ALLOW: Record<string, string> = { quizAdminScoresNote: 'هذه' };
 const CONSTANTS = [QUIZ_TITLE_MAX, QUIZ_TEXT_MAX, QUIZ_OPTION_MAX, QUIZ_OPTIONS_MIN, QUIZ_OPTIONS_MAX, QUIZ_QUESTIONS_MAX, QUIZ_PER_SUBJECT_MAX, QUIZ_REMOVED_SHOWN, QUIZ_RESULTS_PAGE].map(String);
 
 describe('UX-77 Arabic, mixed text and kit words for the teacher pages (three kits)', { concurrency: false }, () => {
@@ -430,10 +438,10 @@ describe('UX-77 Arabic, mixed text and kit words for the teacher pages (three ki
     assert.ok(ALL_KEYS.length >= 80, `every UX-77 key is in ui.ts (${ALL_KEYS.length})`);
     for (const key of ALL_KEYS) {
       const tokens = tokensOf(UI.ar[key]);
-      for (const bad of UX49_DENY) assert.ok(!tokens.includes(noMarks(bad)) || Object.hasOwn(TABLE_ALLOW, bad), `${key}: no "${bad}"`);
+      for (const bad of UX49_DENY) assert.ok(!tokens.includes(noMarks(bad)) || Object.hasOwn(TABLE_ALLOW, bad) || DEMONSTRATIVE_ALLOW[key] === bad, `${key}: no "${bad}"`);
       for (const word of tokens) {
-        for (const d of DEMONSTRATIVES) assert.ok(!word.includes(d), `${key}: "${word}" holds the demonstrative ${d}`);
-        if (!/[؀-ۿ]/.test(word) || word.length < 3) continue;
+        for (const d of DEMONSTRATIVES) assert.ok(!word.includes(d) || (DEMONSTRATIVE_ALLOW[key] === d && word === d), `${key}: "${word}" holds the demonstrative ${d}`);
+        if (!/[؀-ۿ]/.test(word) || word.length < 3 || DEMONSTRATIVE_ALLOW[key] === word) continue;
         assert.ok(!/(ه|ها|هم|هن|ك|كم)$/.test(word), `${key}: "${word}" ends in an attached pronoun`);
       }
       const v = UI.ar[key];
@@ -591,7 +599,11 @@ describe('UX-78 states table', { concurrency: false }, () => {
     // Results: none, 403 for anyone but the responsible publisher, 404 past the end, the table.
     const results = publisherQuizzes(s, s.math);
     assert.ok((await text(resultsOf(results, W7A.QB), hadeer)).includes(UI.en.quizResultsNone), 'results empty: quizResultsNone');
-    assert.equal((await amal.get(resultsOf(list, W7A.QA))).status, 403, 'results error: 403 for the admin');
+    // W7-3 [B] (contract v4 amendment on PIL-295, R7 item 1): the admin results address is now the scores page (AT-9); the
+    // admin still gets 403 on the publisher results address and on the admin answers address.
+    assert.equal((await amal.get(resultsOf(results, W7A.QA))).status, 403, 'results error: 403 for the admin on the publisher address');
+    assert.equal((await amal.get(`${resultsOf(list, W7A.QA)}/${w.ids[SALMA.username]}`)).status, 403, 'results error: 403 for the admin on the admin answers address');
+    assert.equal((await amal.get(resultsOf(list, W7A.QA))).status, 200, 'the admin scores page (AT-9)');
     assert.equal((await hadeer.get(`${resultsOf(results, W7A.QA)}?page=2`)).status, 404, 'results error: 404 past the end');
     assert.ok((await text(resultsOf(results, W7A.QA), hadeer)).includes('id="quiz-results"'), 'results success: the table');
     // Removed and restored: quizRestored on the list.

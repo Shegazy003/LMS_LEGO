@@ -25,7 +25,7 @@ import { spacePage } from './learn.ts';
 import type { SpaceView } from './space.ts';
 
 /** A kit word as it reads inside a sentence (lower case in English; Arabic has no case). */
-const low = (t: Label, lang: Lang, key: 'learner') => t(key).toLocaleLowerCase(lang);
+const low = (t: Label, lang: Lang, key: 'learner' | 'admin' | 'guardian') => t(key).toLocaleLowerCase(lang);
 
 /** A product sentence whose values are ready markup (a title in <bdi>). */
 export function filled(t: Label, key: LabelKey, values: Record<string, Html | string>): (Html | string)[] {
@@ -51,7 +51,7 @@ const invalid = (errorId: string) => html` aria-invalid="true" aria-describedby=
 /** The quiz card (section 4.2, UX-68): heading, help, the link to the quiz list. A link only: no count, no read. */
 export function quizCard(t: Label, lang: Lang, href: string, subjectTitle: string): Html {
   return html`<section id="quizzes" class="card" aria-labelledby="quizzes-title"><h2 id="quizzes-title">${t('quizCardTitle')}</h2>
-<p class="quiz-help">${filled(t, 'quizCardHelp', { learner: low(t, lang, 'learner'), subjectTitle: title(subjectTitle) })}</p>
+<p class="quiz-help">${filled(t, 'quizCardHelp', { learner: low(t, lang, 'learner'), subjectTitle: title(subjectTitle), admin: low(t, lang, 'admin'), guardian: low(t, lang, 'guardian') })}</p>
 <p class="quiz-manage"><a class="quiz-link-button" href="${href}">${t('quizManageLink')}</a></p>
 </section>`;
 }
@@ -238,11 +238,13 @@ export function quizResultsPage(
   t: Label,
   lang: Lang,
   space: SpaceView,
-  v: { list: string; quiz: QuizRow; rows: QuizResultRow[]; count: number; right: number[]; page: number; pages: number },
+  v: { list: string; quiz: { id: string; title: string }; rows: QuizResultRow[]; count: number; right: number[] | null; page: number; pages: number },
 ): Html {
   const path = `${v.list}/${v.quiz.id}/results`;
   const tails = (r: QuizResultRow) => secondIds([r, ...r.sameName.map((u) => ({ id: `same:${u}`, display_name: r.display_name, username: u }))]).get(r.id) ?? '';
-  const row = (r: QuizResultRow) => html`<tr><td data-label="${t('quizColName')}"><a class="quiz-name" href="${path}/${r.id}"><bdi>${r.display_name}</bdi></a> <span class="muted second-id">${sentence(t, 'secondId', { tail: tails(r) })}</span></td>
+  // W7-3 [B] (contract v4 on PIL-295, G5.2): on the admin's scores page (`right` null) the name is plain text, not a link.
+  const name = (r: QuizResultRow) => (v.right ? html`<a class="quiz-name" href="${path}/${r.id}"><bdi>${r.display_name}</bdi></a>` : html`<bdi>${r.display_name}</bdi>`);
+  const row = (r: QuizResultRow) => html`<tr><td data-label="${t('quizColName')}">${name(r)} <span class="muted second-id">${sentence(t, 'secondId', { tail: tails(r) })}</span></td>
 <td data-label="${t('quizColScore')}">${scoreOf(t, r.score, r.question_count)}</td><td data-label="${t('quizColDate')}">${dateOf(r.sent_at)}</td></tr>`;
   const pageLink = (n: number, key: 'quizPagePrev' | 'quizPageNext', rel: string) => html`<a class="quiz-page-link" rel="${rel}" href="${path}?page=${n}">${t(key)}</a>`;
   const pager = v.pages > 1
@@ -254,10 +256,13 @@ export function quizResultsPage(
 <thead><tr><th scope="col">${t('quizColName')}</th><th scope="col">${t('quizColScore')}</th><th scope="col">${t('quizColDate')}</th></tr></thead>
 <tbody>${v.rows.map(row)}</tbody></table>
 ${pager}
-<h2 id="quiz-stats-title">${t('quizStatsTitle')}</h2>
-<ul id="quiz-stats" class="quiz-stats">${v.right.map((right, i) => html`<li>${sentence(t, 'quizQuestionStat', { n: String(i + 1), right: String(right), all: String(v.count) })}</li>`)}</ul>`;
+${v.right ? html`<h2 id="quiz-stats-title">${t('quizStatsTitle')}</h2>
+<ul id="quiz-stats" class="quiz-stats">${v.right.map((right, i) => html`<li>${sentence(t, 'quizQuestionStat', { n: String(i + 1), right: String(right), all: String(v.count) })}</li>`)}</ul>` : '\n'}`;
+  // The admin's scores page says it holds scores only (UX-84, quizAdminScoresNote), right after the title.
+  const note = v.right ? '' : html`
+<p id="quiz-admin-note" class="muted">${t('quizAdminScoresNote')}</p>`;
   const body = html`${back(t, v.list)}
-<h1 id="quiz-results-title" dir="auto">${filled(t, 'quizResultsTitle', { title: title(v.quiz.title) })}</h1>
+<h1 id="quiz-results-title" dir="auto">${filled(t, 'quizResultsTitle', { title: title(v.quiz.title) })}</h1>${note}
 <div class="quiz-page">${content}
 </div>`;
   return spacePage(t, lang, space, t('quizResultsTitle', { title: v.quiz.title }), body);

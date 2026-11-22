@@ -46,7 +46,7 @@ import { dueCard, duePage, type DueRefusal, type DueStatus } from './views/due.t
 import {
   ANSWER_FIELDS, QUIZ_OPTIONS_MAX, QUIZ_OPTIONS_MIN, QUIZ_OPTION_MAX, QUIZ_PER_SUBJECT_MAX, QUIZ_QUESTIONS_MAX, QUIZ_RESULTS_PAGE, QUIZ_TEXT_MAX, QUIZ_TITLE_MAX,
   buildAttempt, cleanTitle, copyQuiz, createQuiz, insertAttempt, isStateAction, learnerQuizzes, parseAnswers, postedAnswers, questionFrom, quizAttemptOf, quizCount, quizOf,
-  quizResults, quizSummary, quizToTake, quizzesOf, readQuestion,
+  quizAttemptCount, quizHeadOf, quizResults, quizScoresOfLinked, quizSummary, quizToTake, quizzesOf, readQuestion,
   withNewIds, writeQuestions, writeRemoved, writeRestored, writeState, writeTitle,
   type QuestionInput, type QuizListRow, type QuizQuestion, type QuizRow, type QuizWriter, type TakeRow,
 } from './quiz.ts';
@@ -958,7 +958,10 @@ app.get('/s/:spaceId/linked/:learnerId', async (c) => {
   // to-do list, read only now that the link is checked, for the learner linkedLearner found (one more read).
   const day = todoWindow(now());
   const todo = activity ? todoGroups(await learnerTodo(db, linkedAsLearner(c, learner), day.today, day.last, TODO_MAX_PER_GROUP)) : [];
-  return page(c, guardianLearnerPage(t, lang, view, { learner, subjects }, results, activity, todo));
+  // LMS wave 7, W7-3 (contract v3 addendum on PIL-285, G4): that learner's quiz scores, whatever the activity setting,
+  // read only now that the link is checked, with the id linkedLearner returned (one more statement).
+  const quizzes = await quizScoresOfLinked(db, view.id, learner.id);
+  return page(c, guardianLearnerPage(t, lang, view, { learner, subjects }, results, activity, todo, quizzes));
 });
 
 // One linked learner's lesson activity (R2-d, AT-15c): read only once the link
@@ -2387,9 +2390,11 @@ function quizListStatus(c: C, rows: QuizListRow[]): QuizListStatus {
 
 async function renderQuizList(c: C, place: QuizPlace, refusal: { kept: string; error: string } | null = null, restoreRefused: string | null = null) {
   const { t, lang, view } = spaceLabel(c);
-  const rows = await quizzesOf(c.get('db'), view.id, place.subjectId, place.results ? todayOf() : null);
+  // W7-3 [B] (contract v4 on PIL-295, G5.2): the admin's list also shows each quiz's results link with its count, from the
+  // publisher list's own count statement (reused, not copied).
+  const rows = await quizzesOf(c.get('db'), view.id, place.subjectId, todayOf());
   const body = quizListPage(t, lang, view, {
-    subjectTitle: place.subjectTitle, back: place.from, path: place.list, rows, publisher: place.results,
+    subjectTitle: place.subjectTitle, back: place.from, path: place.list, rows, publisher: true,
     status: refusal || restoreRefused ? null : quizListStatus(c, rows), refusal, restoreRefused,
   });
   return page(c, body, refusal || restoreRefused ? 400 : 200);
@@ -2633,12 +2638,31 @@ function questionRefusal(t: Label, question: string, input: Extract<QuestionInpu
 quizRoutes('/s/:spaceId/publish/edit/:subjectId', publisherQuizPlace);
 quizRoutes('/s/:spaceId/admin/topics/:subjectId', adminQuizPlace);
 
-// The results (section 5.5, AT-2): the responsible publisher only, through the publisher address. The admin address has
-// no results page (AT-2.3). Pages of QUIZ_RESULTS_PAGE names; a page past the end is 404.
+// The results (section 5.5, AT-2): full results and answers for the responsible publisher only, through the publisher
+// address; the admin address has the scores page below (W7-3 [B]). Pages of QUIZ_RESULTS_PAGE names; past the end 404.
 const PUBLISHER_QUIZZES = '/s/:spaceId/publish/edit/:subjectId/quizzes';
 
-// The admin address has no results page (AT-2.3a): the admin, like anyone but the responsible publisher, gets 403.
-app.get('/s/:spaceId/admin/topics/:subjectId/quizzes/:quizId/results', (c) => refuse(c, 403, 'noAccess'));
+// W7-3 [B] (product-contract v4 amendment on PIL-295, G5.2; owner 22 Nov 2026, "score only"): the admin's scores page.
+// The admin gate, then the address's subject, then the quiz (its header only: never questions_json), then the count
+// (never right_flags) and one page of names, scores and dates. No per-question summary and no name links. The admin
+// answers address keeps W7-1's answer: 403 for everyone, before any read.
+app.get('/s/:spaceId/admin/topics/:subjectId/quizzes/:quizId/results', async (c) => {
+  const place = await adminQuizPlace(c);
+  if (!place) return refuse(c, 403, 'noAccess');
+  const db = c.get('db');
+  const quiz = await quizHeadOf(db, c.get('space').id, place.subjectId, c.req.param('quizId'));
+  if (!quiz || quiz.removed_at !== null) return refuse(c, 404, 'notFound');
+  const asked = c.req.query('page') ?? '1';
+  if (!/^[1-9]\d{0,4}$/.test(asked)) return refuse(c, 404, 'notFound');
+  const pageNo = Number(asked);
+  const today = todayOf();
+  const count = await quizAttemptCount(db, c.get('space').id, quiz.id, today);
+  const pages = Math.max(1, Math.ceil(count / QUIZ_RESULTS_PAGE));
+  if (pageNo > pages) return refuse(c, 404, 'notFound');
+  const rows = count === 0 ? [] : await quizResults(db, c.get('space').id, quiz.id, today, pageNo);
+  const { t, lang, view } = spaceLabel(c);
+  return page(c, quizResultsPage(t, lang, view, { list: place.list, quiz, rows, count, right: null, page: pageNo, pages }));
+});
 app.get('/s/:spaceId/admin/topics/:subjectId/quizzes/:quizId/results/:learnerId', (c) => refuse(c, 403, 'noAccess'));
 
 app.get(`${PUBLISHER_QUIZZES}/:quizId/results`, async (c) => {

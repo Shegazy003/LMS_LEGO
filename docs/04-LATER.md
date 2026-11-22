@@ -103,6 +103,20 @@ From the Later list of the frozen `product-contract` v3 addendum (PIL-265, secti
 | C1-2: a notice to the learner of what linked guardians can see (results, activity and now the to-do list) | Today learners are not told that guardians see their results, so this belongs to one notice covering every guardian view, not a line on the to-do block alone. It matters most in the Company and University kits, where the learner may be an adult |
 | A one-line to-do summary on the guardian home's glance card | Needs its own decision, because it would put lateness on the first guardian screen |
 
+## From LMS wave 7, task W7-3 (23 November 2026)
+
+From the Later lists of the frozen `product-contract` v3 addendum (PIL-285, section G11) and v4 amendment (PIL-295, R14). Each waits for its own decision.
+
+| Idea | Why it waits |
+|---|---|
+| A quiz line on the guardian home's glance card | Needs its own decision, because it would put scores on the first guardian screen |
+| Per-question detail for guardians after a quiz is closed | The answer key is less sensitive then, but showing a child's mistakes question by question needs its own decision |
+| A teacher's choice to hide one quiz's scores from guardians | Not asked for yet; every listed quiz's score is shown today |
+| Quiz scores in the one notice to the learner of what linked guardians can see (wave 6's C1-2 above) | Belongs to that one notice, not a line on the quiz block |
+| A bounded window for learners with far more than 500 quiz attempts | The guardian's score read is bounded at 500 attempts in CI; only if real data needs more |
+| A jump link to the quiz block on long guardian pages | Only if guardians miss the block at the end of the page |
+| An admin per-question view, or a per-question summary for admins | The owner decided "score only" on 22 November 2026; this needs a new owner decision |
+
 ## From the brainstorm comparison
 
 | Idea | Why it waits |

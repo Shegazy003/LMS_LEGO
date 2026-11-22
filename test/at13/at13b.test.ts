@@ -22,6 +22,7 @@ import {
   A, B, G1, G2, UPLOADED, annHits, crawl, doneHits, doneWords, guardianPaths, lockHits, privacyWorld, quizHits, resultPaths, todoHits, uploadHits, useLanguage, withAnnouncements, withDoneMarks, withDueDates, withLocks, withQuizzes, withUpload, type PrivacyWorld,
 } from './pages.ts';
 import { corrected } from '../at12/corrections.ts';
+import { withoutElement } from '../wave7/guardian.ts';
 
 const EVERYONE = [ADMIN, OTHER_ADMIN, HADEER, SHIMAA, A, B, C, D, KARIM, G1, G2];
 // R2-b: each learner's published score, which only that learner may read (AT-11a); A's draft, which nobody may.
@@ -126,6 +127,9 @@ describe('AT-13b the forbidden-string scan finds nothing a guardian or learner c
         await useLanguage(c, lang);
         for (const page of await crawl(c, ['/home', ...guardianPaths(w)], typed)) {
           scanned++;
+          // LMS wave 7, W7-3 (v3 addendum on PIL-285, G9.1): the scans run on the linked learner's page with the guardian's
+          // quiz block `#quiz-guardian` removed (its own allow-list is W7 AT-8.2); every other page is scanned whole.
+          if (/\/linked\/[^/?#]+$/.test(page.path) && page.contentType.startsWith('text/html')) page.body = withoutElement(page.body, 'quiz-guardian');
           const lower = page.body.toLowerCase();
           // A file's bytes hold long digit runs of their own (a PDF's cross-reference table): there only whole numbers are looked for.
           const text = page.contentType.startsWith('text/');

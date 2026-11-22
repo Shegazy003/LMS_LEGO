@@ -340,7 +340,10 @@ function readsProblems(rs: Result[], activityOn: boolean): string {
     const linked = activityOn && r.status === 200 && r.what.includes(' GET ') && LINKED.test(r.path);
     // LMS wave 7 (W7-2, contract v2 on PIL-261, section 11 item 4): a subject's /learn page and the preview subject page read its quizzes once more.
     const quiz = r.status === 200 && r.what.includes(' GET ') && /^\/s\/[^/]+\/(preview\/)?learn\/[^/?#]+(\?|$)/.test(r.path) ? 1 : 0;
-    return r.reads.cand !== r.reads.base + (linked ? 1 : 0) + quiz || (LINKED.test(r.path) && r.todo !== (linked ? 1 : 0));
+    // LMS wave 7 (W7-3, contract v3 addendum on PIL-285, G9.2 and G9.5): a 200 linked learner's page also reads the
+    // learner's quiz scores once, whatever the activity setting.
+    const scores = r.status === 200 && r.what.includes(' GET ') && LINKED.test(r.path) ? 1 : 0;
+    return r.reads.cand !== r.reads.base + (linked ? 1 : 0) + quiz + scores || (LINKED.test(r.path) && r.todo !== (linked ? 1 : 0));
   });
   return off.slice(0, 5).map((r) => `${r.what}: W6-1b-main ${r.reads.base}, candidate ${r.reads.cand}, to-do statements ${r.todo}`).join('\n');
 }
@@ -413,7 +416,8 @@ describe('W6 AT-6.5, AT-6.6 and AT-7.1 against W6-1b-main with due dates', { con
         assert.match(r.candBody, /<p id="activity-off" class="card message" data-activity>/, `${who.who} ${lang}: the activity-off line`);
         assert.equal(guardianTodoOf(r.candBody), null, `${who.who} ${lang}: no block`);
         assert.equal(r.todo, 0, `${who.who} ${lang}: no to-do statement`);
-        assert.equal(r.reads.cand, r.reads.base, `${who.who} ${lang}: W6-1b-main's count`);
+        // LMS wave 7 (W7-3, contract v3 addendum on PIL-285, G9.5 and AT-7.9): the quiz score statement, whatever the activity setting.
+        assert.equal(r.reads.cand, r.reads.base + 1, `${who.who} ${lang}: W6-1b-main's count plus the quiz score statement`);
       }
     }
     const amal = p.people.find((x) => x.who === 'Amal')!.cand;
@@ -536,7 +540,9 @@ describe('W6 AT-6.4 reads (hard gate): the linked learner\'s page W6-1b-main\'s 
         const mc = await measure(p.cand, by(who).cand, path);
         assert.equal(mc.status, mb.status, `${what} ${who} ${path}: the same status`);
         const linked = LINKED.test(path) && mc.status === 200 && activityOn;
-        assert.equal(mc.reads, mb.reads + (linked ? 1 : 0), `${what} ${who} ${path}: W6-1b-main's count (${mb.reads})${linked ? ' plus exactly one' : ''}`);
+        // LMS wave 7 (W7-3, contract v3 addendum on PIL-285, G9.2): wave 6's count rises by one, the quiz score statement.
+        const scores = LINKED.test(path) && mc.status === 200 ? 1 : 0;
+        assert.equal(mc.reads, mb.reads + (linked ? 1 : 0) + scores, `${what} ${who} ${path}: W6-1b-main's count (${mb.reads})${linked ? ' plus exactly one' : ''}${scores ? ' plus the quiz score statement' : ''}`);
         assert.equal(mc.todos, linked ? 1 : 0, `${what} ${who} ${path}: ${linked ? 'one' : 'no'} to-do statement`);
         lines.push(`${what} ${who} ${path.replace(/^\/s\/[^/]+/, '')}: ${mb.reads} → ${mc.reads}`);
       }
@@ -571,7 +577,8 @@ describe('W6 AT-6.4 reads (hard gate): the linked learner\'s page W6-1b-main\'s 
     const own = await measure(p.cand, by('Load learner').cand, `/s/${p.load.id}`);
     const ownBlock = todoOf(own.body);
     assert.ok(ownBlock && guardianTodoOf(mc.body), 'W6-e: the learner\'s own block and the guardian block');
-    assert.equal(mc.reads, mb.reads + 1, `W6-e: W6-1b-main's count plus one (${mb.reads})`);
+    // LMS wave 7 (W7-3, contract v3 addendum on PIL-285, G9.2): plus wave 7's quiz score statement.
+    assert.equal(mc.reads, mb.reads + 1 + 1, `W6-e: W6-1b-main's count plus one (${mb.reads}), plus the quiz score statement`);
     assert.ok(mc.todo, 'W6-e: one to-do statement');
     const rows = p.cand.worker.sqlite.prepare(mc.todo!.sql).all(...(mc.todo!.params as (string | number | null)[])).length;
     const d1 = await onLocalD1(p.cand.worker.sqlite, mc.todo!);
