@@ -106,7 +106,12 @@ export async function withAt2(w: Wave1World): Promise<{ math: string[]; arabic: 
   const s = w.school;
   const hadeer = await as(w, HADEER, 'en');
   const shimaa = await as(w, SHIMAA, 'en');
-  const t0 = (await workerNow(w.p.url)) - 60 * 60_000;
+  // The posts stay inside the current UTC day (W6-1c, the 00:00 to 01:00 UTC flake of main b299dac run 44967311317):
+  // an hour back from now, but never before today's midnight, where the same-day access grants begin; spaced one
+  // minute apart, or closer in the first minutes after midnight, so the last is still no later than now.
+  const nowMs = await workerNow(w.p.url);
+  const dayStart = Date.parse(`${new Date(nowMs).toISOString().slice(0, 10)}T00:00:00Z`);
+  const t0 = Math.max(nowMs - 60 * 60_000, dayStart);
   const posts: [Client, string, string][] = [
     [hadeer, publisherAnn(s, s.math), AT2_MATH[0]],
     [hadeer, publisherAnn(s, s.math), AT2_MATH[1]],
@@ -114,9 +119,10 @@ export async function withAt2(w: Wave1World): Promise<{ math: string[]; arabic: 
     [w.admin, adminAnn(s, s.math), AT2_MATH[3]],
     [shimaa, publisherAnn(s, s.arabic), AT2_ARABIC],
   ];
+  const step = Math.max(1, Math.min(60_000, Math.floor((nowMs - t0) / posts.length)));
   try {
     for (const [i, [c, path, body]] of posts.entries()) {
-      await setClockTo(w.p.url, t0 + i * 60_000);
+      await setClockTo(w.p.url, t0 + i * step);
       await post(c, path, body);
     }
   } finally {

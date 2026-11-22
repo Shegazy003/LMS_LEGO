@@ -15,8 +15,8 @@
 // as wave-5), so the statement spy is available. Made-up data only.
 import assert from 'node:assert/strict';
 import { utcDatePlusDays, type Client } from '../support/http.ts';
-import { seed } from '../support/seed.ts';
-import { editorPath, topicPath, wave4World, withNile4, type Nile, type Wave1World } from '../wave5/world.ts';
+import { seed, signedIn } from '../support/seed.ts';
+import { COMPANY_ADMIN, OMAR, SALMA, UNIVERSITY_ADMIN, activity, editorPath, topicPath, wave4World, withNile4, type Nile, type Wave1World } from '../wave5/world.ts';
 
 export * from '../wave5/world.ts';
 
@@ -152,6 +152,74 @@ export async function withW6b(w: Wave1World): Promise<W6b> {
   await pinnable(w);
   return { ...nile, K1, K2, N1: nile.lessons['Water cycle'], N2, N3: nile.lessons['Soil layers'] };
 }
+
+// -------------------------------------------------------------- W6-f ----
+// Contract v3 addendum on PIL-265, G5 (W6-1c): guardians of the to-do list.
+
+export const LAILA6 = { display_name: 'Laila Test', username: 'laila.w6', password: 'laila-wave6-pass', role: 'guardian' as const, mobile: '01061610003' };
+export const TAMER6 = { display_name: 'Tamer Test', username: 'tamer.w6', password: 'tamer-wave6-pass', role: 'guardian' as const, mobile: '01061610004' };
+export const HUDA6 = { display_name: 'Huda Test', username: 'huda.w6', password: 'huda-wave6-pass', role: 'guardian' as const, mobile: '01061610005' };
+export const RANIA6 = { display_name: 'Rania Test', username: 'rania.w6', password: 'rania-wave6-pass', role: 'learner' as const, mobile: '01061610006' };
+
+/** W6-f in Mesk School (after withW6a): Laila Test, a guardian linked to Salma and Omar C; Rania Test, a learner of Mathematics
+ * (W6-a's subject, as Salma) with her own mark on L1, who is also a guardian linked to Salma. Mona stays linked to Salma only. */
+export async function withW6f(w: Wave1World, a: W6a): Promise<void> {
+  const s = w.school;
+  const until = utcDatePlusDays(60);
+  const seeded = await seed(w.p.url, {
+    spaceId: s.id, grantedBy: 'amal.admin',
+    people: [{ ...LAILA6, valid_until: until }, { ...RANIA6, valid_until: until }],
+    memberships: [{ username: RANIA6.username, role: 'guardian', valid_until: until }],
+    links: [{ guardian: LAILA6.username, learner: SALMA.username }, { guardian: LAILA6.username, learner: OMAR.username }, { guardian: RANIA6.username, learner: SALMA.username }],
+  });
+  w.ids[LAILA6.username] = seeded.users[LAILA6.username];
+  const rania = seeded.users[RANIA6.username];
+  w.ids[RANIA6.username] = rania;
+  await w.p.sql(`INSERT INTO subject_access (id, space_id, subject_id, user_id) VALUES ('w6f-rania', '${s.id}', '${s.math}', '${rania}')`);
+  await w.p.sql(`INSERT INTO done_mark (space_id, learner_user_id, lesson_id, marked_at) VALUES ('${s.id}', '${rania}', '${a.L.L1}', 1)`);
+  await pinnable(w);
+}
+
+/** W6-f in Nile Test Space (after withW6b): Tamer Test, a guardian linked to Yara Test; lesson activity on there (Nadia's form). */
+export async function withTamer(w: Wave1World, b: W6b): Promise<void> {
+  const seeded = await seed(w.p.url, {
+    spaceId: b.id, grantedBy: 'nadia.w4',
+    people: [{ ...TAMER6, valid_until: utcDatePlusDays(60) }],
+    links: [{ guardian: TAMER6.username, learner: YARA6.username }],
+  });
+  w.ids[TAMER6.username] = seeded.users[TAMER6.username];
+  const res = await b.nadia.post(`/s/${b.id}/admin/activity`, { told: '1' });
+  assert.equal(res.status, 303, 'lesson activity on in Nile Test Space');
+  await pinnable(w);
+}
+
+/** W6-f in the W6-e space (the load space): Huda Test, a guardian linked to its learner, seeded through the product at `url`. */
+export async function withHuda(url: string, load: { id: string }, adminUsername: string, learnerUsername: string): Promise<string> {
+  const seeded = await seed(url, {
+    spaceId: load.id, grantedBy: adminUsername,
+    people: [{ ...HUDA6, valid_until: utcDatePlusDays(60) }],
+    links: [{ guardian: HUDA6.username, learner: learnerUsername }],
+  });
+  return seeded.users[HUDA6.username];
+}
+
+/** W6-f in the other kits (AT-6.5, UX-81): Laila Test also a guardian of Salma in the Company and University spaces, with
+ * Adding fractions due D there and lesson activity on (each space's admin's form). Call after withW6f. */
+export async function withKitGuardians(w: Wave1World): Promise<void> {
+  for (const [space, admin] of [[w.company, COMPANY_ADMIN], [w.university, UNIVERSITY_ADMIN]] as const) {
+    await seed(w.p.url, {
+      spaceId: space.id, grantedBy: admin.username,
+      memberships: [{ username: LAILA6.username, role: 'guardian', valid_until: utcDatePlusDays(60) }],
+      links: [{ guardian: LAILA6.username, learner: SALMA.username }],
+    });
+    await w.p.sql(`UPDATE lesson SET due_on = '${D}' WHERE id = '${space.lessons['Adding fractions']}'`);
+    await activity(w, true, await signedIn(w.p.url, admin.username, admin.password), space.id);
+  }
+  await pinnable(w);
+}
+
+/** The linked learner's page of a guardian. */
+export const linkedPath = (s: { id: string }, learnerId: string) => `/s/${s.id}/linked/${learnerId}`;
 
 /** The wave 6 world: wave 4's (and so waves 1 to 3), the clock pinned at the default W6-c instant, then W6-a. Sign people in after this (a session from before the pin may be idle by D). */
 export async function wave6World(opts: { dates?: boolean; activity?: boolean } = {}): Promise<{ w: Wave1World; a: W6a }> {

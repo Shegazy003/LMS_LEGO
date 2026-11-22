@@ -1618,6 +1618,81 @@ jobs:
         env:
           LMS_BASE_ROOT: ${{ github.workspace }}/.base-w6
         run: npm run test:wave3b -- --test-name-pattern='^W6 AT-3\.4b load' test/wave6/base.test.ts
+      # W6-1c, the guardian's view (product-contract v3 addendum on PIL-265). AT-6.4 to AT-6.6, AT-7.1, AT-7.3 and AT-7.4 compare
+      # with W6-1b-main c39af35 (pinned), run beside this commit in the same process (test/wave6/base-guardian.test.ts reads it
+      # from LMS_BASE_ROOT); AT-7.5 compares this ci.yml and the test tree with the same checkout.
+      - name: Check out W6-1b-main c39af35 for the guardian base comparison (code only, never run but by the comparison)
+        if: success() || failure()
+        uses: actions/checkout@v4
+        with:
+          ref: c39af35b80b64998d1aaf48b68a787433307055b
+          path: .base-w6c
+          persist-credentials: false
+      - name: W6 AT-6.1 place and content of the guardian block on the linked learner's page
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W6 AT-6\.1 ' test/wave6/at6.test.ts
+      - name: W6 AT-6.2 equal to the learner's block at the same instant, always
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W6 AT-6\.2 ' test/wave6/at6.test.ts
+      - name: W6 AT-6.3 cap at W6-e, the full count and guardianTodoCapped
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W6 AT-6\.3 ' test/wave6/at6.test.ts
+      - name: W6 AT-6.4 reads (hard gate) against W6-1b-main c39af35, the W6-e figures printed
+        if: success() || failure()
+        env:
+          LMS_BASE_ROOT: ${{ github.workspace }}/.base-w6c
+        run: npm run test:wave3b -- --test-name-pattern='^W6 AT-6\.4 ' test/wave6/base-guardian.test.ts
+      - name: W6 AT-6.5 activity setting (against W6-1b-main c39af35) and kits
+        if: success() || failure()
+        env:
+          LMS_BASE_ROOT: ${{ github.workspace }}/.base-w6c
+        run: npm run test:wave3b -- --test-name-pattern='^W6 AT-6\.5 ' test/wave6/at6.test.ts test/wave6/base-guardian.test.ts
+      - name: W6 AT-6.6 one person, two roles, never mixed
+        if: success() || failure()
+        env:
+          LMS_BASE_ROOT: ${{ github.workspace }}/.base-w6c
+        run: npm run test:wave3b -- --test-name-pattern='^W6 AT-6\.6 ' test/wave6/base-guardian.test.ts
+      - name: W6 AT-7.1 only their own linked learner, W6-1b-main's 403 byte for byte, never cached for others
+        if: success() || failure()
+        env:
+          LMS_BASE_ROOT: ${{ github.workspace }}/.base-w6c
+        run: npm run test:wave3b -- --test-name-pattern='^W6 AT-7\.1 ' test/wave6/base-guardian.test.ts
+      - name: W6 AT-7.2 privacy scans outside and inside the guardian block
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W6 AT-7\.2 ' test/wave6/at7.test.ts
+      - name: W6 AT-7.3 base comparison with no due dates against W6-1b-main c39af35
+        if: success() || failure()
+        env:
+          LMS_BASE_ROOT: ${{ github.workspace }}/.base-w6c
+        run: npm run test:wave3b -- --test-name-pattern='^W6 AT-7\.3 ' test/wave6/base-guardian.test.ts
+      - name: W6 AT-7.4 with due dates against W6-1b-main c39af35, only the guardian block and the help text differ
+        if: success() || failure()
+        env:
+          LMS_BASE_ROOT: ${{ github.workspace }}/.base-w6c
+        run: npm run test:wave3b -- --test-name-pattern='^W6 AT-7\.4 ' test/wave6/base-guardian.test.ts
+      - name: W6 AT-7.5 keep working, every existing CI step and the rollback job are W6-1b-main c39af35's
+        if: success() || failure()
+        env:
+          LMS_BASE_ROOT: ${{ github.workspace }}/.base-w6c
+        run: npm run test:wave3b -- --test-name-pattern='^W6 AT-7\.5 ' test/wave6/at7.test.ts
+      - name: UX-80 guardian block place, order and read-only
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-80 guardian block place' test/wave6/ux-guardian.test.ts
+      - name: UX-80 guardian block absent when nothing listed or activity off
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-80 guardian block absent' test/wave6/ux-guardian.test.ts
+      - name: UX-81 guardian keys, deny list, pronouns and neighbours in every kit
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-81 guardian keys' test/wave6/ux-guardian.test.ts
+      - name: UX-81 due card help names who sees lateness
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-81 due card help' test/wave6/ux-guardian.test.ts
+      - name: UX-82 guardian page states
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-82 guardian page states' test/wave6/ux-guardian.test.ts
+      - name: UX-82 guardian page widths, targets and keyboard
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-82 guardian page widths' test/wave6/ux-guardian.test.ts
       - name: Upload evidence (wave 6 screenshots)
         if: always() && hashFiles('evidence/**') != ''
         uses: actions/upload-artifact@v4

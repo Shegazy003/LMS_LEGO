@@ -443,7 +443,9 @@ describe('W2 AT-3.7 no route returns done marks but the learner\'s own pages; th
     // W2-1b adds doneLessonIds: the signed-in learner's own lesson ids, for their outline only (never a count, a time or another person's marks).
     // W2-2 adds markOrder: the same lesson ids, newest press first, for the learner's own home (never the time itself).
     // LMS wave 6 (W6-1b, AT-2.1 and AT-3.4b) adds learnerTodo: the signed-in learner's own to-do rows for their own home (W2 AT-2.5 keeps done_mark in this file), never the time.
-    assert.deepEqual(exported, ['doneLessonIds', 'isDone', 'learnerTodo', 'markDone', 'markNotDone', 'markOrder', 'readsAsLearner', 'setMarkClock', 'signedInLearner'],'progress.ts gives out a yes/no per lesson, the learner\'s own done lesson ids (and whether a subject is read as a learner), never a count or time (AT-2.5 guards the rest)');
+    // LMS wave 6, W6-1c (contract v3 addendum on PIL-265, G4.3; outside its G9, named for the Lead) adds linkedAsLearner: the learner
+    // a guardian is linked to, as the link check found them, for that learner's to-do list on the guardian's page (read-only; AT-2.5 guards it).
+    assert.deepEqual(exported, ['doneLessonIds', 'isDone', 'learnerTodo', 'linkedAsLearner', 'markDone', 'markNotDone', 'markOrder', 'readsAsLearner', 'setMarkClock', 'signedInLearner'],'progress.ts gives out a yes/no per lesson, the learner\'s own done lesson ids (and whether a subject is read as a learner), never a count or time (AT-2.5 guards the rest)');
     assert.match(progress, /export async function doneLessonIds\(db: Db, who: Learner\)/, 'doneLessonIds takes only the signed-in learner (the branded Learner)');
     assert.doesNotMatch(progress.match(/export async function doneLessonIds[\s\S]*?\n\}/)?.[0] ?? '', /marked_at/, 'doneLessonIds never reads the time');
     assert.match(progress, /export async function markOrder\(db: Db, who: Learner\)/, 'markOrder takes only the signed-in learner (the branded Learner)');

@@ -27,7 +27,8 @@ const TEACHER_KEYS = [
   'dueSaved', 'dueCleared', 'dueInvalid', 'dueChapterEmpty',
 ] as const satisfies readonly UiKey[];
 /** Every wave 6 key (the learner's too, all landed in this task), for the checks on the values themselves. */
-const ALL_KEYS = [...TEACHER_KEYS, 'todoTitle', 'todoOverdue', 'todoToday', 'todoNext7', 'todoMore', 'todoCapped', 'todoItemLine'] as const satisfies readonly UiKey[];
+// W6-1c (contract v3 G9.4, ux-plan v3 UX-81): the checks run on the guardian's three keys too, and on dueCardHelp's new value.
+const ALL_KEYS = [...TEACHER_KEYS, 'todoTitle', 'todoOverdue', 'todoToday', 'todoNext7', 'todoMore', 'todoCapped', 'todoItemLine', 'guardianTodoTitle', 'guardianTodoNote', 'guardianTodoCapped'] as const satisfies readonly UiKey[];
 
 /** Whether every selector is found, in this DOM order. */
 const inDomOrder = (page: Page, selectors: string[]) => page.evaluate((sels) => {
@@ -80,7 +81,8 @@ describe('UX-59 due card place, order and labels', { concurrency: false }, () =>
       assert.equal(await inDomOrder(page, ['#announcements', '#due-dates', '#due-dates > h2', '#due-dates .due-help', '#due-dates a.due-link']), 'ok', `${who.username}: after the announcement card, parts in order`);
       if (who === HADEER) assert.equal(await inDomOrder(page, ['#due-dates', '#outline']), 'ok', 'before the outline');
       assert.equal((await page.textContent('#due-dates > h2'))?.trim(), t('dueCardTitle'));
-      const help = t('dueCardHelp', { chapter: t('chapter').toLocaleLowerCase(lang), lesson: t('lesson').toLocaleLowerCase(lang), subject: t('subject').toLocaleLowerCase(lang), learner: t('learner').toLocaleLowerCase(lang), days: String(TODO_AHEAD_DAYS) });
+      // W6-1c (G9.4): dueCardHelp's new last sentence also names the guardian, in lower case as the learner.
+      const help = t('dueCardHelp', { chapter: t('chapter').toLocaleLowerCase(lang), lesson: t('lesson').toLocaleLowerCase(lang), subject: t('subject').toLocaleLowerCase(lang), learner: t('learner').toLocaleLowerCase(lang), guardian: t('guardian').toLocaleLowerCase(lang), days: String(TODO_AHEAD_DAYS) });
       assert.equal((await page.textContent('#due-dates .due-help'))?.trim(), help, 'the help line, with the ahead days and when a day ends');
       assert.equal((await page.textContent('#due-dates a.due-link'))?.trim(), t('dueSetLink'));
       assert.equal(await page.getAttribute('#due-dates a.due-link', 'href'), due);
@@ -250,8 +252,10 @@ const DENY = ['أنت', 'لك', 'عليك', 'هذا', 'هذه', 'ذلك', 'تل�
 const NEIGHBOURS: Record<string, string> = {
   'لأي': 'particle "for any": invariant', 'أو': 'particle "or"', 'فهرس': 'noun "outline of": the kit word is its genitive', 'فورًا': 'adverb "at once": invariant',
   'لكل': 'particle "for each": invariant', 'قبل': 'preposition "before"', 'إضافة': 'noun "adding": the kit word is its object',
+  // W6-1c (UX-81): dueCardHelp's new sentence «… إلا في قائمة {learner}، وفي صفحة {guardian} عند وجود ربط.»
+  'قائمة': 'noun "list of": the kit word is its genitive', 'صفحة': 'noun "page of": the kit word is its genitive', 'عند': 'preposition "at, when": invariant',
 };
-const KIT_PLACEHOLDERS = ['chapter', 'lesson', 'subject', 'learner', 'kind'];
+const KIT_PLACEHOLDERS = ['chapter', 'lesson', 'subject', 'learner', 'kind', 'guardian'];
 /** Words of the table that end in the letters of an attached pronoun but are not one (empty for this table, ux-plan UX-64). */
 const PRONOUN_ALLOW: Record<string, string> = {};
 const noMarks = (s: string) => s.replace(/[ً-ْ]/g, '');
@@ -282,7 +286,7 @@ describe('UX-64 Arabic, mixed text and kit words for the card and the page (thre
         assert.ok(punctAfter || next === undefined || Object.hasOwn(NEIGHBOURS, noMarks(next)) || Object.hasOwn(NEIGHBOURS, next), `${key}: the word after {${m[1]}} is "${next}"`);
       }
     }
-    for (const [key, ph] of [['dueCardHelp', ['chapter', 'lesson', 'subject', 'learner']], ['dueChapterEmpty', ['lesson']], ['todoCapped', ['subject']], ['todoItemLine', ['kind']]] as const) {
+    for (const [key, ph] of [['dueCardHelp', ['chapter', 'lesson', 'subject', 'learner', 'guardian']], ['dueChapterEmpty', ['lesson']], ['todoCapped', ['subject']], ['todoItemLine', ['kind']]] as const) {
       for (const p of ph) assert.ok(UI.ar[key].includes(`{${p}}`), `${key} carries {${p}} (checked above)`);
     }
   });
@@ -295,7 +299,7 @@ describe('UX-64 Arabic, mixed text and kit words for the card and the page (thre
         assert.ok(!/\s\/\s/.test(v), `${lang} ${key}: no spaced slash`);
         const numbers = v.replace(/{[^}]*}/g, ' ').match(/\d+/g) ?? [];
         for (const c of constants) assert.ok(!numbers.includes(c), `${lang} ${key}: no literal ${c}`);
-        for (const m of v.matchAll(/{([A-Za-z]+)}/g)) assert.ok(['chapter', 'lesson', 'subject', 'learner', 'kind', 'title', 'subjectTitle', 'n', 'days', 'date'].includes(m[1]), `${lang} ${key}: {${m[1]}} is a typed placeholder`);
+        for (const m of v.matchAll(/{([A-Za-z]+)}/g)) assert.ok(['chapter', 'lesson', 'subject', 'learner', 'guardian', 'kind', 'title', 'subjectTitle', 'n', 'days', 'date', 'name'].includes(m[1]), `${lang} ${key}: {${m[1]}} is a typed placeholder`);
       }
       assert.deepEqual([...UI.ar[key].matchAll(/{(\w+)}/g)].map((m) => m[1]).sort(), [...UI.en[key].matchAll(/{(\w+)}/g)].map((m) => m[1]).sort(), `${key}: the same placeholders in both languages`);
     }

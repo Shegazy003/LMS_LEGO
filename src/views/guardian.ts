@@ -9,6 +9,7 @@
 // the neutral word "linked" so that no address names a concept. Every word
 // comes from the label function and the space's kit.
 import { html } from 'hono/html';
+import { TODO_AHEAD_DAYS, TODO_MAX_PER_GROUP, type TodoGroup, type TodoItem } from '../due.ts';
 import type { OwnResult } from '../exams.ts';
 import type { GuardianSubject, LinkedLearner } from '../guardians.ts';
 import type { Label, Lang } from '../labels.ts';
@@ -32,6 +33,56 @@ export interface GlanceCard extends LearnerCard {
 }
 
 const home = (space: SpaceView) => `/s/${space.id}/linked`;
+
+// ------------------------------------------------------- the to-do list ----
+// LMS wave 6, W6-1c (product-contract v3 addendum on PIL-265, G4; ux-plan
+// UX-80): on the linked learner's page, after the learner card and before the
+// results, only while lesson activity is on, that learner's own to-do groups
+// (the learner's statement, worked out at this page load), read-only. Drawn
+// apart from the learner's block, so that one stays byte for byte (AT-7.4):
+// plain text only (no link, no done count, no other date), and only the
+// elements and attributes of AT-7.2's allow-list. The classes are the
+// learner block's and the due pages' (no new style).
+
+/** How many items of a group show before its fold (the learner's block: 3). */
+const TODO_SHOWN = 3;
+const TODO_HEADING = { overdue: 'todoOverdue', today: 'todoToday', next: 'todoNext7' } as const;
+
+/** One item: the title as plain text, then todoItemLine with its date in Latin digits, left to right. */
+function guardianTodoItem(t: Label, item: TodoItem): Html {
+  const line = marked(t, 'todoItemLine', {
+    kind: html`${t(item.kind)}`, subjectTitle: html`<bdi>${item.subjectTitle}</bdi>`, date: html`<bdi dir="ltr" class="due-date">${item.dueOn}</bdi>`,
+  });
+  return html`<li class="todo-item"><span class="due-title"><bdi>${item.title}</bdi></span>
+<p class="todo-line">${line}</p></li>`;
+}
+
+/** One group: the heading with the full count, 3 items, then up to 7 in a closed native fold that ends with guardianTodoCapped past 10. */
+function guardianTodoGroup(t: Label, g: TodoGroup): Html {
+  const shown = g.items.slice(0, TODO_SHOWN);
+  const rest = g.items.slice(TODO_SHOWN);
+  const capped = g.count > TODO_MAX_PER_GROUP ? html`
+<p class="todo-capped">${t('guardianTodoCapped', { n: String(g.count - TODO_MAX_PER_GROUP) })}</p>` : '';
+  const fold = rest.length ? html`
+<details class="todo-more"><summary>${t('todoMore', { n: String(rest.length) })}</summary>
+<ul class="todo-list">${rest.map((i) => guardianTodoItem(t, i))}</ul>${capped}
+</details>` : '';
+  return html`<section class="todo-group" id="guardian-todo-${g.key}">
+<h3>${t(TODO_HEADING[g.key], { n: String(g.count), days: String(TODO_AHEAD_DAYS) })}</h3>
+<ul class="todo-list">${shown.map((i) => guardianTodoItem(t, i))}</ul>${fold}
+</section>`;
+}
+
+/** The block, or nothing at all when no group has an item (the page is then W6-1b-main's). */
+function guardianTodo(t: Label, learner: LinkedLearner, groups: TodoGroup[]): Html | string {
+  if (!groups.length) return '';
+  // No white space around it: the page differs from W6-1b-main's by this element only (AT-7.4).
+  return html`<section id="guardian-todo" class="card todo-block">
+<h2 id="guardian-todo-heading">${sentence(t, 'guardianTodoTitle', { name: learner.display_name })}</h2>
+<p class="muted">${t('guardianTodoNote')}</p>
+${groups.map((g) => guardianTodoGroup(t, g))}
+</section>`;
+}
 
 function itemList(t: Label, items: GuardianSubject[]): Html {
   if (!items.length) return html`<p class="muted">${t('nothingAssigned')}</p>`;
@@ -106,10 +157,10 @@ export function guardianHome(t: Label, lang: Lang, space: SpaceView, displayName
  * reason, a draft or a result id. From R2-d the card leads to the learner's
  * lesson-activity page while it is on; while off, the page says it is not
  * switched on (AT-15a) and nothing else about lessons. */
-export function guardianLearnerPage(t: Label, lang: Lang, space: SpaceView, c: LearnerCard, results: OwnResult[], activity = false): Html {
+export function guardianLearnerPage(t: Label, lang: Lang, space: SpaceView, c: LearnerCard, results: OwnResult[], activity = false, todo: TodoGroup[] = []): Html {
   const body = html`<p><a id="back" href="${home(space)}">${t('guardianHome')}</a></p>
 <div id="linked">${card(t, space, c, 'plain', activity)}</div>
-${activity ? '' : activityOff(t, space)}
+${activity ? '' : activityOff(t, space)}${activity ? guardianTodo(t, c.learner, todo) : ''}
 <section id="results" class="card" data-learner="${c.learner.id}">
   <h2 id="results-title">${sentence(t, 'resultsOf', { name: c.learner.display_name })}</h2>
   ${results.length

@@ -192,6 +192,111 @@ export async function expectedItems(w: Wave1World, spaceId: string, subjectId: s
   return out;
 }
 
+// ------------------------------------------- the guardian's block (W6-1c) ----
+// Contract v3 addendum on PIL-265, G4 and AT-6/AT-7: `#guardian-todo` on the
+// linked learner's page, read-only, plain text, no ids of items.
+
+/** The end (exclusive) of the element starting at `start`, counting nested elements of the same tag. */
+export function elementEnd(html: string, start: number): number {
+  const tag = /^<([a-zA-Z0-9]+)/.exec(html.slice(start))![1];
+  const re = new RegExp(`<(/?)${tag}\\b[^>]*>`, 'g');
+  re.lastIndex = start;
+  let depth = 0;
+  for (let m = re.exec(html); m; m = re.exec(html)) {
+    depth += m[1] ? -1 : 1;
+    if (depth === 0) return m.index + m[0].length;
+  }
+  throw new Error(`<${tag}> at ${start} is not closed`);
+}
+
+/** One item of the guardian's block, as a reader gets it. */
+export interface GuardianItemView { title: string; line: string; folded: boolean; raw: string }
+export interface GuardianGroupView { key: 'overdue' | 'today' | 'next'; heading: string; items: GuardianItemView[]; more: string | null; moreOpen: boolean; capped: string | null }
+export interface GuardianTodoView { block: string; at: number; heading: string; note: string; groups: GuardianGroupView[] }
+
+function guardianItems(fragment: string, folded: boolean): GuardianItemView[] {
+  return [...fragment.matchAll(/<li class="todo-item"><span class="due-title">([\s\S]*?)<\/span>\n<p class="todo-line">([\s\S]*?)<\/p><\/li>/g)].map((m) => ({ title: textOf(m[1]), line: textOf(m[2]), folded, raw: m[0] }));
+}
+
+/** The guardian's to-do block of a page (id="guardian-todo"), or null when the page has none. */
+export function guardianTodoOf(html: string): GuardianTodoView | null {
+  const at = html.indexOf('<section id="guardian-todo"');
+  if (at < 0) return null;
+  const block = html.slice(at, elementEnd(html, at));
+  const groups: GuardianGroupView[] = [];
+  for (const m of block.matchAll(/<section class="todo-group" id="guardian-todo-(overdue|today|next)">/g)) {
+    const inner = block.slice(m.index, elementEnd(block, m.index!));
+    const foldAt = inner.indexOf('<details class="todo-more"');
+    const top = foldAt < 0 ? inner : inner.slice(0, foldAt);
+    const fold = foldAt < 0 ? '' : inner.slice(foldAt);
+    const summary = /<details class="todo-more"([^>]*)><summary>([\s\S]*?)<\/summary>/.exec(fold);
+    const capped = /<p class="todo-capped">([\s\S]*?)<\/p>/.exec(fold);
+    groups.push({
+      key: m[1] as GuardianGroupView['key'], heading: textOf(/<h3>([\s\S]*?)<\/h3>/.exec(inner)?.[1] ?? ''),
+      items: [...guardianItems(top, false), ...guardianItems(fold, true)],
+      more: summary ? textOf(summary[2]) : null, moreOpen: summary ? /\bopen\b/.test(summary[1]) : false,
+      capped: capped ? textOf(capped[1]) : null,
+    });
+  }
+  return {
+    block, at, groups,
+    heading: textOf(/<h2 id="guardian-todo-heading">([\s\S]*?)<\/h2>/.exec(block)?.[1] ?? ''),
+    note: textOf(/<p class="muted">([\s\S]*?)<\/p>/.exec(block)?.[1] ?? ''),
+  };
+}
+
+/** A page with the `#guardian-todo` element taken out (contract G9.1: the release 2 and v2 scans run on the rest, unchanged). */
+export function withoutGuardianTodo(html: string): string {
+  const at = html.indexOf('<section id="guardian-todo"');
+  return at < 0 ? html : html.slice(0, at) + html.slice(elementEnd(html, at));
+}
+
+/** A block as the sequence AT-6.2 compares: (group key, group heading with its count, item title, todoItemLine text, shown or folded). */
+export function sequenceOf(v: { groups: { key: string; heading: string; items: { title: string; line: string; folded: boolean }[] }[] } | null): string[] | null {
+  return v ? v.groups.flatMap((g) => g.items.map((i) => [g.key, g.heading, i.title, i.line, i.folded ? 'folded' : 'shown'].join(' | '))) : null;
+}
+
+/** The allow-list of AT-7.2 inside the block: elements, attributes, and text (each element's text is one expected value). Empty when it holds. */
+export function allowListProblems(block: string, expected: { heading: string; note: string; groups: { heading: string; more: string | null; capped: string | null; items: { title: string; line: string }[] }[] }): string[] {
+  const out: string[] = [];
+  const ELEMENTS = new Set(['section', 'h2', 'h3', 'p', 'ul', 'li', 'details', 'summary', 'bdi', 'span']);
+  for (const m of block.matchAll(/<(\/?)([a-zA-Z0-9-]+)([^>]*)>/g)) {
+    if (!ELEMENTS.has(m[2].toLowerCase())) out.push(`element <${m[2]}>`);
+    const attrs = m[3].replace(/="[^"]*"/g, '').trim();
+    for (const a of attrs ? attrs.split(/\s+/) : []) if (!['id', 'class', 'dir'].includes(a)) out.push(`attribute ${a} on <${m[2]}>`);
+  }
+  // Each text-bearing element holds exactly one allowed value; once they are cut out, no text is left.
+  const allowed: [RegExp, string, string][] = [
+    [/<h2 id="guardian-todo-heading">[\s\S]*?<\/h2>/g, expected.heading, 'the heading'],
+    [/<p class="muted">[\s\S]*?<\/p>/g, expected.note, 'the note'],
+  ];
+  let rest = block;
+  for (const [re, value, what] of allowed) {
+    const found = [...rest.matchAll(re)];
+    if (found.length !== 1 || textOf(found[0][0]) !== value) out.push(`${what}: ${JSON.stringify(found.map((f) => textOf(f[0])))} is not ${JSON.stringify(value)}`);
+    rest = rest.replace(re, '');
+  }
+  const pool = new Map<string, number>();
+  const want = (text: string) => pool.set(text, (pool.get(text) ?? 0) + 1);
+  for (const g of expected.groups) {
+    want(g.heading);
+    if (g.more) want(g.more);
+    if (g.capped) want(g.capped);
+    for (const i of g.items) want(`${i.title} ${i.line}`);
+  }
+  rest = rest.replace(/<(h3|summary|li|p)\b[^>]*>[\s\S]*?<\/\1>/g, (m) => {
+    const text = textOf(m);
+    const n = pool.get(text) ?? 0;
+    if (n === 0) out.push(`unexpected text ${JSON.stringify(text)}`);
+    else pool.set(text, n - 1);
+    return '';
+  });
+  for (const [text, n] of pool) if (n > 0) out.push(`missing ${JSON.stringify(text)}`);
+  const left = textOf(rest);
+  if (left) out.push(`text outside the allowed elements: ${JSON.stringify(left)}`);
+  return out;
+}
+
 /** Every item id a block lists (all groups, also folded). */
 export const listed = (v: TodoView | null) => new Set(v ? v.groups.flatMap((g) => g.items.map((i) => i.id)) : []);
 

@@ -42,7 +42,7 @@ import {
   ADMIN, AT, HADEER, KARIM5, LOAD_LEARNER, MONA, OMAR, RANA5, SALMA, YOUSSEF, adminDue, annBlock, clockAt, dPlus, duePost, publisherDue, saveDue, wave4World, withAt2, withW5a, withW5d, withW6a,
   type Load, type Wave1World,
 } from './world.ts';
-import { onLocalD1, todoOf, withW6d, withW6e } from './todo.ts';
+import { onLocalD1, todoOf, withW6d, withW6e, withoutGuardianTodo } from './todo.ts';
 
 const repo = fileURLToPath(new URL('../..', import.meta.url));
 /** The pinned base: W5-main f0125980 (wave 5 merged, main CI run 44864862736 green), the contract's "main". */
@@ -177,7 +177,7 @@ function spyOn(t: Twin): () => string[] {
 }
 
 /** One address on both products, each under the statement spy: status, Location, content type, cache rule, the style rule and the (normalised) body. */
-async function same(p: Pair, who: Who, method: 'GET' | 'POST', path: string, out: Result[], fields: Record<string, string> = {}): Promise<{ res: Response; body: string }> {
+async function same(p: Pair, who: Who, method: 'GET' | 'POST', path: string, out: Result[], fields: Record<string, string> = {}, opts: { guardianTodo?: boolean } = {}): Promise<{ res: Response; body: string }> {
   const stopBase = spyOn(p.base);
   const rb = method === 'GET' ? await who.base.get(path) : await who.base.post(path, fields);
   const bodyB = await bodyOf(rb);
@@ -206,6 +206,9 @@ async function same(p: Pair, who: Who, method: 'GET' | 'POST', path: string, out
   } else if (Boolean(sb) !== Boolean(sc)) {
     problems.push('a <style> on one side only');
   }
+  // W6-1c (contract v3 addendum on PIL-265, G9.2): in AT-3.1 only, the allowed difference of a linked learner's page while lesson
+  // activity is on is the #guardian-todo element (test/wave6/base-guardian.test.ts checks what is inside it, AT-7.2 and AT-7.4).
+  if (opts.guardianTodo && LINKED_PAGE.test(path)) cb = withoutGuardianTodo(cb);
   const cut = cb.replace(CARD, '');
   const card = cut !== cb;
   const teacher = isTeacherPage(path);
@@ -220,15 +223,17 @@ async function same(p: Pair, who: Who, method: 'GET' | 'POST', path: string, out
 }
 
 const keep = (path: string) => !path.startsWith('/__test') && !/\/signout\b/.test(path);
+/** A linked learner's page (not its activity page). */
+const LINKED_PAGE = /^\/s\/[^/]+\/linked\/[^/?#]+(\?|$)/;
 
-async function crawlBoth(p: Pair, who: Who, out: Result[], limit = 600): Promise<string[]> {
+async function crawlBoth(p: Pair, who: Who, out: Result[], limit = 600, opts: { guardianTodo?: boolean } = {}): Promise<string[]> {
   const seen = new Set<string>();
   const queue = ['/'];
   while (queue.length && seen.size < limit) {
     const path = queue.shift()!;
     if (seen.has(path)) continue;
     seen.add(path);
-    const { res, body } = await same(p, who, 'GET', path, out);
+    const { res, body } = await same(p, who, 'GET', path, out, {}, opts);
     if (res.status >= 300 && res.status < 400) {
       const to = (res.headers.get('location') ?? '').replace(p.base.url, '');
       if (to.startsWith('/') && keep(to)) queue.push(to);
@@ -393,7 +398,8 @@ describe('W6 AT-4.1 base comparison: with no due dates every page is W5-main f01
     // A learner's home in every space they learn in (Salma learns in two).
     const HOME = /^\/s\/[^/?#]+$/;
     const PREVIEW_HOME = /^\/s\/[^/]+\/preview(\?|$)/;
-    const plusOne = (r: Result) => r.status === 200 && r.what.includes(' GET ') && ((LEARNERS.has(r.who) && HOME.test(r.path)) || PREVIEW_HOME.test(r.path));
+    // W6-1c (contract v3 addendum on PIL-265, G9.5): while lesson activity is on (this world), the linked learner's page reads the to-do list too.
+    const plusOne = (r: Result) => r.status === 200 && r.what.includes(' GET ') && ((LEARNERS.has(r.who) && HOME.test(r.path)) || PREVIEW_HOME.test(r.path) || (r.who === 'Mona' && LINKED_PAGE.test(r.path)));
     const off = results.filter((r) => r.reads.cand !== r.reads.base + (plusOne(r) ? 1 : 0));
     const homes = results.filter(plusOne);
     t.diagnostic(`AT-3.4b small world: ${results.length} requests counted; ${homes.length} learner and preview homes at W5-main's count plus one (e.g. Salma ${JSON.stringify(homes.find((r) => r.who === 'Salma')?.reads)}), every other page W5-main's count`);
@@ -579,7 +585,7 @@ describe('W6 AT-3.1 no leak, no late flag for others: with W6-a and Salma\'s mar
     for (const lang of ['ar', 'en'] as const) {
       for (const who of p.people.filter((x) => x.who === 'Mona' || x.who === 'owner')) {
         await same(p, who, 'POST', '/account/language', compared, { lang });
-        const pages = await crawlBoth(p, who, compared);
+        const pages = await crawlBoth(p, who, compared, 600, { guardianTodo: true });
         assert.ok(pages.length >= 3, `${who.who} (${lang}): pages reached`);
       }
     }
