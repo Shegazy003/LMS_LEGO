@@ -276,6 +276,8 @@ const W7_CHANGED_TESTS: Record<string, string> = {
   'test/guards/log-redaction.test.ts': 'W7 addition (outside section 11, named in CANDIDATE READY): the fixed events gain quiz write failed, as each wave adds its event',
   'test/guards/cross-origin.test.ts': 'W7-2 addition (section 11.6 in kind, named in CANDIDATE READY): the same-origin sweep gains the learner quiz POST addresses',
   'test/guards/removed-content.test.ts': 'W7-2 addition (section 11.6 in kind, named in CANDIDATE READY): the removed-content sweep gains the quiz id kind',
+  'test/wave4/at1.test.ts': 'W7-2 11.4 (outside section 11\'s list, named in CANDIDATE READY): the pinned read counts gain WAVE7 +1 on the learner and preview subject pages',
+  'test/wave4/at4.test.ts': 'W7-2 11.4 (outside section 11\'s list, named in CANDIDATE READY): the pinned read counts gain WAVE7 +1 on the learner and preview subject pages',
 };
 /** W7-1's additions to the workflow: the job wave-7 (W7 11.6) and the rollback job's AT-6.3 step (W7 11.6). */
 const W7_JOBS = ['wave-7'];
