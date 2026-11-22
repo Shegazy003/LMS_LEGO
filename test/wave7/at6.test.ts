@@ -76,7 +76,8 @@ describe('W7 AT-6 the migration and its down path', { concurrency: false }, () =
   const refused = (name: string, sql: string) => {
     const file = join(dir, `${name}.sql`);
     writeFileSync(file, `${sql};\n`);
-    assert.throws(() => wrangler(['d1', 'execute', 'lms-lego', '--local', '--persist-to', persist, '--file', file, '--yes']), `${name}: refused by the database`);
+    // Inside the retry helper (HQ-1): a busy database is retried, any other error (the refusal) is thrown at once, unchanged.
+    assert.throws(() => retryD1Sync(() => wrangler(['d1', 'execute', 'lms-lego', '--local', '--persist-to', persist, '--file', file, '--yes']), { label: file }), `${name}: refused by the database`);
   };
 
   /** The world's rows (in-process), as INSERT statements (W6-main's schema: no quiz table yet). */

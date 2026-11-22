@@ -398,7 +398,7 @@ describe('W7 AT-5.2 reads at W7-e: the quiz list, the editor of QL, QL\'s result
     const results = await measured(w, hadeer, 'GET', resultsOf(list, QL), PUBLISHER_GATE);
     assert.equal(results.status, 200);
     const names = results.reads.find((x) => /^\s*WITH r AS/.test(x.sql))!;
-    const summary = results.reads.find((x) => /SUM\(substr\(a\.right_flags/.test(x.sql))!;
+    const summary = results.reads.find((x) => /TOTAL\(substr\(a\.right_flags/.test(x.sql))!;
     const nameRows = rowsOf(names);
     const summaryRows = rowsOf(summary);
     let rowsRead = 0;

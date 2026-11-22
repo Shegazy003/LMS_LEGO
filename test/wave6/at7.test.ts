@@ -272,6 +272,8 @@ const W7_CHANGED_TESTS: Record<string, string> = {
   'test/wave4/ux.test.ts': 'W7 UX-77 (outside section 11, named in CANDIDATE READY): UX-49\'s deny list moved unchanged to test/wave4/world.ts so UX-77 imports it',
   'test/wave4/world.ts': 'W7 UX-77 (outside section 11, named in CANDIDATE READY): exports UX-49\'s deny list, unchanged',
   'test/wave6/base-guardian.test.ts':'W7 11.3: the quiz card on teacher pages and the wave 7 style block',
+  'test/guards/space-isolation.test.ts': 'W7 addition (outside section 11, named in CANDIDATE READY): the space tables gain quiz and quiz_attempt, as each wave adds its tables',
+  'test/guards/log-redaction.test.ts': 'W7 addition (outside section 11, named in CANDIDATE READY): the fixed events gain quiz write failed, as each wave adds its event',
 };
 /** W7-1's additions to the workflow: the job wave-7 (W7 11.6) and the rollback job's AT-6.3 step (W7 11.6). */
 const W7_JOBS = ['wave-7'];

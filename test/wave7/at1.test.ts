@@ -194,6 +194,8 @@ describe('W7 AT-1 build and manage a quiz (Hadeer from the editor, Amal from the
   it('W7 AT-1.4 lock after answers: with W7-b QA is read-only with its right answers, every question write 409 quizLocked; title, close, reopen, remove, restore and copy still work; QB stays editable', async () => {
     await withW7b(w);
     const [hadeer, amal] = side;
+    // CI runs each step alone: QB is opened here when AT-1.3 (which opens it) has not run in this process.
+    if ((await quizRow(sql(w), W7A.QB)).state === 'draft') assert.equal((await hadeer.c.post(`${hadeer.list}/${W7A.QB}/open`, { rev: '0' })).status, 303, 'QB opened');
     const editor = `${hadeer.list}/${W7A.QA}`;
     const page = await html(hadeer.c, editor);
     assert.ok(page.includes(`<p id="quiz-locked" class="quiz-locked">${UI.en.quizLockedNote}</p>`), 'quizLockedNote');

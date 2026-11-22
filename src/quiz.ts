@@ -178,10 +178,14 @@ export function parseAnswers(json: string): Record<string, string> {
 /** Who writes: the responsible publisher (each write repeats the check) or an admin (the admin gate has run). */
 export type QuizWriter = { role: 'publisher'; userId: string } | { role: 'admin' };
 const ownerOf = (w: QuizWriter) => (w.role === 'publisher' ? w.userId : null);
-/** The subject is this space's and, for a publisher, still theirs (two parameters: the owner twice). */
-const SUBJECT_STILL = `EXISTS (SELECT 1 FROM subject s WHERE s.id = quiz.subject_id AND s.space_id = quiz.space_id AND (? IS NULL OR s.publisher_user_id = ?))`;
-/** The learner of an attempt `a` holds an active learner membership of the space today (two parameters: today twice). */
-const ACTIVE_LEARNER = `EXISTS (SELECT 1 FROM membership m WHERE m.space_id = a.space_id AND m.user_id = a.learner_user_id AND m.role = 'learner' AND m.ended_on IS NULL AND m.valid_from <= ? AND m.valid_until >= ?)`;
+// Every statement below is written whole, so the space guard (test/guards/space-isolation.test.ts) can check it.
+// Repeated conditions, each spelled out where it is used:
+// - the subject still holds: EXISTS (SELECT 1 FROM subject s WHERE s.id = quiz.subject_id AND s.space_id = quiz.space_id
+//   AND (? IS NULL OR s.publisher_user_id = ?)), the owner twice (null for an admin);
+// - an active learner: EXISTS (SELECT 1 FROM membership m WHERE m.space_id = a.space_id AND m.user_id = a.learner_user_id
+//   AND m.role = learner AND m.ended_on IS NULL AND m.valid_from <= ? AND m.valid_until >= ?), today twice;
+// - room in the subject: (SELECT COUNT(*) FROM quiz c WHERE c.space_id = ? AND c.subject_id = ? AND c.removed_at IS NULL) < ?;
+// - the next creation stamp: now, or one after the latest of the subject, so creation order is strict within one millisecond.
 
 /** One row of the quiz list. `attempts` only on the responsible publishers list (null on the admins). */
 export interface QuizListRow { id: string; title: string; state: QuizState; questions: number; removed_at: number | null; attempts: number | null }
@@ -190,17 +194,31 @@ export interface QuizListRow { id: string; title: string; state: QuizState; ques
  * recently removed. With `today` (the responsible publisher only) each row carries its count of attempts of people
  * whose access is active (the same count as its results page); the admins list reads no attempt (AT-2.5). */
 export async function quizzesOf(db: Db, spaceId: string, subjectId: string, today: string | null): Promise<QuizListRow[]> {
-  const count = today === null ? 'NULL' : `(SELECT COUNT(*) FROM quiz_attempt a WHERE a.quiz_id = quiz.id AND a.space_id = quiz.space_id AND ${ACTIVE_LEARNER})`;
-  const rows = await db.all<{ id: string; title: string; state: QuizState; questions: number; removed_at: number | null; attempts: number | null }>(
-    `SELECT quiz.id, quiz.title, quiz.state, json_array_length(quiz.questions_json) AS questions, quiz.removed_at, ${count} AS attempts
-       FROM quiz
-      WHERE quiz.space_id = ? AND quiz.subject_id = ?
-        AND (quiz.removed_at IS NULL OR quiz.id IN (
-          SELECT r.id FROM quiz r WHERE r.space_id = quiz.space_id AND r.subject_id = quiz.subject_id AND r.removed_at IS NOT NULL
-           ORDER BY r.removed_at DESC, r.created_at DESC, r.id LIMIT ${QUIZ_REMOVED_SHOWN}))
-      ORDER BY quiz.created_at, quiz.id`,
-    ...(today === null ? [] : [today, today]), spaceId, subjectId,
-  );
+  type Row = { id: string; title: string; state: QuizState; questions: number; removed_at: number | null; attempts: number | null };
+  const rows = today === null
+    ? await db.all<Row>(
+      `SELECT quiz.id, quiz.title, quiz.state, json_array_length(quiz.questions_json) AS questions, quiz.removed_at, NULL AS attempts
+         FROM quiz
+        WHERE quiz.space_id = ? AND quiz.subject_id = ?
+          AND (quiz.removed_at IS NULL OR quiz.id IN (
+            SELECT r.id FROM quiz r WHERE r.space_id = quiz.space_id AND r.subject_id = quiz.subject_id AND r.removed_at IS NOT NULL
+             ORDER BY r.removed_at DESC, r.created_at DESC, r.id LIMIT ?))
+        ORDER BY quiz.created_at, quiz.id`,
+      spaceId, subjectId, QUIZ_REMOVED_SHOWN,
+    )
+    : await db.all<Row>(
+      `SELECT quiz.id, quiz.title, quiz.state, json_array_length(quiz.questions_json) AS questions, quiz.removed_at,
+              (SELECT COUNT(*) FROM quiz_attempt a WHERE a.quiz_id = quiz.id AND a.space_id = quiz.space_id
+                  AND EXISTS (SELECT 1 FROM membership m WHERE m.space_id = a.space_id AND m.user_id = a.learner_user_id AND m.role = 'learner'
+                                 AND m.ended_on IS NULL AND m.valid_from <= ? AND m.valid_until >= ?)) AS attempts
+         FROM quiz
+        WHERE quiz.space_id = ? AND quiz.subject_id = ?
+          AND (quiz.removed_at IS NULL OR quiz.id IN (
+            SELECT r.id FROM quiz r WHERE r.space_id = quiz.space_id AND r.subject_id = quiz.subject_id AND r.removed_at IS NOT NULL
+             ORDER BY r.removed_at DESC, r.created_at DESC, r.id LIMIT ?))
+        ORDER BY quiz.created_at, quiz.id`,
+      today, today, spaceId, subjectId, QUIZ_REMOVED_SHOWN,
+    );
   return rows.map((r) => ({ ...r, questions: Number(r.questions), attempts: r.attempts === null ? null : Number(r.attempts) }));
 }
 
@@ -237,20 +255,16 @@ export async function quizOf(db: Db, spaceId: string, subjectId: string, quizId:
 
 // --------------------------------------------------------------- writes ----
 
-/** Fewer than QUIZ_PER_SUBJECT_MAX quizzes not removed in the subject (two parameters: space, subject). */
-const ROOM = `(SELECT COUNT(*) FROM quiz c WHERE c.space_id = ? AND c.subject_id = ? AND c.removed_at IS NULL) < ${QUIZ_PER_SUBJECT_MAX}`;
-/** The next creation stamp of the subject: now, or one after its latest, so creation order is strict even within one millisecond. */
-const NEXT_CREATED = `MAX(?, COALESCE((SELECT MAX(o.created_at) + 1 FROM quiz o WHERE o.space_id = ? AND o.subject_id = ?), 0))`;
-
 /** Creates a draft in one statement (AT-1.1); null when the subject is full (or no longer the publishers). */
 export async function createQuiz(db: Db, spaceId: string, subjectId: string, title: string, writer: QuizWriter, nowMs: number): Promise<string | null> {
   const id = newQuizId();
   const owner = ownerOf(writer);
   const changed = await db.run(
     `INSERT INTO quiz (id, space_id, subject_id, title, created_at)
-     SELECT ?, s.space_id, s.id, ?, ${NEXT_CREATED}
-       FROM subject s WHERE s.id = ? AND s.space_id = ? AND (? IS NULL OR s.publisher_user_id = ?) AND ${ROOM}`,
-    id, title, nowMs, spaceId, subjectId, subjectId, spaceId, owner, owner, spaceId, subjectId,
+     SELECT ?, s.space_id, s.id, ?, MAX(?, COALESCE((SELECT MAX(o.created_at) + 1 FROM quiz o WHERE o.space_id = ? AND o.subject_id = ?), 0))
+       FROM subject s WHERE s.id = ? AND s.space_id = ? AND (? IS NULL OR s.publisher_user_id = ?)
+        AND (SELECT COUNT(*) FROM quiz c WHERE c.space_id = ? AND c.subject_id = ? AND c.removed_at IS NULL) < ?`,
+    id, title, nowMs, spaceId, subjectId, subjectId, spaceId, owner, owner, spaceId, subjectId, QUIZ_PER_SUBJECT_MAX,
   );
   return changed === 1 ? id : null;
 }
@@ -262,15 +276,18 @@ export async function copyQuiz(db: Db, spaceId: string, subjectId: string, sourc
   const owner = ownerOf(writer);
   const changed = await db.run(
     `INSERT INTO quiz (id, space_id, subject_id, title, questions_json, rev, state, created_at)
-     SELECT ?, quiz.space_id, quiz.subject_id, quiz.title, ?, 0, 'draft', ${NEXT_CREATED}
-       FROM quiz WHERE quiz.id = ? AND quiz.space_id = ? AND quiz.subject_id = ? AND quiz.removed_at IS NULL AND ${SUBJECT_STILL} AND ${ROOM}`,
-    id, JSON.stringify(questions), nowMs, spaceId, subjectId, sourceId, spaceId, subjectId, owner, owner, spaceId, subjectId,
+     SELECT ?, quiz.space_id, quiz.subject_id, quiz.title, ?, 0, 'draft',
+            MAX(?, COALESCE((SELECT MAX(o.created_at) + 1 FROM quiz o WHERE o.space_id = ? AND o.subject_id = ?), 0))
+       FROM quiz WHERE quiz.id = ? AND quiz.space_id = ? AND quiz.subject_id = ? AND quiz.removed_at IS NULL
+        AND EXISTS (SELECT 1 FROM subject s WHERE s.id = quiz.subject_id AND s.space_id = quiz.space_id AND (? IS NULL OR s.publisher_user_id = ?))
+        AND (SELECT COUNT(*) FROM quiz c WHERE c.space_id = ? AND c.subject_id = ? AND c.removed_at IS NULL) < ?`,
+    id, JSON.stringify(questions), nowMs, spaceId, subjectId, sourceId, spaceId, subjectId, owner, owner, spaceId, subjectId, QUIZ_PER_SUBJECT_MAX,
   );
   return changed === 1 ? id : null;
 }
 
-/** The common guard of a write on one quiz: this quiz of this space and subject, and the subject still the writers (5 parameters). */
-const THIS_QUIZ = `quiz.id = ? AND quiz.space_id = ? AND quiz.subject_id = ? AND ${SUBJECT_STILL}`;
+// Every write on one quiz below is guarded the same way: this quiz of this space and subject, and the subject still
+// the writers (quiz id, space, subject, then the owner twice).
 
 /** Replaces the questions in one statement (add, change or remove a question), guarded by the loaded `rev`, by the quiz
  * not removed and by "no attempt exists" (section 4.5); the rev rises by one. False when the guard did not hold. */
@@ -278,7 +295,9 @@ export async function writeQuestions(db: Db, spaceId: string, subjectId: string,
   const owner = ownerOf(writer);
   const changed = await db.run(
     `UPDATE quiz SET questions_json = ?, rev = rev + 1
-      WHERE ${THIS_QUIZ} AND quiz.removed_at IS NULL AND quiz.rev = ?
+      WHERE quiz.id = ? AND quiz.space_id = ? AND quiz.subject_id = ?
+        AND EXISTS (SELECT 1 FROM subject s WHERE s.id = quiz.subject_id AND s.space_id = quiz.space_id AND (? IS NULL OR s.publisher_user_id = ?))
+        AND quiz.removed_at IS NULL AND quiz.rev = ?
         AND NOT EXISTS (SELECT 1 FROM quiz_attempt a WHERE a.quiz_id = quiz.id AND a.space_id = quiz.space_id)`,
     JSON.stringify(questions), quizId, spaceId, subjectId, owner, owner, rev,
   );
@@ -288,7 +307,13 @@ export async function writeQuestions(db: Db, spaceId: string, subjectId: string,
 /** Changes the title in one statement (allowed when locked, section 4.5). */
 export async function writeTitle(db: Db, spaceId: string, subjectId: string, quizId: string, title: string, writer: QuizWriter): Promise<boolean> {
   const owner = ownerOf(writer);
-  return (await db.run(`UPDATE quiz SET title = ? WHERE ${THIS_QUIZ} AND quiz.removed_at IS NULL`, title, quizId, spaceId, subjectId, owner, owner)) === 1;
+  return (await db.run(
+    `UPDATE quiz SET title = ?
+      WHERE quiz.id = ? AND quiz.space_id = ? AND quiz.subject_id = ?
+        AND EXISTS (SELECT 1 FROM subject s WHERE s.id = quiz.subject_id AND s.space_id = quiz.space_id AND (? IS NULL OR s.publisher_user_id = ?))
+        AND quiz.removed_at IS NULL`,
+    title, quizId, spaceId, subjectId, owner, owner,
+  )) === 1;
 }
 
 /** The state actions and the state each one leaves (section 4.2). */
@@ -301,7 +326,10 @@ export async function writeState(db: Db, spaceId: string, subjectId: string, qui
   const owner = ownerOf(writer);
   const { from, to } = STATE_ACTIONS[action];
   return (await db.run(
-    `UPDATE quiz SET state = ? WHERE ${THIS_QUIZ} AND quiz.removed_at IS NULL AND quiz.state = ? AND json_array_length(quiz.questions_json) > 0`,
+    `UPDATE quiz SET state = ?
+      WHERE quiz.id = ? AND quiz.space_id = ? AND quiz.subject_id = ?
+        AND EXISTS (SELECT 1 FROM subject s WHERE s.id = quiz.subject_id AND s.space_id = quiz.space_id AND (? IS NULL OR s.publisher_user_id = ?))
+        AND quiz.removed_at IS NULL AND quiz.state = ? AND json_array_length(quiz.questions_json) > 0`,
     to, quizId, spaceId, subjectId, owner, owner, from,
   )) === 1;
 }
@@ -309,15 +337,25 @@ export async function writeState(db: Db, spaceId: string, subjectId: string, qui
 /** Removes (hides) a quiz in one statement; its rows stay (section 6.3). */
 export async function writeRemoved(db: Db, spaceId: string, subjectId: string, quizId: string, writer: QuizWriter, nowMs: number): Promise<boolean> {
   const owner = ownerOf(writer);
-  return (await db.run(`UPDATE quiz SET removed_at = ? WHERE ${THIS_QUIZ} AND quiz.removed_at IS NULL`, nowMs, quizId, spaceId, subjectId, owner, owner)) === 1;
+  return (await db.run(
+    `UPDATE quiz SET removed_at = ?
+      WHERE quiz.id = ? AND quiz.space_id = ? AND quiz.subject_id = ?
+        AND EXISTS (SELECT 1 FROM subject s WHERE s.id = quiz.subject_id AND s.space_id = quiz.space_id AND (? IS NULL OR s.publisher_user_id = ?))
+        AND quiz.removed_at IS NULL`,
+    nowMs, quizId, spaceId, subjectId, owner, owner,
+  )) === 1;
 }
 
 /** Restores a removed quiz in its earlier state, in one statement, while the subject has room (it counts again). */
 export async function writeRestored(db: Db, spaceId: string, subjectId: string, quizId: string, writer: QuizWriter): Promise<boolean> {
   const owner = ownerOf(writer);
   return (await db.run(
-    `UPDATE quiz SET removed_at = NULL WHERE ${THIS_QUIZ} AND quiz.removed_at IS NOT NULL AND ${ROOM}`,
-    quizId, spaceId, subjectId, owner, owner, spaceId, subjectId,
+    `UPDATE quiz SET removed_at = NULL
+      WHERE quiz.id = ? AND quiz.space_id = ? AND quiz.subject_id = ?
+        AND EXISTS (SELECT 1 FROM subject s WHERE s.id = quiz.subject_id AND s.space_id = quiz.space_id AND (? IS NULL OR s.publisher_user_id = ?))
+        AND quiz.removed_at IS NOT NULL
+        AND (SELECT COUNT(*) FROM quiz c WHERE c.space_id = ? AND c.subject_id = ? AND c.removed_at IS NULL) < ?`,
+    quizId, spaceId, subjectId, owner, owner, spaceId, subjectId, QUIZ_PER_SUBJECT_MAX,
   )) === 1;
 }
 
@@ -341,11 +379,13 @@ export async function quizResults(db: Db, spaceId: string, quizId: string, today
     `WITH r AS (
        SELECT a.learner_user_id AS id, u.display_name, u.username, a.score, a.question_count, a.sent_at
          FROM quiz_attempt a JOIN user u ON u.id = a.learner_user_id
-        WHERE a.quiz_id = ? AND a.space_id = ? AND ${ACTIVE_LEARNER})
+        WHERE a.quiz_id = ? AND a.space_id = ?
+          AND EXISTS (SELECT 1 FROM membership m WHERE m.space_id = a.space_id AND m.user_id = a.learner_user_id AND m.role = 'learner'
+                         AND m.ended_on IS NULL AND m.valid_from <= ? AND m.valid_until >= ?))
      SELECT r.id, r.display_name, r.username, r.score, r.question_count, r.sent_at,
             group_concat(r.username, char(10)) OVER (PARTITION BY r.display_name) AS same_name
-       FROM r ORDER BY r.display_name, r.username, r.id LIMIT ${QUIZ_RESULTS_PAGE} OFFSET ?`,
-    quizId, spaceId, today, today, (page - 1) * QUIZ_RESULTS_PAGE,
+       FROM r ORDER BY r.display_name, r.username, r.id LIMIT ? OFFSET ?`,
+    quizId, spaceId, today, today, QUIZ_RESULTS_PAGE, (page - 1) * QUIZ_RESULTS_PAGE,
   );
   return rows.map((r) => ({
     id: r.id, display_name: r.display_name, username: r.username, score: Number(r.score), question_count: Number(r.question_count), sent_at: Number(r.sent_at),
@@ -353,12 +393,25 @@ export async function quizResults(db: Db, spaceId: string, quizId: string, today
   }));
 }
 
-/** The count and the per-question summary, in one row (right_flags summed per position): how many listed attempts got each question right. */
+/** The count and the per-question summary, in one row (right_flags summed per position, one column per possible
+ * question, QUIZ_QUESTIONS_MAX of them): how many listed attempts got each question right. */
 export async function quizSummary(db: Db, spaceId: string, quizId: string, today: string, questionCount: number): Promise<{ n: number; right: number[] }> {
-  const n = Math.max(1, Math.min(QUIZ_QUESTIONS_MAX, questionCount));
-  const sums = Array.from({ length: n }, (_, i) => `COALESCE(SUM(substr(a.right_flags, ${i + 1}, 1) = '1'), 0) AS r${i + 1}`).join(', ');
   const row = await db.first<Record<string, number>>(
-    `SELECT COUNT(*) AS n, ${sums} FROM quiz_attempt a WHERE a.quiz_id = ? AND a.space_id = ? AND ${ACTIVE_LEARNER}`,
+    `SELECT COUNT(*) AS n,
+            TOTAL(substr(a.right_flags, 1, 1) = '1') AS r1, TOTAL(substr(a.right_flags, 2, 1) = '1') AS r2,
+            TOTAL(substr(a.right_flags, 3, 1) = '1') AS r3, TOTAL(substr(a.right_flags, 4, 1) = '1') AS r4,
+            TOTAL(substr(a.right_flags, 5, 1) = '1') AS r5, TOTAL(substr(a.right_flags, 6, 1) = '1') AS r6,
+            TOTAL(substr(a.right_flags, 7, 1) = '1') AS r7, TOTAL(substr(a.right_flags, 8, 1) = '1') AS r8,
+            TOTAL(substr(a.right_flags, 9, 1) = '1') AS r9, TOTAL(substr(a.right_flags, 10, 1) = '1') AS r10,
+            TOTAL(substr(a.right_flags, 11, 1) = '1') AS r11, TOTAL(substr(a.right_flags, 12, 1) = '1') AS r12,
+            TOTAL(substr(a.right_flags, 13, 1) = '1') AS r13, TOTAL(substr(a.right_flags, 14, 1) = '1') AS r14,
+            TOTAL(substr(a.right_flags, 15, 1) = '1') AS r15, TOTAL(substr(a.right_flags, 16, 1) = '1') AS r16,
+            TOTAL(substr(a.right_flags, 17, 1) = '1') AS r17, TOTAL(substr(a.right_flags, 18, 1) = '1') AS r18,
+            TOTAL(substr(a.right_flags, 19, 1) = '1') AS r19, TOTAL(substr(a.right_flags, 20, 1) = '1') AS r20
+       FROM quiz_attempt a
+      WHERE a.quiz_id = ? AND a.space_id = ?
+        AND EXISTS (SELECT 1 FROM membership m WHERE m.space_id = a.space_id AND m.user_id = a.learner_user_id AND m.role = 'learner'
+                       AND m.ended_on IS NULL AND m.valid_from <= ? AND m.valid_until >= ?)`,
     quizId, spaceId, today, today,
   );
   return { n: Number(row?.n ?? 0), right: Array.from({ length: questionCount }, (_, i) => Number(row?.[`r${i + 1}`] ?? 0)) };
@@ -371,7 +424,9 @@ export async function quizAttemptOf(db: Db, spaceId: string, quizId: string, lea
   const r = await db.first<{ id: string; display_name: string; username: string; answers_json: string; score: number; question_count: number; sent_at: number }>(
     `SELECT a.learner_user_id AS id, u.display_name, u.username, a.answers_json, a.score, a.question_count, a.sent_at
        FROM quiz_attempt a JOIN user u ON u.id = a.learner_user_id
-      WHERE a.quiz_id = ? AND a.space_id = ? AND a.learner_user_id = ? AND ${ACTIVE_LEARNER}`,
+      WHERE a.quiz_id = ? AND a.space_id = ? AND a.learner_user_id = ?
+        AND EXISTS (SELECT 1 FROM membership m WHERE m.space_id = a.space_id AND m.user_id = a.learner_user_id AND m.role = 'learner'
+                       AND m.ended_on IS NULL AND m.valid_from <= ? AND m.valid_until >= ?)`,
     quizId, spaceId, learnerId, today, today,
   );
   if (!r) return null;

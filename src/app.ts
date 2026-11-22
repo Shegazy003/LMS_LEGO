@@ -2434,6 +2434,12 @@ function questionGuard(c: C, place: QuizPlace, quiz: QuizRow, body: Record<strin
   return null;
 }
 
+/** A quiz write that failed: the one place the event is logged (log guard), then 303 to the page that shows quizFailed. */
+function quizFailed(c: C, to: string) {
+  logError('quiz write failed');
+  return c.redirect(to, 303);
+}
+
 /** The question write itself: one statement guarded by the loaded rev and "no attempt exists"; null when stored. */
 async function questionSave(c: C, place: QuizPlace, quiz: QuizRow, questions: QuizQuestion[], at: string) {
   const { t } = spaceLabel(c);
@@ -2449,8 +2455,7 @@ async function questionSave(c: C, place: QuizPlace, quiz: QuizRow, questions: Qu
       return refuse(c, 403, 'noAccess');
     }
   } catch {
-    logError('quiz write failed');
-    return c.redirect(`${place.list}/${quiz.id}?quiz=failed${at}`, 303);
+    return quizFailed(c, `${place.list}/${quiz.id}?quiz=failed${at}`);
   }
   return null;
 }
@@ -2478,8 +2483,7 @@ function quizRoutes(prefix: string, placeOf: (c: C) => Promise<QuizPlace | null>
     try {
       id = await createQuiz(db, spaceId, place.subjectId, clean, place.writer, at);
     } catch {
-      logError('quiz write failed');
-      return c.redirect(`${place.list}?quiz=failed`, 303);
+      return quizFailed(c, `${place.list}?quiz=failed`);
     }
     if (id === null) {
       // Refused: the subject is full (one read on this path only), or the gate no longer holds.
@@ -2594,8 +2598,7 @@ function quizRoutes(prefix: string, placeOf: (c: C) => Promise<QuizPlace | null>
       if (id === null) return refuse(c, 403, 'noAccess');
       return c.redirect(`${place.list}/${id}?quiz=copied`, 303);
     } catch {
-      logError('quiz write failed');
-      return c.redirect(action === 'remove' || action === 'restore' ? `${place.list}?quiz=failed&id=${quiz.id}` : `${editor}?quiz=failed#quiz-state`, 303);
+      return quizFailed(c, action === 'remove' || action === 'restore' ? `${place.list}?quiz=failed&id=${quiz.id}` : `${editor}?quiz=failed#quiz-state`);
     }
   });
 }
