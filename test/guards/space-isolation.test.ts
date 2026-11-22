@@ -33,6 +33,8 @@ const SPACE_TABLES = [
   'class_upload',
   // LMS wave 5, W5-1 (product-contract v2 on PIL-246, section 6.1): announcement, a subject's announcements.
   'announcement',
+  // LMS wave 7, W7-1 (product-contract v2 on PIL-261, section 6.1): quiz (a subject's quiz) and quiz_attempt (one learner's sending).
+  'quiz', 'quiz_attempt',
 ];
 // LMS wave 3b (section 6.2): membership.class_upload_id is a column added to an
 // existing table, and SQLite can add a column with a one-column reference only
@@ -244,7 +246,7 @@ describe('space guard: the database and the running product keep spaces apart', 
         assert.ok(cols.includes('space_id'), `${t} → ${fk.parent} includes space_id (has ${cols.join(', ')})`);
       }
     }
-    for (const t of ['group_member', 'subject_access', 'chapter', 'lesson', 'material', 'exam', 'exam_result', 'lesson_view', 'done_mark']) {
+    for (const t of ['group_member', 'subject_access', 'chapter', 'lesson', 'material', 'exam', 'exam_result', 'lesson_view', 'done_mark', 'quiz', 'quiz_attempt']) {
       assert.ok(keys.some((k) => k.tbl === t && SPACE_TABLES.includes(String(k.parent))), `${t} refers to its parent (the check above is meaningful)`);
     }
     // A child table without space_id refers to its parent, which carries it.

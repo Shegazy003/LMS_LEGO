@@ -253,6 +253,32 @@ const CHANGED_TESTS: Record<string, string> = {
   'test/wave2/at3.test.ts': 'outside G9, for the Lead: W2 AT-3.7 export list gains linkedAsLearner',
 };
 
+/** LMS wave 7, W7-1 (product-contract v2 on PIL-261, section 11): the existing test files W7-1 changes, each with its section 11
+ * item. This step pins W6-1c's state against W6-1b-main, so wave 7's own allowed changes are named here (outside section 11:
+ * this file itself, named in CANDIDATE READY for the Lead). */
+const W7_CHANGED_TESTS: Record<string, string> = {
+  'test/at13/pages.ts': 'W7 11.6: the quiz words, the quiz world addition and the scan',
+  'test/at13/at13a.test.ts': 'W7 11.6: AT-13a gains the quiz words for guardian pages',
+  'test/at13/at13b.test.ts': 'W7 11.6: AT-13b gains the quiz words for guardian pages',
+  'test/guards/role-gates.test.ts': 'W7 11.6: role-gates lists the quiz addresses',
+  'test/rollback/old-code.test.ts': 'W7 11.6: the AT-6.3 case',
+  'test/wave3a/at3.test.ts': 'W7 11.1: the migration list gains 0016_quizzes.sql',
+  'test/wave3a/at5.test.ts': 'W7 11.6: the job list gains wave-7',
+  'test/wave1/at3-4.test.ts': 'W7 11.1: the migration list gains 0016_quizzes.sql',
+  'test/l2/at5-5.test.ts': 'W7 11.1: the migration list gains 0016_quizzes.sql',
+  'test/wave4/base.test.ts': 'W7 11.3: the quiz card on teacher pages and the wave 7 style block',
+  'test/wave5/base.test.ts': 'W7 11.3: the quiz card on teacher pages and the wave 7 style block',
+  'test/wave6/base.test.ts': 'W7 11.3 and 11.5: the quiz card on teacher pages and the wave 7 style block (also left out of AT-3.4b\'s size bound)',
+  'test/wave4/ux.test.ts': 'W7 UX-77 (outside section 11, named in CANDIDATE READY): UX-49\'s deny list moved unchanged to test/wave4/world.ts so UX-77 imports it',
+  'test/wave4/world.ts': 'W7 UX-77 (outside section 11, named in CANDIDATE READY): exports UX-49\'s deny list, unchanged',
+  'test/wave6/base-guardian.test.ts':'W7 11.3: the quiz card on teacher pages and the wave 7 style block',
+  'test/guards/space-isolation.test.ts': 'W7 addition (outside section 11, named in CANDIDATE READY): the space tables gain quiz and quiz_attempt, as each wave adds its tables',
+  'test/guards/log-redaction.test.ts': 'W7 addition (outside section 11, named in CANDIDATE READY): the fixed events gain quiz write failed, as each wave adds its event',
+};
+/** W7-1's additions to the workflow: the job wave-7 (W7 11.6) and the rollback job's AT-6.3 step (W7 11.6). */
+const W7_JOBS = ['wave-7'];
+const W7_ROLLBACK_STEP = /^W7 AT-6\.3 /;
+
 describe('W6 AT-7.5 keep working: every existing CI step and the rollback job are W6-1b-main\'s; only the named test files changed', { concurrency: false }, () => {
   it('W6 AT-7.5 ci.yml and the test tree against W6-1b-main', (t) => {
     const baseRoot = process.env.LMS_BASE_ROOT ?? join(repo, '.base-w6c');
@@ -269,9 +295,10 @@ describe('W6 AT-7.5 keep working: every existing CI step and the rollback job ar
         steps++;
         assert.equal(mine.get(name), text, `${job}: "${name}" is W6-1b-main's, unchanged`);
       }
-      if (job !== 'wave-6') assert.deepEqual([...mine.keys()], [...list.keys()], `${job}: no step added or removed`);
+      // W7-1: the rollback job's one added step (its AT-6.3 case) is wave 7's.
+      if (job !== 'wave-6') assert.deepEqual([...mine.keys()].filter((k) => !(job === 'rollback' && W7_ROLLBACK_STEP.test(k))), [...list.keys()], `${job}: no step added or removed`);
     }
-    assert.deepEqual([...cand.keys()], [...base.keys()], 'the same jobs');
+    assert.deepEqual([...cand.keys()].filter((j) => !W7_JOBS.includes(j)), [...base.keys()], 'the same jobs (and wave 7\'s job wave-7)');
     const added = [...cand.get('wave-6')!.keys()].filter((k) => !base.get('wave-6')!.has(k));
     for (const name of added) assert.match(name, /^(W6 AT-[67]\.|UX-8[012] |Check out W6-1b-main |Upload evidence)/, `wave-6: an added step is W6-1c's (${name})`);
     const baseTests = testFiles(baseRoot);
@@ -279,7 +306,9 @@ describe('W6 AT-7.5 keep working: every existing CI step and the rollback job ar
     const changed = [...baseTests].filter(([p, text]) => candTests.has(p) && candTests.get(p) !== text).map(([p]) => p).sort();
     const removed = [...baseTests.keys()].filter((p) => !candTests.has(p));
     assert.deepEqual(removed, [], 'no test file removed');
-    assert.deepEqual(changed, Object.keys(CHANGED_TESTS).sort(), 'only the named test files changed');
-    t.diagnostic(`AT-7.5: ${steps} W6-1b-main steps unchanged in ${base.size} jobs (rollback included); ${added.length} steps added to wave-6; changed test files:\n${changed.map((p) => `${p}: ${CHANGED_TESTS[p]}`).join('\n')}`);
+    // W6-1c's named files all changed; any other changed file is one W7-1 names (section 11).
+    assert.deepEqual(Object.keys(CHANGED_TESTS).filter((p) => !changed.includes(p)), [], 'every file W6-1c names is changed');
+    assert.deepEqual(changed.filter((p) => !CHANGED_TESTS[p] && !W7_CHANGED_TESTS[p]), [], 'only the named test files changed (W6-1c\'s, and W7-1\'s)');
+    t.diagnostic(`AT-7.5: ${steps} W6-1b-main steps unchanged in ${base.size} jobs (rollback included); ${added.length} steps added to wave-6; changed test files:\n${changed.map((p) => `${p}: ${CHANGED_TESTS[p] ?? W7_CHANGED_TESTS[p]}`).join('\n')}`);
   });
 });

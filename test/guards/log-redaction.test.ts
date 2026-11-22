@@ -37,7 +37,8 @@ const LOG_MODULE = 'src/log.ts';
 // LMS wave 4 (product-contract v2 on PIL-238, section 4.2): 'order write failed', a subject's setting not saved.
 // LMS wave 5 (product-contract v2 on PIL-246, section 4.2): 'announcement write failed', a post, save or remove not stored.
 // LMS wave 6 (product-contract v2 on PIL-257, section 4.2): 'due date write failed', a due date not saved.
-const EVENTS = ['usage flush failed', 'request failed', 'activity write failed', 'progress write failed', 'class upload failed', 'order write failed', 'announcement write failed', 'due date write failed'];
+// LMS wave 7 (product-contract v2 on PIL-261, section 4.2): 'quiz write failed', a quiz, question or copy not saved.
+const EVENTS = ['usage flush failed', 'request failed', 'activity write failed', 'progress write failed', 'class upload failed', 'order write failed', 'announcement write failed', 'due date write failed', 'quiz write failed'];
 
 // ------------------------------------------------------------- 1. source ----
 function sourceFiles(dir = join(root, 'src')): string[] {

@@ -404,3 +404,45 @@ export function todoHits(body: string, words = todoWords()): string[] {
   if (/\bclass="due-(line|date)"/.test(body)) hits.push('a due line or date');
   return hits;
 }
+
+// LMS wave 7 (product-contract v2 on PIL-261, AT-4.3 and section 11 item 6):
+// a quiz score reaches the learner and the subject's responsible publisher
+// only, never a guardian. The scans gain the new ui.ts values (the learner's
+// and the results pages' words, and the quiz markers) in their forbidden lists
+// for guardian pages, and pass with quizzes and attempts present.
+
+/** The ui.ts keys of the quiz pages that a page shows as words (learner and results words). Left out: short words such as "Open",
+ * and quizResultsTitle, whose fixed part («النتائج:», "Results:") is release 2's exam results heading on the same guardian page. */
+export const W7_KEYS = [
+  'quizSectionTitle', 'quizMoreTitle', 'quizNotTaken', 'quizTakenScore', 'quizTakeHelp', 'quizSubmit', 'quizResultTitle', 'quizScoreLine', 'quizChosen', 'quizRightMark',
+  'quizNoAnswer', 'quizResultsCount', 'quizResultsNone', 'quizStatsTitle', 'quizQuestionStat', 'quizAnswersOf', 'quizAlreadySent', 'quizPreviewNotSaved',
+] as const;
+/** Made-up quiz title and question text, on A's Arabic, where A has an attempt. */
+export const QUIZ_TEXTS = ['Nahw self-check (wave 7 scan)', 'Which word is a verb (wave 7 scan)?'];
+
+/** A quiz while the viewers look around (stored as the pages store it): open, on A's Arabic, with A's attempt (1 of 1). */
+export async function withQuizzes(w: PrivacyWorld): Promise<void> {
+  const [{ space_id: space }] = await w.p.sql(`SELECT space_id FROM subject WHERE id = '${w.content.arabic}'`);
+  const [{ id: a }] = await w.p.sql(`SELECT id FROM user WHERE username = '${A.username}'`);
+  const questions = [{ id: 'w7-scan-q', text: QUIZ_TEXTS[1], answers: [{ id: 'w7-scan-a', text: 'kataba' }, { id: 'w7-scan-b', text: 'kitab' }], rightId: 'w7-scan-a' }];
+  await w.p.sql(`INSERT INTO quiz (id, space_id, subject_id, title, questions_json, rev, state, created_at) VALUES ('w7-scan', '${String(space)}', '${w.content.arabic}', '${QUIZ_TEXTS[0]}', '${JSON.stringify(questions)}', 0, 'open', ${Date.now() - 86_400_000})`);
+  await w.p.sql(`INSERT INTO quiz_attempt (id, space_id, quiz_id, learner_user_id, rev, answers_json, right_flags, score, question_count, sent_at) VALUES ('w7-scan-attempt', '${String(space)}', 'w7-scan', '${String(a)}', 0, '{"w7-scan-q":"w7-scan-a"}', '1', 1, 1, ${Date.now() - 3_600_000})`);
+}
+
+/** The quiz words a guardian must never meet, in both languages (the longest fixed part of each key), and the texts. */
+export function quizWords(): Map<string, string> {
+  const words = new Map<string, string>();
+  for (const lang of ['en', 'ar'] as const) {
+    for (const key of W7_KEYS) words.set(`${lang} ${key}`, UI[lang][key].split(/{[^}]*}/).map((x) => x.trim()).sort((x, y) => y.length - x.length)[0]);
+  }
+  QUIZ_TEXTS.forEach((t, i) => words.set(`quiz text ${i + 1}`, t));
+  return words;
+}
+
+/** Every quiz word or text on a page, in the text a person reads, and the quiz markers anywhere. */
+export function quizHits(body: string, words = quizWords()): string[] {
+  const text = visible(body);
+  const hits = [...words].filter(([, value]) => text.includes(value)).map(([name]) => name);
+  if (/\bid="quizzes"|\bclass="quiz-/.test(body)) hits.push('a quiz block or marker');
+  return hits;
+}

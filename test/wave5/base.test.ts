@@ -41,6 +41,7 @@ import { seed, signedIn } from '../support/seed.ts';
 import { utcDatePlusDays } from '../support/http.ts';
 import { inProcess, startProductWith, type Product } from '../support/product.ts';
 import type { InProcessWorker } from '../support/in-process.ts';
+import { QUIZ_CARD, cutWave7Style } from '../wave7/world.ts';
 import {
   ADMIN, AT2_ARABIC, AT2_MATH, HADEER, KARIM5, LOAD_ADMIN, LOAD_LEARNER, MONA, OMAR, SALMA, YOUSSEF, adminAnn, annBlock, post, publisherAnn, wave4World, withLoadAnnouncements,
   withW5a, withW5d, type Load, type Wave1World,
@@ -214,7 +215,10 @@ async function same(p: Pair, who: Who, method: 'GET' | 'POST', path: string, out
   const sb = HEAD_STYLE.exec(bb);
   const sc = HEAD_STYLE.exec(cb);
   if (sb && sc) {
-    const bad = styleCheck(sb[2], sc[2]);
+    // LMS wave 7 (W7 contract on PIL-261, section 11 item 3): wave 7's block follows wave 6's; it is checked and cut off first.
+    const w7 = cutWave7Style(sc[2]);
+    if (w7.problem) problems.push(`style: ${w7.problem}`);
+    const bad = styleCheck(sb[2], w7.rest);
     if (bad) problems.push(`style: ${bad}`);
     bb = bb.replace(HEAD_STYLE, '$1[style]$3');
     cb = cb.replace(HEAD_STYLE, '$1[style]$3');
@@ -222,7 +226,8 @@ async function same(p: Pair, who: Who, method: 'GET' | 'POST', path: string, out
     problems.push('a <style> on one side only');
   }
   // LMS wave 6 (contract on PIL-257, section 11 item 3): the due card (#due-dates) is cut with the announcement card; only on a teacher page.
-  const cut = cb.replace(/<section id="announcements"[\s\S]*?<\/section>/g, '').replace(/<section id="due-dates"[\s\S]*?<\/section>/g, '');
+  // LMS wave 7 (W7 contract on PIL-261, section 11 item 3): the quiz card (#quizzes) too.
+  const cut = cb.replace(/<section id="announcements"[\s\S]*?<\/section>/g, '').replace(/<section id="due-dates"[\s\S]*?<\/section>/g, '').replace(QUIZ_CARD, '');
   const card = cut !== cb;
   const teacher = isTeacherPage(path);
   if (card && !teacher) problems.push('an announcement block on a page that is not a teacher page');

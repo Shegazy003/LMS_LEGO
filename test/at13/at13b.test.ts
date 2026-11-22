@@ -19,7 +19,7 @@ import { issueLink } from '../support/admin.ts';
 import { ADMIN, C, D, HADEER, KARIM, OTHER_ADMIN, SHIMAA, personPath } from '../at9/world.ts';
 import { OWNER } from '../support/seed.ts';
 import {
-  A, B, G1, G2, UPLOADED, annHits, crawl, doneHits, doneWords, guardianPaths, lockHits, privacyWorld, resultPaths, todoHits, uploadHits, useLanguage, withAnnouncements, withDoneMarks, withDueDates, withLocks, withUpload, type PrivacyWorld,
+  A, B, G1, G2, UPLOADED, annHits, crawl, doneHits, doneWords, guardianPaths, lockHits, privacyWorld, quizHits, resultPaths, todoHits, uploadHits, useLanguage, withAnnouncements, withDoneMarks, withDueDates, withLocks, withQuizzes, withUpload, type PrivacyWorld,
 } from './pages.ts';
 import { corrected } from '../at12/corrections.ts';
 
@@ -82,6 +82,8 @@ describe('AT-13b the forbidden-string scan finds nothing a guardian or learner c
     await withAnnouncements(w);
     // LMS wave 6 (W6-1b, AT-3.1): due dates on A's Arabic and on Mathematics are present too (A's to-do block on her home).
     await withDueDates(w);
+    // LMS wave 7 (W7-1, AT-4.3): a quiz on A's Arabic with A's attempt is present too.
+    await withQuizzes(w);
   });
   after(async () => {
     await w?.close();
@@ -138,6 +140,8 @@ describe('AT-13b the forbidden-string scan finds nothing a guardian or learner c
           if (text && (viewer === G1 || viewer === G2 || (viewer === B && page.path.includes('/linked')))) assert.deepEqual(annHits(page.body), [], `announcements: ${lang} ${page.path} (${page.status})`);
           // LMS wave 6 (AT-3.1): no to-do state or due date on a guardian page (the same pages).
           if (text && (viewer === G1 || viewer === G2 || (viewer === B && page.path.includes('/linked')))) assert.deepEqual(todoHits(page.body), [], `to-do and due dates: ${lang} ${page.path} (${page.status})`);
+          // LMS wave 7 (AT-4.3): no quiz word, title, question, score or marker on a guardian page (the same pages).
+          if (text && (viewer === G1 || viewer === G2 || (viewer === B && page.path.includes('/linked')))) assert.deepEqual(quizHits(page.body), [], `quizzes and scores: ${lang} ${page.path} (${page.status})`);
         }
       }
       assert.ok(scanned >= 30, `${viewer.username}: bodies scanned ${scanned}`);

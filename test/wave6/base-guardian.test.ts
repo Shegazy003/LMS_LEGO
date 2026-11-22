@@ -37,6 +37,7 @@ import {
   ADMIN, HADEER, HUDA6, KARIM5, LAILA6, LOAD_ADMIN, LOAD_LEARNER, MONA, OMAR, RANA5, RANIA6, SALMA, TAMER6, YARA6, YOUSSEF, annBlock, dPlus, linkedPath, press,
   wave4World, withAt2, withHuda, withTamer, withW5a, withW5d, withW6a, withW6b, withW6f, words, type Load, type W6a, type W6b, type Wave1World,
 } from './world.ts';
+import { QUIZ_CARD, cutWave7Style } from '../wave7/world.ts';
 import { expectedItems, guardianTodoOf, listed, onLocalD1, sequenceOf, todoOf, withW6d, withW6e, withoutGuardianTodo } from './todo.ts';
 
 const repo = fileURLToPath(new URL('../..', import.meta.url));
@@ -168,6 +169,7 @@ function v3Lasts(): Set<string> {
 const V3_LASTS = v3Lasts();
 
 const HELP = /<p class="due-help">([\s\S]*?)<\/p>/;
+const HEAD_STYLE = /(<head>[\s\S]*?<style>)([\s\S]*?)(<\/style>)/;
 
 /** The help line of both sides: W6-1b-main's ends with v2's sentence, the candidate's is the same text with v3's sentence in its place. */
 function helpProblem(bb: string, cb: string): string | null {
@@ -232,7 +234,18 @@ async function same(p: Pair, who: Who, method: 'GET' | 'POST', path: string, out
   if (loc(rc, p.cand.url) !== loc(rb, p.base.url)) problems.push('another Location');
   for (const h of ['content-type', 'cache-control']) if (rc.headers.get(h) !== rb.headers.get(h)) problems.push(`another ${h}`);
   const bb = normalised(bodyB, p.base.url);
-  const cb = normalised(bodyC, p.cand.url);
+  let cb = normalised(bodyC, p.cand.url);
+  // LMS wave 7 (W7 contract on PIL-261, section 11 item 3): wave 7's style block, at the end of the candidate's <style>, is
+  // checked and cut off; the quiz card is cut off teacher pages. Everything else is compared as before.
+  const style = HEAD_STYLE.exec(cb);
+  if (style) {
+    const w7 = cutWave7Style(style[2]);
+    if (w7.problem) problems.push(`style: ${w7.problem}`);
+    cb = cb.replace(HEAD_STYLE, (_m, a: string, _s: string, z: string) => a + w7.rest + z);
+  }
+  const quizCut = cb.replace(QUIZ_CARD, '');
+  if (quizCut !== cb && !isTeacherPage(path)) problems.push('a quiz card on a page that is not a teacher page');
+  cb = quizCut;
   let cut = withoutGuardianTodo(cb);
   const block = cut !== cb;
   if (block && !(opts.block && LINKED.test(path))) problems.push('a #guardian-todo element where none may be');

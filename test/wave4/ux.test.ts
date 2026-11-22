@@ -12,7 +12,7 @@ import { LONG_LESSON, MIXED_TITLE } from '../wave1/pages.ts';
 import { measure, overflow, tab } from '../wave1/ux.ts';
 import {
   ADMIN, HADEER, SALMA, as, browserAs, editorPath, go, home, lessonPath, press, previewLesson, setOrder, subjectPath, topicPath, uxShot,
-  wave4World, withW4c, words, WIDTHS, type Wave1World, type Width,
+  wave4World, withW4c, words, WIDTHS, UX49_DENY, type Wave1World, type Width,
 } from './world.ts';
 
 type Lang = 'ar' | 'en';
@@ -488,7 +488,8 @@ describe('UX-48 home actions lead to open lessons', { concurrency: false }, () =
 });
 
 // ------------------------------------------------------------------- UX-49 ----
-const DENY = ['توقفت', 'بدأت', 'بدأته', 'أنت', 'لك', 'عليك', 'هذا', 'هذه', 'مقفل', 'مقفلة', 'مغلقة', 'متاحة', 'السابق', 'السابقة', 'التالية', 'الجديد', 'الجديدة'];
+// LMS wave 7 (UX-77): the list moved, unchanged, to ./world.ts so that wave 7 imports the same one.
+const DENY = UX49_DENY;
 const NEIGHBOURS = ['أيّ', 'قبل', 'بعد', 'من', 'إلى', 'إكمال', 'إضافة'];
 const KIT_PLACEHOLDERS = ['chapter', 'lesson', 'lessonPlural', 'learner'];
 const noMarks = (s: string) => s.replace(/[ً-ْ]/g, '');
