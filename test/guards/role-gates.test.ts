@@ -340,5 +340,13 @@ describe('role guard: in the running product, every gated route refuses people w
         assert.equal((await send(publisher)).status, 403, `${r.method} ${r.path} refused for a publisher (not a guardian)`);
       }
     }
+    // LMS wave 7, W7-3 [B] (contract v4 amendment on PIL-295, AT-9.3): the admin scores address is admin-only (the admin gets
+    // the scores page); the admin answers address refuses every role, the admin included.
+    const scores = address('/s/:spaceId/admin/topics/:subjectId/quizzes/:quizId/results');
+    assert.equal((await admin.get(scores)).status, 200, 'the admin scores address admits the admin');
+    for (const [who, c] of [['learner', learner], ['publisher', publisher]] as const) assert.equal((await c.get(scores)).status, 403, `the admin scores address refuses the ${who}`);
+    for (const [who, c] of [['learner', learner], ['publisher', publisher], ['admin', admin]] as const) {
+      assert.equal((await c.get(`${scores}/no-such-id`)).status, 403, `the admin answers address refuses the ${who}`);
+    }
   });
 });

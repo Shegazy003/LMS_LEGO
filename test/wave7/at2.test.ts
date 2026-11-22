@@ -84,15 +84,17 @@ describe('W7 AT-2 the teacher sees results; nobody else does (W7-b)', { concurre
     assert.ok(none.none && none.rows.length === 0 && none.stats.length === 0, 'quizResultsNone');
   });
 
-  it('W7 AT-2.3a only the responsible publisher: Amal has no results link and gets 403 on every results address; so do another publisher, learners, Mona and the owner; a learner without an attempt or of another space 404', async () => {
+  // W7-3 [B] (contract v4 amendment on PIL-295, R7 item 1): "Amal has no results link and gets 403 on every results address"
+  // became "Amal gets 403 on every publisher results and answers address, and on the admin answers address"; her results
+  // link and the admin scores address are AT-9's (test/wave7/at9.test.ts).
+  it('W7 AT-2.3a only the responsible publisher: Amal gets 403 on every publisher results and answers address and on the admin answers address; another publisher, learners, Mona and the owner get 403 on every results address; a learner without an attempt or of another space 404', async () => {
     const s = w.school;
     const list = publisherQuizzes(s, s.math);
     const admin = adminQuizzes(s, s.math);
-    assert.ok(quizRowsOf(await html(amal, admin)).every((r) => r.results === null), 'no results link on the admin\'s list');
-    assert.ok(!(await html(amal, admin)).includes('/results'), 'no results address on the admin\'s list');
     const addresses = [resultsOf(list, W7A.QA), `${resultsOf(list, W7A.QA)}/${w.ids[SALMA.username]}`, resultsOf(admin, W7A.QA), `${resultsOf(admin, W7A.QA)}/${w.ids[SALMA.username]}`];
+    for (const path of [addresses[0], addresses[1], addresses[3]]) assert.equal((await amal.get(path)).status, 403, `Amal GET ${path}`);
     const people = [
-      { who: 'Amal', c: amal }, { who: 'Shimaa', c: await as(w, SHIMAA, 'en') }, { who: 'Salma', c: await as(w, SALMA, 'en') },
+      { who: 'Shimaa', c: await as(w, SHIMAA, 'en') }, { who: 'Salma', c: await as(w, SALMA, 'en') },
       { who: 'Omar C', c: await as(w, OMAR, 'en') }, { who: 'Rana Test', c: await as(w, RANA5, 'en') }, { who: 'Mona', c: await as(w, MONA, 'en') }, { who: 'the owner', c: w.owner },
     ];
     for (const p of people) for (const path of addresses) assert.equal((await p.c.get(path)).status, 403, `${p.who} GET ${path}`);
@@ -177,10 +179,18 @@ describe('W7 AT-2 the teacher sees results; nobody else does (W7-b)', { concurre
       const cut = (page: string) => page
         .replace(/<div id="quiz-questions" class="quiz-questions">[\s\S]*?(?=<form id="quiz-copy")/, '[questions]')
         .replace(`<p class="quiz-help quiz-open-help">${UI.en.quizOpenHelp}</p>`, '');
+      // W7-3 [B] (contract v4 amendment on PIL-295, R7 item 2): the admin's quiz list's allowed difference gains
+      // quizResultsLink (n) on each row; its count is the only part that may differ.
+      const counted = (page: string) => page.replace(/(<a class="quiz-results-link" href="[^"]+">)[\s\S]*?(<\/a>)/g, '$1[results link]$2');
       for (const [i, [, path]] of pages().entries()) {
         const locked = path.endsWith(W7A.QA) || path.endsWith(W7A.QC);
         for (const name of names) assert.ok(!after[i].includes(name), `${path}: no learner name (${name})`);
         assert.ok(!/\b\d+ of \d+\b/.test(textOf(after[i])), `${path}: no score`);
+        if (i === 0) {
+          assert.equal(counted(after[i]), counted(before[i]), `${path}: byte-identical but for the count in each quizResultsLink`);
+          assert.ok(after[i].includes('/results">') && quizRowsOf(after[i]).some((r) => r.results?.text === UI.en.quizResultsLink.replace('{n}', '2')), `${path}: QA's row carries its quizResultsLink (2)`);
+          continue;
+        }
         assert.ok(!after[i].includes('/results'), `${path}: no results link or count`);
         if (locked) {
           assert.ok(after[i].includes('id="quiz-locked"') && !before[i].includes('id="quiz-locked"'), `${path}: the lock note is the difference`);
@@ -242,7 +252,9 @@ describe('W7 AT-2.3b an admin who is also the responsible publisher (W7-f)', { c
   });
   after(() => closeWave6(w));
 
-  it('W7 AT-2.3b Laila Test sees QS\'s results through the publisher address; on Mathematics no results link and 403 on QA\'s results addresses', async () => {
+  // W7-3 [B] (contract v4 amendment on PIL-295, R5 "Unchanged", Q-A9): through the admin address Laila Test gets the scores
+  // page on Mathematics, like any admin, and nothing more; 403 on QA's publisher results addresses and the admin answers address.
+  it('W7 AT-2.3b Laila Test sees QS\'s results through the publisher address; on Mathematics the admin scores page only, and 403 on QA\'s publisher results addresses and the admin answers address', async () => {
     const { science } = await withW7f(w);
     const s = w.school;
     const laila = await as(w, LAILA7, 'en');
@@ -251,8 +263,10 @@ describe('W7 AT-2.3b an admin who is also the responsible publisher (W7-f)', { c
     assert.equal(qs.results?.text, en('quizResultsLink', { n: '1' }), 'her results link on Science Test');
     const r = resultsOf_(await html(laila, resultsOf(list, QS)));
     assert.deepEqual(r.rows.map((x) => [x.name, x.score]), [[SALMA.display_name, en('quizScoreCell', { score: '1', total: '1' })]], 'QS\'s results');
-    assert.ok(quizRowsOf(await html(laila, adminQuizzes(s, s.math))).every((x) => x.results === null), 'no results link on Mathematics');
-    for (const path of [resultsOf(publisherQuizzes(s, s.math), W7A.QA), `${resultsOf(publisherQuizzes(s, s.math), W7A.QA)}/${w.ids[SALMA.username]}`, resultsOf(adminQuizzes(s, s.math), W7A.QA)]) {
+    assert.ok(quizRowsOf(await html(laila, adminQuizzes(s, s.math))).every((x) => x.results?.href.startsWith(adminQuizzes(s, s.math))), 'on Mathematics, the admin list\'s results links lead under the admin address');
+    const scores = await html(laila, resultsOf(adminQuizzes(s, s.math), W7A.QA));
+    assert.ok(scores.includes('id="quiz-admin-note"') && !scores.includes('id="quiz-stats"') && !scores.includes('class="quiz-name"'), 'the admin scores page: the note, no summary, no name link');
+    for (const path of [resultsOf(publisherQuizzes(s, s.math), W7A.QA), `${resultsOf(publisherQuizzes(s, s.math), W7A.QA)}/${w.ids[SALMA.username]}`, `${resultsOf(adminQuizzes(s, s.math), W7A.QA)}/${w.ids[SALMA.username]}`]) {
       assert.equal((await laila.get(path)).status, 403, `Laila GET ${path}`);
     }
     void located;

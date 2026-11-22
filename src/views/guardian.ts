@@ -13,6 +13,7 @@ import { TODO_AHEAD_DAYS, TODO_MAX_PER_GROUP, type TodoGroup, type TodoItem } fr
 import type { OwnResult } from '../exams.ts';
 import type { GuardianSubject, LinkedLearner } from '../guardians.ts';
 import type { Label, Lang } from '../labels.ts';
+import { GUARDIAN_QUIZ_DRAWN, GUARDIAN_QUIZ_SHOWN, type GuardianQuizRow } from '../quiz.ts';
 import { activityLink, activityOff } from './activity.ts';
 import { resultCard, scoreText } from './exams.ts';
 import { marked, sentence, type Html } from './layout.ts';
@@ -81,6 +82,38 @@ function guardianTodo(t: Label, learner: LinkedLearner, groups: TodoGroup[]): Ht
 <h2 id="guardian-todo-heading">${sentence(t, 'guardianTodoTitle', { name: learner.display_name })}</h2>
 <p class="muted">${t('guardianTodoNote')}</p>
 ${groups.map((g) => guardianTodoGroup(t, g))}
+</section>`;
+}
+
+// ------------------------------------------------------ the quiz scores ----
+// LMS wave 7, W7-3 (product-contract v3 addendum on PIL-285, G4; ux-plan
+// UX-83): on the linked learner's page, right after the results and whatever
+// the lesson activity setting, that learner's quiz titles and scores, read-only:
+// 5 items, up to 20 more in a closed native fold, the capped line past 25. No
+// link, date, question, answer or verdict. No listed quiz: nothing at all.
+
+/** The block's input: the drawn items (at most GUARDIAN_QUIZ_DRAWN) and the full count. */
+export interface GuardianQuizzes { rows: GuardianQuizRow[]; count: number }
+
+function guardianQuizItem(t: Label, r: GuardianQuizRow): Html {
+  return html`<li><bdi>${r.title}</bdi> <span class="muted quiz-guardian-line">${sentence(t, 'guardianQuizLine', { subjectTitle: r.subject_title, score: String(r.score), total: String(r.total) })}</span></li>`;
+}
+
+function guardianQuizzes(t: Label, learner: LinkedLearner, q: GuardianQuizzes): Html | string {
+  if (!q.rows.length) return '';
+  const shown = q.rows.slice(0, GUARDIAN_QUIZ_SHOWN);
+  const rest = q.rows.slice(GUARDIAN_QUIZ_SHOWN);
+  const capped = q.count > GUARDIAN_QUIZ_DRAWN ? html`
+<p class="quiz-guardian-capped">${sentence(t, 'guardianQuizCapped', { n: String(q.count - GUARDIAN_QUIZ_DRAWN) })}</p>` : '';
+  const fold = rest.length ? html`
+<details class="quiz-guardian-more"><summary>${sentence(t, 'guardianQuizMore', { n: String(rest.length) })}</summary>
+<ul class="quiz-guardian-list">${rest.map((r) => guardianQuizItem(t, r))}</ul>${capped}
+</details>` : '';
+  // No white space around it: the page differs from W7-2-main's by this element only (AT-8.4).
+  return html`<section id="quiz-guardian" class="card">
+<h2 id="quiz-guardian-title">${sentence(t, 'guardianQuizTitle', { name: learner.display_name })}</h2>
+<p class="muted">${t('guardianQuizNote')}</p>
+<ul class="quiz-guardian-list">${shown.map((r) => guardianQuizItem(t, r))}</ul>${fold}
 </section>`;
 }
 
@@ -157,7 +190,7 @@ export function guardianHome(t: Label, lang: Lang, space: SpaceView, displayName
  * reason, a draft or a result id. From R2-d the card leads to the learner's
  * lesson-activity page while it is on; while off, the page says it is not
  * switched on (AT-15a) and nothing else about lessons. */
-export function guardianLearnerPage(t: Label, lang: Lang, space: SpaceView, c: LearnerCard, results: OwnResult[], activity = false, todo: TodoGroup[] = []): Html {
+export function guardianLearnerPage(t: Label, lang: Lang, space: SpaceView, c: LearnerCard, results: OwnResult[], activity = false, todo: TodoGroup[] = [], quizzes: GuardianQuizzes = { rows: [], count: 0 }): Html {
   const body = html`<p><a id="back" href="${home(space)}">${t('guardianHome')}</a></p>
 <div id="linked">${card(t, space, c, 'plain', activity)}</div>
 ${activity ? '' : activityOff(t, space)}${activity ? guardianTodo(t, c.learner, todo) : ''}
@@ -166,6 +199,6 @@ ${activity ? '' : activityOff(t, space)}${activity ? guardianTodo(t, c.learner, 
   ${results.length
     ? html`<ol class="items">${results.map((r) => resultCard(t, space, r, 'guardian'))}</ol>`
     : html`<p id="results-none" class="message">${t('resultsNone')}</p>`}
-</section>`;
+</section>${guardianQuizzes(t, c.learner, quizzes)}`;
   return spacePage(t, lang, space, c.learner.display_name, body);
 }

@@ -1855,7 +1855,7 @@ jobs:
       - name: UX-68 quiz card place, order and labels
         if: success() || failure()
         run: npm run test:wave3b -- --test-name-pattern='^UX-68 ' test/wave7/ux.test.ts
-      - name: UX-69 quiz list order, states, results link only for the publisher, removed fold
+      - name: UX-69 quiz list order, states, results link for the responsible publisher and admins, removed fold
         if: success() || failure()
         run: npm run test:wave3b -- --test-name-pattern='^UX-69 ' test/wave7/ux.test.ts
       - name: UX-70 editor fields, labels, limits, open help, copy, locked view
@@ -1956,6 +1956,120 @@ jobs:
         env:
           LMS_BASE_ROOT: ${{ github.workspace }}/.base-w7
         run: npm run test:wave3b -- --test-name-pattern='^W7 AT-4\.3 \(guardian' test/wave7/base.test.ts
+      # W7-3: the guardian sees the linked learner's quiz scores (AT-7, AT-8, UX-83 to UX-85) and [B] every admin sees
+      # scores only (AT-9). W7-2-main c1a9d14 (pinned) is the base of AT-7.5's SQL text, AT-7.9's setting texts and AT-8's
+      # side-by-side comparison (test/wave7/at7.test.ts and base-guardian.test.ts read it from LMS_BASE_ROOT).
+      - name: Check out W7-2-main c1a9d14 for the W7-3 base comparison (code only, never run but by the comparison)
+        if: success() || failure()
+        uses: actions/checkout@v4
+        with:
+          ref: c1a9d14dfc17d89a280c9effd2179f09c2148bcc
+          path: .base-w73
+          persist-credentials: false
+      - name: W7 AT-7.1 place and content of the guardian quiz block (activity on and off)
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-7\.1 ' test/wave7/at7.test.ts
+      - name: W7 AT-7.2 exactly the expected scores, in every state (activity on and off)
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-7\.2 ' test/wave7/at7.test.ts
+      - name: W7 AT-7.3 cap and fold at W7-e and W7-h
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-7\.3 ' test/wave7/at7.test.ts
+      - name: W7 AT-7.4 no key, no detail (twin worlds differing only in rightId)
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-7\.4 ' test/wave7/at7.test.ts
+      - name: W7 AT-7.5 reads at W7-e and W7-h (rows_read gate), the shared learner rule against W7-2-main c1a9d14, the figures printed
+        if: success() || failure()
+        env:
+          LMS_BASE_ROOT: ${{ github.workspace }}/.base-w73
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-7\.5 (reads|unit)' test/wave7/at7.test.ts
+      - name: W7 AT-7.6 kits and languages
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-7\.6 ' test/wave7/at7.test.ts
+      - name: W7 AT-7.7 one person, two roles, never mixed (activity on and off)
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-7\.7 ' test/wave7/at7.test.ts
+      - name: W7 AT-7.8 hostile quiz title
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-7\.8 ' test/wave7/at7.test.ts
+      - name: W7 AT-7.9 lesson activity off, the block shown, the setting texts W7-2-main c1a9d14's
+        if: success() || failure()
+        env:
+          LMS_BASE_ROOT: ${{ github.workspace }}/.base-w73
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-7\.9 ' test/wave7/at7.test.ts
+      - name: W7 AT-8.1 only their own linked learner, never cached (refusals byte-identical to W7-2-main c1a9d14)
+        if: success() || failure()
+        env:
+          LMS_BASE_ROOT: ${{ github.workspace }}/.base-w73
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-8\.1 ' test/wave7/base-guardian.test.ts
+      - name: W7 AT-8.2 privacy scans on the DOM tree, and the allow-list's self-check
+        if: success() || failure()
+        env:
+          LMS_BASE_ROOT: ${{ github.workspace }}/.base-w73
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-8\.2 ' test/wave7/base-guardian.test.ts
+      - name: W7 AT-8.3 base comparison with no attempts against W7-2-main c1a9d14 (activity off and on)
+        if: success() || failure()
+        env:
+          LMS_BASE_ROOT: ${{ github.workspace }}/.base-w73
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-8\.3 ' test/wave7/base-guardian.test.ts
+      - name: W7 AT-8.4 base comparison with attempts (W7-g) against W7-2-main c1a9d14 (activity on and off)
+        if: success() || failure()
+        env:
+          LMS_BASE_ROOT: ${{ github.workspace }}/.base-w73
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-8\.4 ' test/wave7/base-guardian.test.ts
+      - name: W7 AT-7.5 (base) and AT-7.9 (base) the linked page's count and the activity-off page against W7-2-main c1a9d14
+        if: success() || failure()
+        env:
+          LMS_BASE_ROOT: ${{ github.workspace }}/.base-w73
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-7\.[59] \(base' test/wave7/base-guardian.test.ts
+      - name: W7 AT-9.1 results link and scores page, equal to the publisher's page after the three normalisations
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-9\.1 ' test/wave7/at9.test.ts
+      - name: W7 AT-9.2 a subject with no responsible publisher
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-9\.2 ' test/wave7/at9.test.ts
+      - name: W7 AT-9.3 refused, nothing changed; the admin answers address stays 403
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-9\.3 ' test/wave7/at9.test.ts
+      - name: W7 AT-9.4 access and removal on the scores page
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-9\.4 ' test/wave7/at9.test.ts
+      - name: W7 AT-9.5 reads at W7-e and W7-h (rows_read gate), the statement allowlist, the figures printed
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-9\.5 ' test/wave7/at9.test.ts
+      - name: W7 AT-9.6 still private on the editor
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-9\.6 ' test/wave7/at9.test.ts
+      - name: W7 AT-9.7 admin who is also a learner
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-9\.7 ' test/wave7/at9.test.ts
+      - name: W7 AT-9.8 no admin results address returns a question, an answer or a mark (twin worlds W7-k1 and W7-k2)
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W7 AT-9\.8 ' test/wave7/at9.test.ts
+      - name: UX-83 guardian quiz block place, order and read-only
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-83 guardian quiz block place' test/wave7/ux-guardian.test.ts
+      - name: UX-83 guardian quiz block absent with no taken quiz
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-83 guardian quiz block absent' test/wave7/ux-guardian.test.ts
+      - name: UX-83 no judging cue
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-83 no judging cue' test/wave7/ux-guardian.test.ts
+      - name: 'UX-84 guardian quiz keys: language, deny list, pronouns, neighbours in every kit'
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-84 guardian quiz keys' test/wave7/ux-guardian.test.ts
+      - name: UX-84 quiz card help names who sees results
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-84 quiz card help' test/wave7/ux-guardian.test.ts
+      - name: UX-85 guardian and admin results states
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-85 guardian and admin results states' test/wave7/ux-guardian.test.ts
+      - name: UX-85 widths, targets and keyboard
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-85 widths' test/wave7/ux-guardian.test.ts
+      - name: UX-85 admin scores page has no control in the table and no answers
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-85 admin scores page' test/wave7/ux-guardian.test.ts
       - name: Upload evidence (wave 7 screenshots)
         if: always() && hashFiles('evidence/**') != ''
         uses: actions/upload-artifact@v4

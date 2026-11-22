@@ -37,6 +37,7 @@ import { seed, signedIn } from '../support/seed.ts';
 import { inProcess, startProductWith, type Product } from '../support/product.ts';
 import type { InProcessWorker } from '../support/in-process.ts';
 import { onLocalD1 } from '../wave6/todo.ts';
+import { withoutElement } from './guardian.ts';
 import {
   ADMIN, AT, HADEER, KARIM5, MONA, NOUR6, OMAR, QB_QUESTIONS, QL, QL_QUESTIONS, QUIZ_CARD, RANA5, SALMA, W7A, W7_CSS_MAX, W7_MARK, YOUSSEF, annBlock, as, closeWave6, clockAt, insertQuiz, publisherQuizzes, questionForm,
   resultsOf, wave4World, wave7BlockProblem, wave7World, withAt2, withW5a, withW6a, withW7a, withW7b, withW7d, withW7e, type Wave1World,
@@ -210,8 +211,11 @@ async function same(p: Pair, who: Who, method: 'GET' | 'POST', path: string, out
   } else if (Boolean(sb) !== Boolean(sc)) {
     problems.push('a <style> on one side only');
   }
-  const cut = cb.replace(CARD, '');
-  const card = cut !== cb;
+  // W7-3 (v3 addendum on PIL-285, G9.1): on a linked learner's page the guardian's quiz block `#quiz-guardian` is the allowed
+  // difference; it is cut there (its content is W7 AT-7 and AT-8.2's) and nowhere else.
+  const cb0 = LINKED_PAGE.test(path) ? withoutElement(cb, 'quiz-guardian') : cb;
+  const cut = cb0.replace(CARD, '');
+  const card = cut !== cb0;
   const teacher = isTeacherPage(path);
   if (card && !teacher) problems.push('a quiz card on a page that is not a teacher page');
   if (cut !== bb) problems.push(`another body ${firstDifference(bb, cut)}`);
@@ -283,10 +287,14 @@ const report = (rs: Result[]) => rs.filter((r) => r.problem).slice(0, 5).map((r)
 /** W7-2 (AT-5.3, section 11 item 4): the pages that gain the one quiz statement, a subject page read as a learner, by staff or in a preview. */
 const SUBJECT_PAGES = [/^\/s\/[^/]+\/learn\/[^/?#]+(\?|$)/, /^\/s\/[^/]+\/preview\/learn\/[^/?#]+(\?|$)/];
 
-/** Every non-teacher request whose read count is not W6-main's (+1 on a 200 subject page, +0 elsewhere). */
+/** W7-3 (v3 addendum on PIL-285, G9.5): the linked learner's page gains the one score statement. */
+const LINKED_PAGE = /^\/s\/[^/]+\/linked\/[^/?#]+$/;
+
+/** Every non-teacher request whose read count is not W6-main's (+1 on a 200 subject page and, since W7-3, on a 200 linked
+ * learner's page; +0 elsewhere). */
 function learnerReadProblems(rs: Result[]): string {
   return rs.filter((r) => !r.teacher).filter((r) => {
-    const plus = r.status === 200 && r.what.includes(' GET ') && SUBJECT_PAGES.some((re) => re.test(r.path)) ? 1 : 0;
+    const plus = r.status === 200 && r.what.includes(' GET ') && (SUBJECT_PAGES.some((re) => re.test(r.path)) || LINKED_PAGE.test(r.path)) ? 1 : 0;
     return r.reads.cand !== r.reads.base + plus;
   }).slice(0, 5).map((r) => `${r.what}: W6-main ${r.reads.base}, candidate ${r.reads.cand}`).join('\n');
 }

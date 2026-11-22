@@ -22,6 +22,7 @@ import {
   annHits, lockHits, quizHits, todoHits, uploadHits, useLanguage, visible, withAnnouncements, withDoneMarks, withDueDates, withLocks, withQuizzes, withUpload,
 } from './pages.ts';
 import { HADEER } from '../at9/world.ts';
+import { withoutElement } from '../wave7/guardian.ts';
 
 export { ACTIVITY_PHRASES, EXEMPT_KEYS, activityIn } from './pages.ts';
 
@@ -99,6 +100,9 @@ describe('AT-13a the running product: guardian pages carry no activity, and open
         const pages = await crawl(c, guardianPaths(w));
         for (const p of pages.filter((x) => x.contentType.startsWith('text/html') && x.path.includes('/linked') && !isExemptPage(x.path))) {
           scanned++;
+          // LMS wave 7, W7-3 (v3 addendum on PIL-285, G9.1): the scans run on the linked learner's page with the guardian's
+          // quiz block `#quiz-guardian` removed (its own allow-list is W7 AT-8.2); every other page is scanned whole.
+          p.body = /\/linked\/[^/?#]+$/.test(p.path) ? withoutElement(p.body, 'quiz-guardian') : p.body;
           const body = exemptRemoved(p.body);
           const phrases = activityIn(visible(body)).filter((h) => !h.startsWith('a '));
           assert.deepEqual(phrases, [], `${person.username} ${lang} ${p.path}: no lesson-activity phrase`);

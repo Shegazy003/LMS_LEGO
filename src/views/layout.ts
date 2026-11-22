@@ -284,6 +284,8 @@ a.latest-result.none{color:#3d444d}
 #quiz-take legend{font-weight:600;padding:0 4px;overflow-wrap:anywhere}
 .quiz-form .quiz-choice{display:flex;align-items:center;gap:8px;min-height:44px;cursor:pointer;font-weight:400}
 .quiz-choice>span{min-width:0;overflow-wrap:anywhere}
+#quiz-guardian .quiz-guardian-line{display:block}
+#quiz-guardian summary{display:flex;align-items:center;min-height:44px;cursor:pointer;font-weight:600;color:#0b3d91}
 `;
 
 export interface LayoutOptions {

@@ -69,20 +69,21 @@ export interface FileRow {
   lesson_id: string;
 }
 
+/** The learner rule (LMS wave 7, W7-3; contract v3 addendum on PIL-285, G4.4),
+ * the one SQL condition that decides which subjects a person reads as a
+ * learner: subject `s` is published and assigned to them, directly or through a
+ * group of the subject's space. It binds the person's id twice. Shared by
+ * subjectsForLearner (its SQL text unchanged) and quizScoresOfLinked
+ * (src/quiz.ts); it is scoped by s.space_id itself. */
+export const LEARNER_RULE = 's.is_published = 1\n        AND EXISTS (\n          SELECT 1 FROM subject_access a\n           WHERE a.space_id = s.space_id AND a.subject_id = s.id\n             AND (a.user_id = ? OR a.group_id IN (\n               SELECT gm.group_id FROM group_member gm WHERE gm.space_id = s.space_id AND gm.user_id = ?)))';
+
+/** The SQL text of subjectsForLearner, byte for byte as on W7-2-main (AT-7.5 compares them). */
+export const SUBJECTS_FOR_LEARNER_SQL = 'SELECT s.id, s.title, s.is_published FROM subject s\n      WHERE s.space_id = ? AND ' + LEARNER_RULE + '\n      ORDER BY s.title, s.id';
+
 /** The learner’s home: published subjects assigned to them, directly or
  * through a group of this space. */
 export function subjectsForLearner(db: Db, spaceId: string, userId: string): Promise<SubjectItem[]> {
-  return db.all<SubjectItem>(
-    `SELECT s.id, s.title, s.is_published FROM subject s
-      WHERE s.space_id = ? AND s.is_published = 1
-        AND EXISTS (
-          SELECT 1 FROM subject_access a
-           WHERE a.space_id = s.space_id AND a.subject_id = s.id
-             AND (a.user_id = ? OR a.group_id IN (
-               SELECT gm.group_id FROM group_member gm WHERE gm.space_id = s.space_id AND gm.user_id = ?)))
-      ORDER BY s.title, s.id`,
-    spaceId, userId, userId,
-  );
+  return db.all<SubjectItem>(SUBJECTS_FOR_LEARNER_SQL, spaceId, userId, userId);
 }
 
 /** One card of the learner home (LMS wave 1, contract section 4): a subject
