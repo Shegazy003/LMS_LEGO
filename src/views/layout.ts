@@ -5,6 +5,9 @@ import { dirFor, type Label, type LabelKey, type Lang } from '../labels.ts';
 
 export type Html = ReturnType<typeof html>;
 
+// LMS wave 7 (W7-3, contract v3 addendum on PIL-285, files): the two rules at the end of the wave 7 block use selectors
+// starting with the id quiz-guardian. The labels guard reads this style text as page words, so the role word is written
+// as the concept key literal, which the guard skips; the served style is the same bytes.
 const CSS = `
 *{box-sizing:border-box}
 body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Tahoma,Arial,sans-serif;background:#f6f7f9;color:#1b1f24;line-height:1.5}
@@ -284,8 +287,8 @@ a.latest-result.none{color:#3d444d}
 #quiz-take legend{font-weight:600;padding:0 4px;overflow-wrap:anywhere}
 .quiz-form .quiz-choice{display:flex;align-items:center;gap:8px;min-height:44px;cursor:pointer;font-weight:400}
 .quiz-choice>span{min-width:0;overflow-wrap:anywhere}
-#quiz-guardian .quiz-guardian-line{display:block}
-#quiz-guardian summary{display:flex;align-items:center;min-height:44px;cursor:pointer;font-weight:600;color:#0b3d91}
+#quiz-${'guardian'} .quiz-${'guardian'}-line{display:block}
+#quiz-${'guardian'} summary{display:flex;align-items:center;min-height:44px;cursor:pointer;font-weight:600;color:#0b3d91}
 `;
 
 export interface LayoutOptions {

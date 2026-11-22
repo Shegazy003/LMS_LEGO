@@ -416,7 +416,8 @@ describe('W6 AT-6.5, AT-6.6 and AT-7.1 against W6-1b-main with due dates', { con
         assert.match(r.candBody, /<p id="activity-off" class="card message" data-activity>/, `${who.who} ${lang}: the activity-off line`);
         assert.equal(guardianTodoOf(r.candBody), null, `${who.who} ${lang}: no block`);
         assert.equal(r.todo, 0, `${who.who} ${lang}: no to-do statement`);
-        assert.equal(r.reads.cand, r.reads.base, `${who.who} ${lang}: W6-1b-main's count`);
+        // LMS wave 7 (W7-3, contract v3 addendum on PIL-285, G9.5 and AT-7.9): the quiz score statement, whatever the activity setting.
+        assert.equal(r.reads.cand, r.reads.base + 1, `${who.who} ${lang}: W6-1b-main's count plus the quiz score statement`);
       }
     }
     const amal = p.people.find((x) => x.who === 'Amal')!.cand;
