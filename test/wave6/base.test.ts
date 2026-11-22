@@ -36,9 +36,13 @@ import { Client, utcDatePlusDays } from '../support/http.ts';
 import { seed, signedIn } from '../support/seed.ts';
 import { inProcess, startProductWith, type Product } from '../support/product.ts';
 import type { InProcessWorker } from '../support/in-process.ts';
+import { UI } from '../../src/i18n/ui.ts';
+import { TODO_AHEAD_DAYS } from '../../src/due.ts';
 import {
-  ADMIN, HADEER, KARIM5, MONA, OMAR, RANA5, SALMA, YOUSSEF, adminDue, annBlock, duePost, publisherDue, wave4World, withAt2, withW5a, type Wave1World,
+  ADMIN, AT, HADEER, KARIM5, LOAD_LEARNER, MONA, OMAR, RANA5, SALMA, YOUSSEF, adminDue, annBlock, clockAt, dPlus, duePost, publisherDue, saveDue, wave4World, withAt2, withW5a, withW5d, withW6a,
+  type Load, type Wave1World,
 } from './world.ts';
+import { onLocalD1, todoOf, withW6d, withW6e } from './todo.ts';
 
 const repo = fileURLToPath(new URL('../..', import.meta.url));
 /** The pinned base: W5-main f0125980 (wave 5 merged, main CI run 44864862736 green), the contract's "main". */
@@ -49,7 +53,7 @@ const MARK = '/* wave 6 due dates */';
 
 type Twin = Product & { worker: InProcessWorker };
 interface Who { who: string; base: Client; cand: Client }
-interface Pair { w: Wave1World; base: Twin; cand: Twin; people: Who[]; close(): Promise<void> }
+interface Pair { w: Wave1World; base: Twin; cand: Twin; people: Who[]; load: Load | null; close(): Promise<void> }
 
 function twin(c: Client, url: string): Client {
   const t = new Client(url, { lang: null });
@@ -58,12 +62,13 @@ function twin(c: Client, url: string): Client {
   return t;
 }
 
-async function pair(): Promise<Pair> {
+async function pair(opts: { load?: boolean } = {}): Promise<Pair> {
   assert.ok(existsSync(join(BASE_ROOT, 'src', 'app.ts')), `W5-main ${BASE_SHA} is checked out at ${BASE_ROOT}`);
   assert.ok(existsSync(join(BASE_ROOT, 'migrations', '0014_announcements.sql')) && !existsSync(join(BASE_ROOT, 'migrations', MIGRATION)), 'the base is main after wave 5 and before wave 6');
   let base: Twin | null = null;
   startProductWith(async () => (base = await inProcess({ root: BASE_ROOT })));
   let w: Wave1World;
+  let load: Load | null = null;
   try {
     w = await wave4World({ activity: true });
   } finally {
@@ -78,6 +83,8 @@ async function pair(): Promise<Pair> {
     await b.sql(`INSERT INTO subject_access (id, space_id, subject_id, user_id) VALUES ('w6-amal-learner', '${w.school.id}', '${w.school.math}', '${(await b.sql(`SELECT id FROM user WHERE username = '${ADMIN.username}'`))[0].id}')`);
     // Wave 5's AT-2 announcements, present on both (contract AT-4, "Steps").
     await withAt2(w);
+    // W6-1b, AT-3.4b: the W5-d load space (150 subjects, 300 announcements), on both, for the load figures.
+    if (opts.load) load = await withW5d(w);
   } catch (err) {
     await w.close();
     throw err;
@@ -92,6 +99,7 @@ async function pair(): Promise<Pair> {
     { who: 'Hadeer', c: await signedIn(b.url, HADEER.username, HADEER.password) },
     { who: 'Mona', c: await signedIn(b.url, MONA.username, MONA.password) },
     { who: 'owner', c: w.owner },
+    ...(load ? [{ who: 'Load learner', c: await signedIn(b.url, LOAD_LEARNER.username, LOAD_LEARNER.password) }] : []),
   ];
   await b.worker.settle();
   const file = join(tmpdir(), `lms-w6-base-${process.pid}-${Date.now()}.sqlite`);
@@ -107,7 +115,7 @@ async function pair(): Promise<Pair> {
     assert.fail(`no due date on the candidate (found ${n})`);
   }
   return {
-    w, base: b, cand,
+    w, base: b, cand, load,
     people: people.map((p) => ({ who: p.who, base: p.c, cand: twin(p.c, cand.url) })),
     async close() {
       await cand.stop();
@@ -349,5 +357,245 @@ describe('W6 AT-4.1 base comparison: with no due dates every page is W5-main f01
       }
     }
     t.diagnostic(`AT-3.4a ${figures.join('; ')}`);
+  });
+  // ------------------------------------------------------------ W6-1b ----
+
+  it('W6 AT-4.2 after setting one date and clearing it, AT-4.1a and AT-4.1b pass again', async (t) => {
+    const s = p.w.school;
+    const hadeer = p.people.find((x) => x.who === 'Hadeer')!.cand;
+    const salma = p.people.find((x) => x.who === 'Salma')!.cand;
+    const page = publisherDue(s, s.math);
+    const lesson = s.lessons['Adding fractions'];
+    const date = utcDatePlusDays(3);
+    await saveDue(hadeer, page, 'lesson', lesson, date);
+    assert.ok(todoOf(await (await salma.get(`/s/${s.id}`)).text()), 'with the date set, Salma\'s home shows the to-do block');
+    await saveDue(hadeer, page, 'lesson', lesson, '');
+    const [{ n }] = (await p.cand.sql('SELECT (SELECT COUNT(*) FROM lesson WHERE due_on IS NOT NULL) + (SELECT COUNT(*) FROM chapter WHERE due_on IS NOT NULL) AS n')) as { n: number }[];
+    assert.equal(Number(n), 0, 'cleared: no due date stored');
+    const again = await compareAll(p);
+    const teacher = again.filter((r) => r.teacher);
+    const other = again.filter((r) => !r.teacher);
+    t.diagnostic(`AT-4.2 set ${date} on one lesson as Hadeer, cleared it; then ${teacher.length} teacher-page and ${other.length} other requests compared again (W5-main ${BASE_SHA.slice(0, 7)})`);
+    assert.equal(report(teacher), '', 'AT-4.1a again: every teacher page as W5-main, but the due card');
+    assert.ok(other.length >= 200, `AT-4.1b again: a full crawl (${other.length})`);
+    assert.equal(report(other), '', 'AT-4.1b again: every other page exactly as W5-main');
+  });
+
+  it('W6 AT-3.4b reads, learner side (small world): the learner home and the preview home W5-main\'s count plus one, every other page W5-main\'s count; with W6-a\'s dates the same counts', async (t) => {
+    const results = await noneYet();
+    const s = p.w.school;
+    const LEARNERS = new Set(['Salma', 'Omar C', 'Karim Test', 'Rana Test', 'Youssef']);
+    // A learner's home in every space they learn in (Salma learns in two).
+    const HOME = /^\/s\/[^/?#]+$/;
+    const PREVIEW_HOME = /^\/s\/[^/]+\/preview(\?|$)/;
+    const plusOne = (r: Result) => r.status === 200 && r.what.includes(' GET ') && ((LEARNERS.has(r.who) && HOME.test(r.path)) || PREVIEW_HOME.test(r.path));
+    const off = results.filter((r) => r.reads.cand !== r.reads.base + (plusOne(r) ? 1 : 0));
+    const homes = results.filter(plusOne);
+    t.diagnostic(`AT-3.4b small world: ${results.length} requests counted; ${homes.length} learner and preview homes at W5-main's count plus one (e.g. Salma ${JSON.stringify(homes.find((r) => r.who === 'Salma')?.reads)}), every other page W5-main's count`);
+    assert.ok(homes.some((r) => r.who === 'Salma') && homes.some((r) => r.who === 'Amal') && homes.some((r) => r.who === 'Hadeer'), 'the learner home and both previews were counted');
+    assert.equal(off.slice(0, 5).map((r) => `${r.what}: W5-main ${r.reads.base}, candidate ${r.reads.cand}`).join('\n'), '', 'plus exactly one on the learner and preview homes, W5-main\'s count everywhere else');
+    // W6-a's dates on the candidate (the clock pinned first, everyone signed in again after): the same counts.
+    const cw = { ...p.w, p: { ...p.w.p, url: p.cand.url, sql: p.cand.sql } } as Wave1World;
+    t.diagnostic(`instant ${await clockAt(cw, AT.noon)}`);
+    await withW6a(cw);
+    const fresh = {
+      Salma: await signedIn(p.cand.url, SALMA.username, SALMA.password),
+      Amal: await signedIn(p.cand.url, ADMIN.username, ADMIN.password),
+      Hadeer: await signedIn(p.cand.url, HADEER.username, HADEER.password),
+    };
+    const pages: [keyof typeof fresh, string][] = [
+      ['Salma', `/s/${s.id}`], ['Salma', `/s/${s.id}/learn/${s.math}`], ['Amal', `/s/${s.id}/learn/${s.math}`], ['Hadeer', `/s/${s.id}/learn/${s.math}`],
+      ['Amal', `/s/${s.id}/preview?from=home`], ['Hadeer', `/s/${s.id}/preview?from=home`],
+      ['Amal', `/s/${s.id}/preview/learn/${s.math}?from=home`], ['Hadeer', `/s/${s.id}/preview/learn/${s.math}?from=home`],
+    ];
+    for (const [who, path] of pages) {
+      const before = results.find((r) => r.who === who && r.path === path && r.what.includes(' GET '));
+      assert.ok(before, `${who} ${path} was counted without dates`);
+      await fresh[who].post('/account/language', { lang: 'en' });
+      const m = await measure(p.cand, fresh[who], path);
+      assert.equal(m.status, 200, `${who} ${path}`);
+      assert.equal(m.reads, before.reads.cand, `${who} ${path}: with due dates the same count as without (${before.reads.cand})`);
+      if (path.endsWith(`/s/${s.id}`) || path.includes('/preview?')) assert.ok(todoOf(m.body), `${who} ${path}: the block is there with dates`);
+    }
+    const salmaBase = await measure(p.base, p.people.find((x) => x.who === 'Salma')!.base, `/s/${s.id}`);
+    const salmaCand = await measure(p.cand, fresh.Salma, `/s/${s.id}`);
+    t.diagnostic(`AT-3.4b W6-a figures: ${figures(salmaCand, salmaBase, p.cand.worker.sqlite)}`);
+  });
+});
+
+/** One GET under the statement spy, with every statement's bound parameters. */
+async function measure(t: Twin, c: Client, path: string) {
+  const log: { sql: string; params: unknown[] }[] = [];
+  t.worker.setHooks({ seen: (sql, params) => void log.push({ sql, params }) });
+  const res = await c.get(path);
+  const body = await res.text();
+  await t.worker.settle();
+  t.worker.setHooks({});
+  const todo = log.filter((l) => /^\s*WITH (todo_chapter|item) AS/.test(l.sql));
+  return { status: res.status, body, bytes: Buffer.byteLength(body), reads: log.filter((l) => READ.test(l.sql)).length, maxParams: Math.max(...log.map((l) => l.params.length)), todo: todo.length === 1 ? todo[0] : null, statements: log };
+}
+
+type Measured = Awaited<ReturnType<typeof measure>>;
+
+/** The AT-3.4b figures of one home: rows returned by the to-do statement, largest bound-parameter count, HTML growth over W5-main's home. */
+function figures(m: Measured, base: Measured, sqlite: DatabaseSync, rowsRead?: number): string {
+  const rows = m.todo ? (sqlite.prepare(m.todo.sql).all(...(m.todo.params as (string | number | null)[])).length) : 0;
+  return `reads ${m.reads} (W5-main ${base.reads}); to-do rows returned ${rows}${rowsRead === undefined ? '' : `, rows read ${rowsRead}`}; largest bound-parameter count ${m.maxParams}; home ${(m.bytes / 1024).toFixed(1)} KB vs W5-main ${(base.bytes / 1024).toFixed(1)} KB (growth ${((m.bytes - base.bytes) / 1024).toFixed(1)} KB)`;
+}
+
+describe('W6 AT-3.4b reads, learner side, load worlds: with W6-d and W6-e the home makes the small world\'s count; at W6-e at most 30 rows returned, at most 5,000 rows read, at most 20 bound parameters, at most 16 KB growth', { concurrency: false }, () => {
+  let p: Pair;
+  before(async () => {
+    p = await pair({ load: true });
+  });
+  after(() => p?.close());
+
+  it('W6 AT-3.4b load: W6-d and W6-e figures, rows read from a local D1 copy', async (t) => {
+    const load = p.load!;
+    const home = `/s/${load.id}`;
+    const lb = p.people.find((x) => x.who === 'Load learner')!;
+    const salma = p.people.find((x) => x.who === 'Salma')!;
+    // W5-main: the load learner's home on W5-d, and the small world's home, for the counts and the size bound.
+    const base = await measure(p.base, lb.base, home);
+    const smallBase = await measure(p.base, salma.base, `/s/${p.w.school.id}`);
+    const smallCand = await measure(p.cand, salma.cand, `/s/${p.w.school.id}`);
+    assert.equal(base.status, 200, 'W5-main: the load home');
+    assert.equal(smallCand.reads, smallBase.reads + 1, 'small world: W5-main\'s count plus one');
+    assert.equal(base.reads, smallBase.reads, 'W5-main: the load home makes the small home\'s count');
+    // The candidate's clock pinned (W6-c), then the load learner signed in there.
+    const cw = { ...p.w, p: { ...p.w.p, url: p.cand.url, sql: p.cand.sql } } as Wave1World;
+    t.diagnostic(`instant ${await clockAt(cw, AT.noon)}`);
+    const learner = await signedIn(p.cand.url, LOAD_LEARNER.username, LOAD_LEARNER.password);
+    const out: string[] = [];
+    // W6-d: 300 due lessons (D+1 and D+5).
+    await withW6d(p.cand.sql, load, dPlus);
+    const d = await measure(p.cand, learner, home);
+    assert.equal(d.status, 200);
+    assert.ok(todoOf(d.body), 'W6-d: the block');
+    assert.equal(d.reads, smallCand.reads, `W6-d: the small world's count (${smallCand.reads})`);
+    const dRead = await onLocalD1(p.cand.worker.sqlite, d.todo!);
+    out.push(`W6-d ${figures(d, base, p.cand.worker.sqlite, Number(dRead.meta.rows_read))}`);
+    // W6-e: all 300 lessons overdue, 150 dated chapters, 75 subjects in order.
+    await withW6e(p.cand.sql, load, dPlus);
+    const e = await measure(p.cand, learner, home);
+    assert.equal(e.status, 200);
+    assert.equal(e.reads, smallCand.reads, `W6-e: the small world's count (${smallCand.reads})`);
+    assert.ok(e.todo, 'W6-e: one to-do statement');
+    const eRead = await onLocalD1(p.cand.worker.sqlite, e.todo!);
+    const rows = p.cand.worker.sqlite.prepare(e.todo!.sql).all(...(e.todo!.params as (string | number | null)[])).length;
+    out.push(`W6-e ${figures(e, base, p.cand.worker.sqlite, Number(eRead.meta.rows_read))}`);
+    t.diagnostic(`AT-3.4b ${out.join('; ')}`);
+    assert.ok(typeof eRead.meta.rows_read === 'number', `local D1 reports rows_read (meta: ${JSON.stringify(eRead.meta)})`);
+    assert.equal(eRead.rows.length, rows, 'local D1 returns the same rows as the product\'s database');
+    assert.ok(rows <= 30, `W6-e: the to-do statement returns at most 30 rows (${rows})`);
+    assert.ok(Number(eRead.meta.rows_read) <= 5000, `W6-e: at most 5,000 rows read (${eRead.meta.rows_read})`);
+    assert.ok(e.maxParams <= 20, `W6-e: no statement has more than 20 bound parameters (${e.maxParams})`);
+    assert.ok(e.bytes <= base.bytes + 16 * 1024, `W6-e: the home at most W5-main's on W5-d plus 16 KB (${e.bytes} vs ${base.bytes})`);
+    const v = todoOf(e.body)!;
+    const overdue = v.groups.find((g) => g.key === 'overdue')!;
+    assert.equal(overdue.items.length, 10, 'W6-e: 10 overdue items drawn');
+    assert.ok(overdue.capped, 'W6-e: todoCapped at the end of the fold');
+  });
+});
+
+// ------------------------------------------------------------------ AT-3.1 ----
+
+/** The three group headings of the to-do block as a reader meets them (any count), in both languages. */
+const GROUP_WORDS: [string, RegExp][] = (['en', 'ar'] as const).flatMap((lang) => (['todoOverdue', 'todoToday', 'todoNext7'] as const).map((key): [string, RegExp] => [
+  `${lang} ${key}`,
+  new RegExp(UI[lang][key].replace(/[.*+?^$()|[\]\\]/g, '\\$&').replace('{days}', String(TODO_AHEAD_DAYS)).replace('{n}', '\\d+')),
+]));
+
+const visibleText = (body: string) => body.replace(/<style>[\s\S]*?<\/style>/g, ' ').replace(/<[^>]*>/g, ' ').replace(/&amp;/g, '&').replace(/\s+/g, ' ');
+
+/** Every page one client reaches from its home on one product (the candidate), as HTML. */
+async function crawlOne(c: Client, url: string, limit = 600): Promise<{ path: string; status: number; body: string }[]> {
+  const seen = new Set<string>();
+  const out: { path: string; status: number; body: string }[] = [];
+  const queue = ['/'];
+  while (queue.length && seen.size < limit) {
+    const path = queue.shift()!;
+    if (seen.has(path)) continue;
+    seen.add(path);
+    const res = await c.get(path);
+    if (res.status >= 300 && res.status < 400) {
+      await res.arrayBuffer();
+      const to = (res.headers.get('location') ?? '').replace(url, '');
+      if (to.startsWith('/') && keep(to)) queue.push(to);
+      continue;
+    }
+    if (!(res.headers.get('content-type') ?? '').startsWith('text/html')) {
+      await res.arrayBuffer();
+      continue;
+    }
+    const body = await res.text();
+    out.push({ path, status: res.status, body });
+    for (const m of body.matchAll(/(?:href|src)="(\/[^"#]*)/g)) {
+      const next = m[1].replace(/&amp;/g, '&');
+      if (!seen.has(next) && keep(next)) queue.push(next);
+    }
+  }
+  assert.ok(seen.size < limit, `the crawl ends before ${limit} pages`);
+  return out;
+}
+
+describe('W6 AT-3.1 no leak, no late flag for others: with W6-a and Salma\'s marks present, no guardian, owner, admin or publisher page shows a to-do block, a group word or a learner\'s to-do state; guardian and owner pages byte-identical to W5-main\'s without due dates', { concurrency: false }, () => {
+  let p: Pair;
+  before(async () => {
+    p = await pair();
+  });
+  after(() => p?.close());
+
+  it('W6 AT-3.1 Mona and the owner: every page as W5-main on the same world without due dates; Amal and Hadeer: no to-do block or group word on any page; Arabic and English', async (t) => {
+    const s = p.w.school;
+    // W6-a: its rows on both products, its dates on the candidate only (W5-main has no due_on); then Salma's marks on both.
+    await withW6a(p.w, { dates: false });
+    const cw = { ...p.w, p: { ...p.w.p, url: p.cand.url, sql: p.cand.sql } } as Wave1World;
+    // The test clock lives in the process, so a pin left by an earlier test in this file (AT-3.4b) is undone first.
+    assert.equal(await clockAt(cw, null), null, 'the real clock');
+    const a = await withW6a(cw);
+    // Both products run on the real clock here (a pinned clock on one side alone would change every date-dependent page),
+    // so W6-a's dates move by the same number of days to make D today: the groups are W6-a's.
+    const shift = Math.round((Date.parse(`${utcDatePlusDays(0)}T00:00:00Z`) - Date.parse(`${dPlus(0)}T00:00:00Z`)) / 86_400_000);
+    for (const table of ['lesson', 'chapter']) await p.cand.sql(`UPDATE ${table} SET due_on = date(due_on, '${shift >= 0 ? '+' : ''}${shift} days') WHERE due_on IS NOT NULL`);
+    const [{ n }] = (await p.cand.sql('SELECT (SELECT COUNT(*) FROM lesson WHERE due_on IS NOT NULL) + (SELECT COUNT(*) FROM chapter WHERE due_on IS NOT NULL) AS n')) as { n: number }[];
+    assert.ok(Number(n) >= 10, `W6-a's dates on the candidate (${n})`);
+    const out: Result[] = [];
+    const salma = p.people.find((x) => x.who === 'Salma')!;
+    for (const lesson of [a.L.L1, a.L.L2]) {
+      const posted = await same(p, salma, 'POST', `/s/${s.id}/read/${lesson}/done`, out, { state: 'done' });
+      assert.equal(posted.res.status, 303, `Salma marks ${lesson} done on both`);
+    }
+    const salmaHome = await (await salma.cand.get(`/s/${s.id}`)).text();
+    assert.ok(todoOf(salmaHome), 'Salma has her to-do block on the candidate (the dates are there)');
+    assert.ok(GROUP_WORDS.filter(([, re]) => re.test(visibleText(salmaHome))).length >= 2, 'positive control: the group words are found on Salma\'s own home');
+    // Guardian and owner: byte-identical to W5-main (after the AT-4 normalising).
+    const compared: Result[] = [];
+    for (const lang of ['ar', 'en'] as const) {
+      for (const who of p.people.filter((x) => x.who === 'Mona' || x.who === 'owner')) {
+        await same(p, who, 'POST', '/account/language', compared, { lang });
+        const pages = await crawlBoth(p, who, compared);
+        assert.ok(pages.length >= 3, `${who.who} (${lang}): pages reached`);
+      }
+    }
+    assert.equal(report(compared), '', 'every guardian and owner page answers exactly as W5-main does without due dates');
+    // Admin and publisher (the candidate alone; their own subject pages show due lines, AT-3.2): no block, no group word.
+    // The preview is the made-up learner's view and shows its block by design (section 5.6, AT-3.3); it is left out here.
+    let staffPages = 0;
+    for (const lang of ['ar', 'en'] as const) {
+      for (const who of p.people.filter((x) => x.who === 'Amal' || x.who === 'Hadeer')) {
+        await who.cand.post('/account/language', { lang });
+        for (const page of (await crawlOne(who.cand, p.cand.url)).filter((x) => !x.path.includes('/preview'))) {
+          staffPages++;
+          assert.ok(!/\bid="todo"/.test(page.body), `${who.who} ${lang} ${page.path}: no to-do block`);
+          const text = visibleText(page.body);
+          assert.deepEqual(GROUP_WORDS.filter(([, re]) => re.test(text)).map(([name]) => name), [], `${who.who} ${lang} ${page.path}: no group word`);
+        }
+      }
+    }
+    const per: Record<string, number> = {};
+    for (const r of compared) per[r.who] = (per[r.who] ?? 0) + 1;
+    t.diagnostic(`AT-3.1 with W6-a's ${n} dates and Salma's marks: ${compared.length} guardian and owner requests byte-identical to W5-main ${BASE_SHA.slice(0, 7)} (${JSON.stringify(per)}); ${staffPages} admin and publisher pages without a to-do block or group word`);
+    assert.ok(staffPages >= 50, `the staff crawl reached their pages (${staffPages})`);
   });
 });

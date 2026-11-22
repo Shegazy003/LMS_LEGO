@@ -363,3 +363,44 @@ export function annHits(body: string, words = annWords()): string[] {
   if (/\bid="announcements"/.test(body)) hits.push('the announcement block id="announcements"');
   return hits;
 }
+
+// LMS wave 6 (product-contract v2 on PIL-257, AT-3.1 and section 11): a
+// learner's to-do list reaches that learner only, never a guardian. The scans
+// gain the new learner ui.ts values (and the block and due-line markers) in
+// their forbidden lists for guardian pages, and pass with due dates present.
+
+/** The ui.ts keys of the learner's to-do block and outline due lines that a page shows as words. */
+export const W6_KEYS = ['todoTitle', 'todoOverdue', 'todoToday', 'todoNext7', 'todoMore', 'todoCapped', 'todoItemLine', 'dueOn'] as const;
+
+/** Due dates while the viewers look around (written directly, as the contract's W6-a does): on A's Arabic, one lesson overdue
+ * and the chapter due in 3 days; on Mathematics, one lesson due today. A sees her to-do block on her home. Call after withLocks. */
+export async function withDueDates(w: PrivacyWorld): Promise<void> {
+  const arabic = await w.p.sql(`SELECT l.id AS lesson, c.id AS chapter FROM lesson l JOIN chapter c ON c.id = l.chapter_id WHERE c.subject_id = '${w.content.arabic}' AND l.removed_at IS NULL ORDER BY c.position, l.position LIMIT 1`);
+  const math = await w.p.sql(`SELECT l.id AS lesson FROM lesson l JOIN chapter c ON c.id = l.chapter_id WHERE c.subject_id = '${w.content.math}' AND l.removed_at IS NULL ORDER BY c.position, l.position LIMIT 1`);
+  if (arabic.length !== 1 || math.length !== 1) throw new Error('a lesson in Arabic and in Mathematics');
+  await w.p.sql(`UPDATE lesson SET due_on = '${utcDatePlusDays(-2)}' WHERE id = '${arabic[0].lesson}'`);
+  await w.p.sql(`UPDATE chapter SET due_on = '${utcDatePlusDays(3)}' WHERE id = '${arabic[0].chapter}'`);
+  await w.p.sql(`UPDATE lesson SET due_on = '${utcDatePlusDays(0)}' WHERE id = '${math[0].lesson}'`);
+  const a = new Client(w.p.url);
+  if ((await a.post('/signin', { username: A.username, password: A.password })).status !== 302) throw new Error('A signs in');
+  const home = await (await a.get(`/s/${w.spaceId}`)).text();
+  if (!home.includes('id="todo"')) throw new Error('A sees her to-do block on her home');
+}
+
+/** The to-do and due words a guardian must never meet, in both languages (the longest fixed part of each key). */
+export function todoWords(): Map<string, string> {
+  const words = new Map<string, string>();
+  for (const lang of ['en', 'ar'] as const) {
+    for (const key of W6_KEYS) words.set(`${lang} ${key}`, UI[lang][key].split(/{[^}]*}/).map((x) => x.trim()).sort((x, y) => y.length - x.length)[0]);
+  }
+  return words;
+}
+
+/** Every to-do or due word on a page, in the text a person reads, and the block and due-line markers anywhere. */
+export function todoHits(body: string, words = todoWords()): string[] {
+  const text = visible(body);
+  const hits = [...words].filter(([, value]) => text.includes(value)).map(([name]) => name);
+  if (/\bid="todo"/.test(body)) hits.push('the to-do block id="todo"');
+  if (/\bclass="due-(line|date)"/.test(body)) hits.push('a due line or date');
+  return hits;
+}

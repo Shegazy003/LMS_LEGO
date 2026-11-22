@@ -1496,9 +1496,57 @@ jobs:
       - name: W6 AT-5.5 the README and Later on export and backup
         if: success() || failure()
         run: npm run test:wave3b -- --test-name-pattern='^W6 AT-5\.5 ' test/wave6/at5.test.ts
-      - name: W6 deploy note the README says W6-1a is not deployed on its own
+      - name: W6 AT-2.1 groups, counts, order, fold, item lines and links (Salma, W6-a, Arabic and English)
         if: success() || failure()
-        run: npm run test:wave3b -- --test-name-pattern='^W6 deploy note' test/wave6/at5.test.ts
+        run: npm run test:wave3b -- --test-name-pattern='^W6 AT-2\.1 ' test/wave6/at2.test.ts
+      - name: W6 AT-2.2 done empties it; the block is absent when nothing is left
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W6 AT-2\.2 ' test/wave6/at2.test.ts
+      - name: W6 AT-2.3 day boundaries at midnight UTC
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W6 AT-2\.3 ' test/wave6/at2.test.ts
+      - name: W6 AT-2.4 changes by the teacher show at once
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W6 AT-2\.4 ' test/wave6/at2.test.ts
+      - name: W6 AT-2.5 removal and access take items off the list
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W6 AT-2\.5 ' test/wave6/at2.test.ts
+      - name: W6 AT-2.6 everyone in the subject, each with their own marks; locked chapters
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W6 AT-2\.6 ' test/wave6/at2.test.ts
+      - name: W6 AT-2.7 outline due lines; nothing else in the outline changes
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W6 AT-2\.7 ' test/wave6/at2.test.ts
+      - name: W6 AT-2.8 kits and languages
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W6 AT-2\.8 ' test/wave6/at2.test.ts
+      - name: W6 AT-3.2 reading staff see due lines on their own subject page, no to-do block on their homes
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W6 AT-3\.2 ' test/wave6/at3.test.ts
+      - name: W6 AT-3.3 (a) to (d) the preview home and subject page show the list exactly, and no preview request writes
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W6 AT-3\.3 ' test/wave6/at3.test.ts
+      - name: W6 AT-3.3 (e) the wave 3a preview journey (W3a AT-3.1 to AT-3.5) passes with due dates present
+        if: success() || failure()
+        run: npm run test:wave3b -- test/wave3a/at3.test.ts
+      - name: UX-62 home to-do order, groups, fold and empty case
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-62 home to-do order' test/wave6/ux-learner.test.ts
+      - name: UX-62 chapter link opens its chapter
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-62 chapter link' test/wave6/ux-learner.test.ts
+      - name: UX-62 capped group line
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-62 capped group line' test/wave6/ux-learner.test.ts
+      - name: UX-62 continue stays on the first phone screen with to-do
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-62 continue stays' test/wave6/ux-learner.test.ts
+      - name: UX-63 outline due lines
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-63 ' test/wave6/ux-learner.test.ts
+      - name: UX-67 preview to-do equals learner
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-67 ' test/wave6/ux-learner.test.ts
       - name: UX-59 due card place, order and labels
         if: success() || failure()
         run: npm run test:wave3b -- --test-name-pattern='^UX-59 ' test/wave6/ux.test.ts
@@ -1510,7 +1558,7 @@ jobs:
         run: npm run test:wave3b -- --test-name-pattern='^UX-61 ' test/wave6/ux.test.ts
       - name: UX-64 language check by key (three kits)
         if: success() || failure()
-        run: npm run test:wave3b -- --test-name-pattern='^UX-64 language check by key' test/wave6/ux.test.ts
+        run: npm run test:wave3b -- --test-name-pattern='^UX-64 language check by key' test/wave6/ux.test.ts test/wave6/ux-learner.test.ts
       - name: UX-64 deny list, pronouns and placeholder neighbours
         if: success() || failure()
         run: npm run test:wave3b -- --test-name-pattern='^UX-64 deny list' test/wave6/ux.test.ts
@@ -1522,10 +1570,10 @@ jobs:
         run: npm run test:wave3b -- --test-name-pattern='^UX-64 ahead-days' test/wave6/ux.test.ts
       - name: UX-65 states table
         if: success() || failure()
-        run: npm run test:wave3b -- --test-name-pattern='^UX-65 ' test/wave6/ux.test.ts
+        run: npm run test:wave3b -- --test-name-pattern='^UX-65 ' test/wave6/ux.test.ts test/wave6/ux-learner.test.ts
       - name: UX-66 widths, targets, contrast and keyboard
         if: success() || failure()
-        run: npm run test:wave3b -- --test-name-pattern='^UX-66 ' test/wave6/ux.test.ts
+        run: npm run test:wave3b -- --test-name-pattern='^UX-66 ' test/wave6/ux.test.ts test/wave6/ux-learner.test.ts
       # AT-4.1a, AT-4.1b and AT-3.4a, the base comparison: W5-main f0125980 (pinned) runs beside this commit, in the same process,
       # on a copy of the same database (test/wave6/base.test.ts reads it from LMS_BASE_ROOT).
       - name: Check out W5-main f0125980 for the base comparison (code only, never run but by the comparison)
@@ -1550,6 +1598,26 @@ jobs:
         env:
           LMS_BASE_ROOT: ${{ github.workspace }}/.base-w6
         run: npm run test:wave3b -- --test-name-pattern='^W6 AT-3\.4a ' test/wave6/base.test.ts
+      - name: W6 AT-4.2 after setting one date and clearing it, AT-4.1a and AT-4.1b pass again against W5-main f0125980
+        if: success() || failure()
+        env:
+          LMS_BASE_ROOT: ${{ github.workspace }}/.base-w6
+        run: npm run test:wave3b -- --test-name-pattern='^W6 AT-4\.2 ' test/wave6/base.test.ts
+      - name: W6 AT-3.1 no leak, no late flag for others; guardian and owner pages as W5-main f0125980, no block on staff pages
+        if: success() || failure()
+        env:
+          LMS_BASE_ROOT: ${{ github.workspace }}/.base-w6
+        run: npm run test:wave3b -- --test-name-pattern='^W6 AT-3\.1 ' test/wave6/base.test.ts
+      - name: W6 AT-3.4b reads, learner side (small world) against W5-main f0125980
+        if: success() || failure()
+        env:
+          LMS_BASE_ROOT: ${{ github.workspace }}/.base-w6
+        run: npm run test:wave3b -- --test-name-pattern='^W6 AT-3\.4b reads' test/wave6/base.test.ts
+      - name: W6 AT-3.4b load at W6-d and W6-e, rows returned, rows read (local D1), bound parameters and home growth printed
+        if: success() || failure()
+        env:
+          LMS_BASE_ROOT: ${{ github.workspace }}/.base-w6
+        run: npm run test:wave3b -- --test-name-pattern='^W6 AT-3\.4b load' test/wave6/base.test.ts
       - name: Upload evidence (wave 6 screenshots)
         if: always() && hashFiles('evidence/**') != ''
         uses: actions/upload-artifact@v4

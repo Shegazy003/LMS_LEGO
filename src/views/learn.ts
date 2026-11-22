@@ -9,6 +9,7 @@
 // lesson ends with Next and Previous in the outline’s order; the activity
 // notice is told in full once, then folded.
 import { html, raw } from 'hono/html';
+import { TODO_AHEAD_DAYS, TODO_MAX_PER_GROUP, type TodoGroup, type TodoItem } from '../due.ts';
 import type { Label, Lang, LabelKey } from '../labels.ts';
 import type { CardProgress, ChapterLocks, ContinueArea, LearnerCard, LessonRow, LockReason, MaterialKind, MaterialRow, OutlineChapter, SequenceStep } from '../learning.ts';
 import { externalUrl } from '../links.ts';
@@ -95,6 +96,8 @@ export function learnerHome(
   t: Label, lang: Lang, space: SpaceView, displayName: string, cards: LearnerCard[], notice: NoticeForm | null = null,
   where: { area: ContinueArea; progress: Map<string, CardProgress> } | null = { area: { kind: 'first' }, progress: new Map() },
   announcements: Html | string = '',
+  /** LMS wave 6 (section 5.5): the to-do block, after "Continue" (empty: no block). */
+  todo: Html | string = '',
 ): Html {
   // The continue area (W2-2, section 8.1) is on every learner home and every
   // preview home, also with nothing assigned (the first-time state, AT-5.4);
@@ -109,8 +112,69 @@ ${cards.length
   const body = html`<p id="greeting">${t('welcome', { name: displayName })}</p>
 ${notice ? activityNotice(t, notice, learnerUrl(space), Boolean(space.preview)) : ''}
 ${where ? html`${continueArea(t, lang, space, where.area)}
-` : ''}${announcements}${list}`;
+` : ''}${todo}${announcements}${list}`;
   return spacePage(t, lang, space, space.name, body, { current: 'home', wide: true });
+}
+
+// ------------------------------------------------------------ to-do list ----
+// LMS wave 6, W6-1b (product-contract v2 on PIL-257, sections 5.3 and 5.5;
+// ux-plan UX-62, UX-64): the learner's own to-do block on their home, right
+// after "Continue where you stopped". Absent when no group has an item, so a
+// home without due dates is exactly today's. Overdue is told by its heading
+// and its place, never by colour or a badge. The CSS is in layout.ts's
+// `/* wave 6 due dates */` block.
+
+/** How many items of a group show before its fold (section 5.3). */
+const TODO_SHOWN = 3;
+
+/** A date as the product shows dates: Latin digits, left to right (as exam dates). */
+const dueDate = (iso: string) => html`<bdi dir="ltr" class="due-date"><time datetime="${iso}">${iso}</time></bdi>`;
+
+/** "Due <date>" (dueOn), the outline's line (UX-63). */
+const dueLine = (t: Label, iso: string) => withMarkup(t, 'dueOn', { date: dueDate(iso) });
+
+const TODO_HEADING = { overdue: 'todoOverdue', today: 'todoToday', next: 'todoNext7' } as const;
+
+/** One item (UX-62): the title link (a lesson to its page, a chapter to the outline with that chapter open), then its line, and for a chapter wave 2's done count
+ * on wave 2's rule: drawn from the first mark on (as the outline's and the card's lines), so never with no marks and never in the preview. */
+function todoItem(t: Label, lang: Lang, space: SpaceView, item: TodoItem): Html {
+  const href = item.kind === 'lesson' ? lessonHref(space, item.id) : subjectHref(space, item.subjectId, item.id);
+  const line = withMarkup(t, 'todoItemLine', { kind: html`${t(item.kind)}`, subjectTitle: html`<bdi>${item.subjectTitle}</bdi>`, date: dueDate(item.dueOn) });
+  const progress = item.progress && item.progress.done > 0 ? html`
+<p class="todo-progress">${doneLine(t, lang, item.progress.done, item.progress.total)}</p>` : '';
+  return html`<li class="todo-item" data-kind="${item.kind}" data-item="${item.id}" data-subject="${item.subjectId}"><a class="todo-link" href="${href}"><bdi>${item.title}</bdi></a>
+<p class="todo-line">${line}</p>${progress}</li>`;
+}
+
+/** One group (UX-62): its heading with the full count, the first three items, then up to seven more in a closed native fold that ends with todoCapped when the group has more than it draws. */
+function todoGroup(t: Label, lang: Lang, space: SpaceView, g: TodoGroup): Html {
+  const heading = t(TODO_HEADING[g.key], { n: String(g.count), days: String(TODO_AHEAD_DAYS) });
+  const shown = g.items.slice(0, TODO_SHOWN);
+  const rest = g.items.slice(TODO_SHOWN);
+  const capped = g.count > TODO_MAX_PER_GROUP
+    ? html`
+<p class="todo-capped">${t('todoCapped', { n: String(g.count - TODO_MAX_PER_GROUP), subject: t('subject').toLocaleLowerCase(lang) })}</p>`
+    : '';
+  const fold = rest.length
+    ? html`
+<details class="todo-more"><summary>${t('todoMore', { n: String(rest.length) })}</summary>
+<ul class="todo-list">${rest.map((i) => todoItem(t, lang, space, i))}</ul>${capped}
+</details>`
+    : '';
+  return html`<div class="todo-group" data-group="${g.key}">
+<h3 id="todo-${g.key}">${heading}</h3>
+<ul class="todo-list">${shown.map((i) => todoItem(t, lang, space, i))}</ul>${fold}
+</div>`;
+}
+
+/** The to-do block (section 5.3, UX-62): nothing at all when no group has an item. */
+export function todoBlock(t: Label, lang: Lang, space: SpaceView, groups: TodoGroup[]): Html | string {
+  if (!groups.length) return '';
+  return html`<section id="todo" class="card todo-block" aria-labelledby="todo-heading">
+<h2 id="todo-heading">${t('todoTitle')}</h2>
+${groups.map((g) => todoGroup(t, lang, space, g))}
+</section>
+`;
 }
 
 /** A tick (LMS wave 2, UX-28): a sign, never a control, with its words for screen readers; `data-done` marks it for the privacy scans. */
@@ -127,6 +191,11 @@ function chapterBlock(t: Label, lang: Lang, space: SpaceView, ch: OutlineChapter
     const link = lock
       ? html`<span class="lock-item" data-lesson="${l.id}"><span class="sr-only">${t('lockedTag')}</span><bdi>${l.title}</bdi></span>`
       : html`<a data-lesson="${l.id}" href="${lessonHref(space, l.id)}"><bdi>${l.title}</bdi></a>`;
+    // LMS wave 6 (section 5.5, UX-63): a dated lesson's line after its title, for any date and also when locked; an undated row is today's.
+    if (l.due_on) {
+      const due = html`<span class="due-line">${dueLine(t, l.due_on)}</span>`;
+      return done.has(l.id) ? html`<li class="is-done due-dated">${tick(t, 'lesson')}${link}${due}</li>` : html`<li class="due-dated">${link}${due}</li>`;
+    }
     return done.has(l.id) ? html`<li class="is-done">${tick(t, 'lesson')}${link}</li>` : html`<li>${link}</li>`;
   });
   const list = entries.length
@@ -136,7 +205,7 @@ function chapterBlock(t: Label, lang: Lang, space: SpaceView, ch: OutlineChapter
   // Inside the summary, so it shows while folded: the tag and the reason with its count. No control inside a summary.
   const lockLine = lock ? html`<span class="lock-line">${lockTag(t)} <span class="lock-reason">${lockReasonText(t, lang, lock)}</span></span>` : '';
   return html`<details class="card fold${lock ? ' locked' : ''}" id="chapter-${ch.id}" data-chapter="${ch.id}"${lock ? html` data-locked` : ''}${open ? html` open` : ''}>
-  <summary><span class="mark" aria-hidden="true"></span><span class="head"><span class="muted">${t('chapter')}</span> <bdi class="title">${ch.title}</bdi>${allDone}</span> <span class="count muted">${lessonCount(t, lang, ch.lessons.length)}</span>${lockLine}</summary>
+  <summary><span class="mark" aria-hidden="true"></span><span class="head"><span class="muted">${t('chapter')}</span> <bdi class="title">${ch.title}</bdi>${allDone}${ch.due_on ? html`<span class="due-line">${dueLine(t, ch.due_on)}</span>` : ''}</span> <span class="count muted">${lessonCount(t, lang, ch.lessons.length)}</span>${lockLine}</summary>
   ${list}
 </details>`;
 }

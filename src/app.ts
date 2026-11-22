@@ -22,11 +22,11 @@ import { LANGS, LANG_COOKIE, deviceLang, langChoice, makeLabel, type Concept, ty
 import { cleanDisplayName, cleanItemName, isUsername, typedUsername } from './names.ts';
 import { readLabels, switchedKit } from './kits/edit.ts';
 import {
-  chapterLocks, continueWhere, findFile, findLesson, learnerAnnouncements, learnerCards, lessonMaterials, lessonSequence, outline, previewAnnouncements, previewCards,
+  chapterLocks, continueWhere, findFile, findLesson, learnerAnnouncements, learnerCards, lessonMaterials, lessonSequence, outline, previewAnnouncements, previewCards, previewTodo,
   previewableSubject, readableSubject,
   subjectsForPublisher, type ChapterLocks, type OutlineChapter, type Previewer, type SubjectRow,
 } from './learning.ts';
-import { doneLessonIds, isDone, markDone, markNotDone, markOrder, readsAsLearner, signedInLearner } from './progress.ts';
+import { doneLessonIds, isDone, learnerTodo, markDone, markNotDone, markOrder, readsAsLearner, signedInLearner } from './progress.ts';
 import { previewFrame, type PreviewScope } from './views/preview.ts';
 import { isGuardianHere, isLearnerHere, link, linkedLearner, linkedLearners, linksOf, subjectsSeenBy, subjectsSeenByLinked, unlink } from './guardians.ts';
 import { activityOf, activitySetting, lastOpenedOfLinked, linkedSince, recordOpen, recordingSince, switchOff, switchOn, type ActivitySetting } from './activity.ts';
@@ -41,7 +41,7 @@ import {
 import {
   announcementCard, announcementEditPage, announcementRemovePage, homeBlock, subjectBlock, type AnnRefusal, type AnnStatus,
 } from './views/announcements.ts';
-import { DUE_MAX_DAYS, dueChoice, dueItem, dueOutline, isDueKind, writeDue, type DueChapter, type DueWriter } from './due.ts';
+import { DUE_MAX_DAYS, TODO_MAX_PER_GROUP, dueChoice, dueItem, dueOutline, isDueKind, todoGroups, todoWindow, writeDue, type DueChapter, type DueWriter } from './due.ts';
 import { dueCard, duePage, type DueRefusal, type DueStatus } from './views/due.ts';
 import { normaliseCountryCode, normaliseMobile } from './phone.ts';
 import {
@@ -64,7 +64,7 @@ import { accountPage, languagePage } from './views/account.ts';
 import { peoplePage, setPage, setsPage, topicPage, topicsPage, type AppointForm, type ItemNotice, type OrderStatus } from './views/admin.ts';
 import { recoverPage, recoveryCodePage, setupPage, signInPage } from './views/auth.ts';
 import { layout, messagePage, type Html } from './views/layout.ts';
-import { learnerHome, lessonPage, lockedLessonPage, spacePage, subjectPage, type DoneBlock, type OpenChange } from './views/learn.ts';
+import { learnerHome, lessonPage, lockedLessonPage, spacePage, subjectPage, todoBlock, type DoneBlock, type OpenChange } from './views/learn.ts';
 import {
   kitConfirmPage, newSpacePage, ownerHome, ownerSpacePage, type AdminRow, type AppointValues, type NewSpaceValues, type OwnerSpaceExtra,
 } from './views/owner.ts';
@@ -874,7 +874,10 @@ async function renderLearnerHome(c: C) {
   const where = learner ? continueWhere(cards, await markOrder(c.get('db'), signedInLearner(c))) : null;
   // LMS wave 5 (section 5.3): the newest announcements of the last 30 days across these cards' subjects, one more read.
   const ann = learner ? homeBlock(t, lang, view, await learnerAnnouncements(c.get('db'), view.id, user.id, homeSince(now()), ANN_HOME)) : '';
-  return page(c, learnerHome(t, lang, view, user.display_name, cards, notice, where, ann));
+  // LMS wave 6 (sections 5.1 to 5.4): this learner's own to-do list, one more read, every group from one instant.
+  const day = todoWindow(now());
+  const todo = learner ? todoBlock(t, lang, view, todoGroups(await learnerTodo(c.get('db'), signedInLearner(c), day.today, day.last, TODO_MAX_PER_GROUP))) : '';
+  return page(c, learnerHome(t, lang, view, user.display_name, cards, notice, where, ann, todo));
 }
 
 // The guardian home (release 2, R2-a): every learner actively linked to this
@@ -1047,7 +1050,10 @@ app.get('/s/:spaceId/preview', async (c) => {
   const notice = await previewNotice(c, previewer);
   // LMS wave 5 (section 5.4): the home block of a made-up learner assigned exactly these cards' subjects, one more read.
   const ann = homeBlock(t, lang, view, await previewAnnouncements(c.get('db'), view.id, previewer, homeSince(now()), ANN_HOME));
-  return page(c, learnerHome(t, lang, view, t('learner'), cards, notice, undefined, ann));
+  // LMS wave 6 (section 5.6): the to-do block of that made-up learner, with no done marks, one more read.
+  const day = todoWindow(now());
+  const todo = todoBlock(t, lang, view, todoGroups(await previewTodo(c.get('db'), view.id, previewer, day.today, day.last, TODO_MAX_PER_GROUP)));
+  return page(c, learnerHome(t, lang, view, t('learner'), cards, notice, undefined, ann, todo));
 });
 
 app.get('/s/:spaceId/preview/results', async (c) => {

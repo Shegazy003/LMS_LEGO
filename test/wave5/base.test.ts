@@ -314,9 +314,12 @@ function extraReads(r: Result, spaces: string[]): number {
   if (!space) return 0;
   const rest = path.slice(`/s/${space}`.length);
   // The learner home: the space home of a person whose main role there is learner (Salma, Omar C, Karim Test, Youssef; the load learner).
-  if (rest === '' && ['Salma', 'Omar C', 'Karim Test', 'Youssef', 'Load learner'].includes(r.who)) return 1;
+  // LMS wave 6 (W6-1b, product-contract v2 on PIL-257, AT-3.4b): the learner home and the preview home also read the
+  // to-do list once (W5-main's count plus exactly one). Named in CANDIDATE READY (outside section 11; the Lead decides).
+  if (rest === '' && ['Salma', 'Omar C', 'Karim Test', 'Youssef', 'Load learner'].includes(r.who)) return 1 + 1;
   if (/^\/learn\/[^/]+$/.test(rest)) return 1; // the subject's /learn page (learner, admin, publisher)
-  if (rest === '/preview' || /^\/preview\/learn\/[^/]+$/.test(rest)) return 1; // both preview pages
+  if (rest === '/preview') return 1 + 1; // the preview home (and wave 6's to-do read)
+  if (/^\/preview\/learn\/[^/]+$/.test(rest)) return 1; // the preview subject page
   if (/^\/publish\/edit\/[^/]+$/.test(rest) || /^\/admin\/topics\/[^/]+$/.test(rest)) return 1; // the editor and the subject admin page (the card's list)
   return 0;
 }

@@ -183,6 +183,16 @@ async function run(): Promise<Journey> {
   ] as const) {
     await world.p.sql(`INSERT INTO announcement (id, space_id, subject_id, body, author_role, created_at) VALUES ('w3a-ann-${n}', '${world.school.id}', '${subject}', '${body}', '${role}', '${new Date(recent + n * 1000).toISOString()}')`);
   }
+  // LMS wave 6 (contract v2 on PIL-257, W6 AT-3.3e): the journey runs with due dates present (overdue, today, the next
+  // days and a later one, on lessons and a chapter), so the previews show the to-do block and the due lines, and the
+  // snapshots hold the dated rows.
+  const day = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
+  for (const [table, id, n] of [
+    ['lesson', world.school.lessons['Comparing fractions'], -3], ['lesson', world.school.lessons['Adding fractions'], 0],
+    ['lesson', world.school.lessons['Reading decimals'], 2], ['chapter', world.school.chapters.Percent, 4], ['chapter', world.school.chapters.Review, 30],
+  ] as const) {
+    await world.p.sql(`UPDATE ${table} SET due_on = '${day(n)}' WHERE id = '${id}'`);
+  }
   const ownerId = String((await world.p.sql(`SELECT id FROM user WHERE username = '${OWNER.username}'`))[0].id);
   const j: Journey = {
     before: {}, after: {}, schemaBefore: '', schemaAfter: '', previewers: new Set([world.ids[ADMIN.username], world.ids[HADEER.username], ownerId]),

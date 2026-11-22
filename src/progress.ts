@@ -17,7 +17,7 @@
 import type { Context } from 'hono';
 import type { AppEnv, CurrentSpace } from './app-env.ts';
 import type { Db } from './db.ts';
-import { readableSubject, type SubjectRow } from './learning.ts';
+import { readableSubject, type SubjectRow, type TodoRow } from './learning.ts';
 
 /** Whether this person reads a subject readableSubject gave them as a learner
  * (section 4): an active learner here, and the subject published and assigned
@@ -110,4 +110,85 @@ export async function markOrder(db: Db, who: Learner): Promise<string[][]> {
   const groups: string[][] = [];
   for (const r of rows) (groups[Number(r.recency) - 1] ??= []).push(r.lesson_id);
   return groups.filter(Boolean);
+}
+
+/** LMS wave 6 (product-contract v2 on PIL-257, sections 5.1 to 5.3, 6.1): the
+ * to-do list of a learner in one statement with five bound parameters, numbered
+ * so that each is bound once (?1 the space and ?2 the learner, both from the
+ * Learner, as every statement here; ?3 today, ?4 the last day, ?5 the cap; no
+ * list of subject ids). Items: each lesson and each chapter not
+ * removed with a due date up to `last`, of a subject on the cards of this learner
+ * (the readable-subject rule of learnerCards, written out whole, word for word: the
+ * space guard reads every statement as written), that this learner can act on
+ * now: a lesson without their done mark, a chapter with a shown lesson
+ * without one; in a subject with chapters in order, only while the chapter
+ * of the item is open, which is the rule of chapterLocks (no earlier shown chapter has a
+ * shown lesson without their mark; outline order is position, title, id).
+ * Groups by the one `today`: before it, equal, after; within a group due date,
+ * subject title, then outline order; at most `cap` rows per group, each with
+ * the full count of its group. test/wave6/at2.test.ts compares every decision with
+ * chapterLocks itself. Rows read (AT-3.4b, at most 5,000 in the largest test
+ * world): chapters and subjects are looked up by their primary key (`+x.space_id`
+ * keeps the space check as a filter, not an index choice); a lock reads only the
+ * chapters up to the position of the item; the lesson and done counts of a chapter come
+ * from one pass, packed into one number (lessons × 1000000 + done; a chapter
+ * holds far fewer than a million lessons); the rank and the group count share one window. */
+export function learnerTodo(db: Db, who: Learner, today: string, last: string, cap: number): Promise<TodoRow[]> {
+  return db.all<TodoRow>(
+    `WITH todo_chapter AS MATERIALIZED (
+       SELECT c.id, c.title, c.due_on, c.position, s.id AS subject_id, s.title AS subject_title,
+              (SELECT COUNT(*) * 1000000 + COUNT(dd.lesson_id) FROM lesson tl
+                 LEFT JOIN done_mark dd ON dd.space_id = tl.space_id AND dd.lesson_id = tl.id AND dd.learner_user_id = ?2
+                WHERE tl.space_id = c.space_id AND tl.chapter_id = c.id AND tl.removed_at IS NULL) AS counts
+         FROM chapter c
+         JOIN subject s ON s.id = c.subject_id AND +s.space_id = c.space_id
+        WHERE c.space_id = ?1 AND c.removed_at IS NULL AND c.due_on IS NOT NULL AND c.due_on <= ?4
+          AND s.is_published = 1
+        AND EXISTS (
+          SELECT 1 FROM subject_access a
+           WHERE a.space_id = s.space_id AND a.subject_id = s.id
+             AND (a.user_id = ?2 OR a.group_id IN (
+               SELECT gm.group_id FROM group_member gm WHERE gm.space_id = s.space_id AND gm.user_id = ?2)))
+          AND (s.chapters_in_order <> 1 OR NOT EXISTS (
+            SELECT 1 FROM chapter pc
+             WHERE pc.space_id = c.space_id AND pc.subject_id = c.subject_id AND pc.removed_at IS NULL
+               AND pc.position <= c.position AND (pc.position < c.position OR (pc.position = c.position AND (pc.title < c.title OR (pc.title = c.title AND pc.id < c.id))))
+               AND EXISTS (SELECT 1 FROM lesson pl WHERE pl.space_id = pc.space_id AND pl.chapter_id = pc.id AND pl.removed_at IS NULL
+                     AND NOT EXISTS (SELECT 1 FROM done_mark pd WHERE pd.space_id = pl.space_id AND pd.lesson_id = pl.id AND pd.learner_user_id = ?2))))
+     ),
+     item AS (
+       SELECT 'lesson' AS kind, l.id AS id, l.title AS title, l.due_on AS due_on, s.id AS subject_id, s.title AS subject_title,
+              c.id AS chapter_id, c.position AS c_pos, c.title AS c_title, 1 AS k, l.position AS l_pos, l.title AS l_title, 0 AS total, 0 AS done
+         FROM lesson l
+         JOIN chapter c ON c.id = l.chapter_id AND +c.space_id = l.space_id AND c.removed_at IS NULL
+         JOIN subject s ON s.id = c.subject_id AND +s.space_id = c.space_id
+        WHERE l.space_id = ?1 AND l.removed_at IS NULL AND l.due_on IS NOT NULL AND l.due_on <= ?4
+          AND s.is_published = 1
+        AND EXISTS (
+          SELECT 1 FROM subject_access a
+           WHERE a.space_id = s.space_id AND a.subject_id = s.id
+             AND (a.user_id = ?2 OR a.group_id IN (
+               SELECT gm.group_id FROM group_member gm WHERE gm.space_id = s.space_id AND gm.user_id = ?2)))
+          AND NOT EXISTS (SELECT 1 FROM done_mark d WHERE d.space_id = l.space_id AND d.lesson_id = l.id AND d.learner_user_id = ?2)
+          AND (s.chapters_in_order <> 1 OR NOT EXISTS (
+            SELECT 1 FROM chapter pc
+             WHERE pc.space_id = c.space_id AND pc.subject_id = c.subject_id AND pc.removed_at IS NULL
+               AND pc.position <= c.position AND (pc.position < c.position OR (pc.position = c.position AND (pc.title < c.title OR (pc.title = c.title AND pc.id < c.id))))
+               AND EXISTS (SELECT 1 FROM lesson pl WHERE pl.space_id = pc.space_id AND pl.chapter_id = pc.id AND pl.removed_at IS NULL
+                     AND NOT EXISTS (SELECT 1 FROM done_mark pd WHERE pd.space_id = pl.space_id AND pd.lesson_id = pl.id AND pd.learner_user_id = ?2))))
+       UNION ALL
+       SELECT 'chapter', x.id, x.title, x.due_on, x.subject_id, x.subject_title, x.id, x.position, x.title, 0, NULL, NULL, x.counts / 1000000, x.counts % 1000000
+         FROM todo_chapter x
+        WHERE x.counts % 1000000 < x.counts / 1000000
+     ),
+     grouped AS (SELECT item.*, CASE WHEN item.due_on < ?3 THEN 0 WHEN item.due_on = ?3 THEN 1 ELSE 2 END AS grp FROM item),
+     ranked AS (
+       SELECT grouped.*, ROW_NUMBER() OVER w AS rn,
+              COUNT(*) OVER (w ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS n
+         FROM grouped
+         WINDOW w AS (PARTITION BY grp ORDER BY due_on, subject_title, subject_id, c_pos, c_title, chapter_id, k, l_pos, l_title, id)
+     )
+     SELECT kind, id, title, due_on, subject_id, subject_title, chapter_id, total, done, grp, n FROM ranked WHERE rn <= ?5 ORDER BY grp, rn`,
+    who.spaceId, who.userId, today, last, cap,
+  );
 }
