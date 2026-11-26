@@ -704,6 +704,9 @@ const en = {
   openFailed: 'Not saved. Try again.',
   openDueWarn: 'A due date here is before the opening date: on that day it shows as overdue.',
   openEmpty: 'There is nothing to date yet.',
+  // LMS wave 8, W8-1b (ux-plan wording table): the reason line before an opening date, and the home card line when nothing open is left.
+  openedOn: 'Opens on {date}.',
+  openNext: 'Next: {chapter}: {title}, opens on {date}.',
 };
 
 export type UiKey = keyof typeof en;
@@ -1394,6 +1397,8 @@ const ar: Record<UiKey, string> = {
   openFailed: 'لم يُحفظ. أعد المحاولة.',
   openDueWarn: 'يوجد موعد إنجاز هنا قبل موعد الفتح، فيظهر متأخرًا يوم الفتح.',
   openEmpty: 'لا يوجد ما يُحدَّد له موعد بعد.',
+  openedOn: 'يُتاح الوصول في {date}.',
+  openNext: 'التالي: {chapter}: {title}، ويُتاح الوصول في {date}.',
 };
 
 export const UI: Record<'ar' | 'en', Record<UiKey, string>> = { en, ar };

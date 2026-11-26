@@ -145,7 +145,10 @@ export async function markOrder(db: Db, who: Learner): Promise<string[][]> {
  * keeps the space check as a filter, not an index choice); a lock reads only the
  * chapters up to the position of the item; the lesson and done counts of a chapter come
  * from one pass, packed into one number (lessons × 1000000 + done; a chapter
- * holds far fewer than a million lessons); the rank and the group count share one window. */
+ * holds far fewer than a million lessons); the rank and the group count share one window.
+ * LMS wave 8 (product-contract v2 on PIL-299, sections 3.3 and 3.6, D7): an item is listed only once its
+ * chapter is open by date (no date, or ?3 is on or after it), and a hidden chapter not open yet is outside
+ * the order test, as chapterLocks with dates; the statement keeps its five numbered parameters. */
 export function learnerTodo(db: Db, who: Learner, today: string, last: string, cap: number): Promise<TodoRow[]> {
   return db.all<TodoRow>(
     `WITH todo_chapter AS MATERIALIZED (
@@ -156,6 +159,7 @@ export function learnerTodo(db: Db, who: Learner, today: string, last: string, c
          FROM chapter c
          JOIN subject s ON s.id = c.subject_id AND +s.space_id = c.space_id
         WHERE c.space_id = ?1 AND c.removed_at IS NULL AND c.due_on IS NOT NULL AND c.due_on <= ?4
+          AND (c.opens_on IS NULL OR c.opens_on <= ?3)
           AND s.is_published = 1
         AND EXISTS (
           SELECT 1 FROM subject_access a
@@ -164,7 +168,7 @@ export function learnerTodo(db: Db, who: Learner, today: string, last: string, c
                SELECT gm.group_id FROM group_member gm WHERE gm.space_id = s.space_id AND gm.user_id = ?2)))
           AND (s.chapters_in_order <> 1 OR NOT EXISTS (
             SELECT 1 FROM chapter pc
-             WHERE pc.space_id = c.space_id AND pc.subject_id = c.subject_id AND pc.removed_at IS NULL
+             WHERE pc.space_id = c.space_id AND pc.subject_id = c.subject_id AND pc.removed_at IS NULL AND (pc.opens_on IS NULL OR pc.opens_hidden = 0 OR pc.opens_on <= ?3)
                AND pc.position <= c.position AND (pc.position < c.position OR (pc.position = c.position AND (pc.title < c.title OR (pc.title = c.title AND pc.id < c.id))))
                AND EXISTS (SELECT 1 FROM lesson pl WHERE pl.space_id = pc.space_id AND pl.chapter_id = pc.id AND pl.removed_at IS NULL
                      AND NOT EXISTS (SELECT 1 FROM done_mark pd WHERE pd.space_id = pl.space_id AND pd.lesson_id = pl.id AND pd.learner_user_id = ?2))))
@@ -176,6 +180,7 @@ export function learnerTodo(db: Db, who: Learner, today: string, last: string, c
          JOIN chapter c ON c.id = l.chapter_id AND +c.space_id = l.space_id AND c.removed_at IS NULL
          JOIN subject s ON s.id = c.subject_id AND +s.space_id = c.space_id
         WHERE l.space_id = ?1 AND l.removed_at IS NULL AND l.due_on IS NOT NULL AND l.due_on <= ?4
+          AND (c.opens_on IS NULL OR c.opens_on <= ?3)
           AND s.is_published = 1
         AND EXISTS (
           SELECT 1 FROM subject_access a
@@ -185,7 +190,7 @@ export function learnerTodo(db: Db, who: Learner, today: string, last: string, c
           AND NOT EXISTS (SELECT 1 FROM done_mark d WHERE d.space_id = l.space_id AND d.lesson_id = l.id AND d.learner_user_id = ?2)
           AND (s.chapters_in_order <> 1 OR NOT EXISTS (
             SELECT 1 FROM chapter pc
-             WHERE pc.space_id = c.space_id AND pc.subject_id = c.subject_id AND pc.removed_at IS NULL
+             WHERE pc.space_id = c.space_id AND pc.subject_id = c.subject_id AND pc.removed_at IS NULL AND (pc.opens_on IS NULL OR pc.opens_hidden = 0 OR pc.opens_on <= ?3)
                AND pc.position <= c.position AND (pc.position < c.position OR (pc.position = c.position AND (pc.title < c.title OR (pc.title = c.title AND pc.id < c.id))))
                AND EXISTS (SELECT 1 FROM lesson pl WHERE pl.space_id = pc.space_id AND pl.chapter_id = pc.id AND pl.removed_at IS NULL
                      AND NOT EXISTS (SELECT 1 FROM done_mark pd WHERE pd.space_id = pl.space_id AND pd.lesson_id = pl.id AND pd.learner_user_id = ?2))))

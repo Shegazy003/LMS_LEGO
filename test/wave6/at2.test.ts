@@ -11,6 +11,8 @@ import {
   type W6a, type W6b, type Wave1World,
 } from './world.ts';
 import { dueLinesOf, expectedItems, idsIn, listed, sameItems, shape, todoOf, type TodoView } from './todo.ts';
+import * as w8 from '../wave8/world.ts';
+import { chapterLocks, shownChapters } from '../../src/learning.ts';
 
 type Lang = 'ar' | 'en';
 const W = (lang: Lang, kit: 'school' | 'company' | 'university' = 'school') => words(kit, lang);
@@ -411,3 +413,85 @@ describe('W6 AT-2.8 kits and languages: the item lines use the kit\'s words; Ara
     }
   });
 });
+
+// --------------------------------------------------- W8 AT-3.7 (wave 8) ----
+// LMS wave 8, W8-1b (product-contract v2 on PIL-299, section 3.6 and AT-3.7):
+// the to-do statements (learnerTodo, and previewTodo for an admin and for a
+// publisher) agree with chapterLocks on every combination of Open in order on
+// or off x each chapter with no date, shown locked before its day, hidden
+// before its day, or a passed date. World W8-a (test/wave8/world.ts) at
+// 2026-12-09; every lesson due that day and every chapter due 2026-12-12, so
+// every item is a candidate; each chapter takes each state in turn.
+const W8_STATES = ['none', 'locked', 'hidden', 'passed'] as const;
+const w8Opening = (s: (typeof W8_STATES)[number]): [string | null, number] =>
+  (s === 'none' ? [null, 0] : s === 'locked' ? ['2026-12-10', 0] : s === 'hidden' ? ['2026-12-17', 1] : ['2026-12-01', 1]);
+
+describe('W8 AT-3.7 learnerTodo and both previewTodo variants agree with chapterLocks on every combination of section 3.6', { concurrency: false }, () => {
+  for (const inOrder of [false, true]) {
+    it(`W8 AT-3.7 Open in order ${inOrder ? 'on' : 'off'}: 4 rotations of the four states over Ch1 to Ch4 (Ch5 empty, shown locked), Salma with and without marks, Hadeer's and Amal's previews`, async (t) => {
+      const w = await w8.w8World({ inOrder, atMs: w8.AT8.d9 });
+      try {
+        t.diagnostic(`instant ${new Date(w8.AT8.d9).toISOString()}`);
+        w.run('UPDATE lesson SET due_on = ? WHERE space_id = ? AND chapter_id IN (SELECT id FROM chapter WHERE subject_id = ?)', '2026-12-09', w8.ID.space, w8.ID.math);
+        w.run('UPDATE chapter SET due_on = ? WHERE space_id = ? AND subject_id = ?', '2026-12-12', w8.ID.space, w8.ID.math);
+        const ids = [w8.ID.ch1, w8.ID.ch2, w8.ID.ch3, w8.ID.ch4];
+        let checked = 0;
+        for (let rot = 0; rot < W8_STATES.length; rot++) {
+          ids.forEach((id, i) => {
+            const [on, hidden] = w8Opening(W8_STATES[(i + rot) % W8_STATES.length]);
+            w.run('UPDATE chapter SET opens_on = ?, opens_hidden = ? WHERE id = ?', on, hidden, id);
+          });
+          for (const marks of [[] as string[], [w8.ID.l11, w8.ID.l12, w8.ID.l21]]) {
+            w.run('DELETE FROM done_mark WHERE learner_user_id = ?', w8.SALMA.id);
+            for (const id of marks) w.run('INSERT INTO done_mark (space_id, learner_user_id, lesson_id, marked_at) VALUES (?, ?, ?, 1)', w8.ID.space, w8.SALMA.id, id);
+            const parts = w8OutlineFromDb(w);
+            const expect = (done: Set<string>) => {
+              const shown = shownChapters(parts, '2026-12-09');
+              const locked = chapterLocks(shown, done, { today: '2026-12-09', inOrder }).locked;
+              const items: string[] = [];
+              for (const ch of shown) {
+                if (locked.has(ch.id)) continue;
+                for (const l of ch.lessons) if (!done.has(l.id)) items.push(l.id);
+                if (ch.lessons.some((l) => !done.has(l.id))) items.push(ch.id);
+              }
+              return items.sort();
+            };
+            const listedOn = async (who: w8.Person, path: string) => Object.values(w8TodoIds(await (await (await w.as(who, 'en')).get(path)).text())).flat().sort();
+            const what = `rotation ${rot} (${ids.map((_, i) => W8_STATES[(i + rot) % W8_STATES.length]).join(', ')}), Salma ${marks.length ? 'with Ch1 and one Ch2 mark' : 'with no marks'}`;
+            assert.deepEqual(await listedOn(w8.SALMA, `/s/${w8.ID.space}`), expect(new Set(marks)), `learnerTodo, ${what}`);
+            if (!marks.length) {
+              assert.deepEqual(await listedOn(w8.HADEER, `/s/${w8.ID.space}/preview`), expect(new Set()), `previewTodo (admin), ${what}`);
+              assert.deepEqual(await listedOn(w8.AMAL, `/s/${w8.ID.space}/preview`), expect(new Set()), `previewTodo (publisher), ${what}`);
+            }
+            checked++;
+          }
+        }
+        t.diagnostic(`AT-3.7 ${checked} combinations checked (order ${inOrder ? 'on' : 'off'})`);
+      } finally {
+        await w.close();
+      }
+    });
+  }
+});
+
+type W8Chapter = { id: string; title: string; opens_on: string | null; opens_hidden: number; lessons: { id: string; title: string }[] };
+
+/** The outline of Mathematics with each chapter's opening, read straight from the database (the product's own order: position, title, id). */
+function w8OutlineFromDb(w: w8.W8World): W8Chapter[] {
+  const rows = w.sql(`SELECT c.id AS cid, c.title AS ctitle, c.opens_on, c.opens_hidden, l.id AS lid, l.title AS ltitle FROM chapter c
+    LEFT JOIN lesson l ON l.chapter_id = c.id AND l.removed_at IS NULL WHERE c.subject_id = ? AND c.removed_at IS NULL ORDER BY c.position, c.title, c.id, l.position, l.title, l.id`, w8.ID.math);
+  const out: W8Chapter[] = [];
+  for (const r of rows) {
+    let ch = out.at(-1);
+    if (!ch || ch.id !== r.cid) out.push((ch = { id: String(r.cid), title: String(r.ctitle), opens_on: (r.opens_on as string | null) ?? null, opens_hidden: Number(r.opens_hidden), lessons: [] }));
+    if (r.lid) ch.lessons.push({ id: String(r.lid), title: String(r.ltitle) });
+  }
+  return out;
+}
+
+/** The ids listed in a home's to-do block, by group (data-item). */
+function w8TodoIds(page: string): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  for (const g of page.matchAll(/<div class="todo-group" data-group="([^"]+)">([\s\S]*?)<\/div>/g)) out[g[1]] = [...g[2].matchAll(/data-item="([^"]+)"/g)].map((m) => m[1]);
+  return out;
+}

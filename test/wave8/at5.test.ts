@@ -1,28 +1,34 @@
-// LMS wave 8, W8-1a (product-contract v2 on PIL-299, AT-5.1, AT-5.2 page part,
-// AT-5.3; section 6, N1 and B1; section 5, R1 and R2).
+// LMS wave 8, W8-1a and W8-1b (product-contract v2 on PIL-299, AT-5.1 to AT-5.4; section 6, N1 and B1; section 5, R1 and R2).
 // - AT-5.1: every 3.4 surface (test/wave8/n1.ts requestList) answers, by N1,
 //   exactly as a41f7d8's stored captures (test/wave8/fixtures/): for W8-0, for
-//   W8-a with every date passed (2027-01-01) and, in W8-1a, for W8-a at any
-//   clock, since no learner read uses the dates yet. First the fixtures are
-//   recaptured from a41f7d8 (LMS_BASE_ROOT, default .base-w8/) and must match.
+//   W8-a with every date passed (2027-01-01). (In W8-1a it also held for W8-a
+//   at any clock; from W8-1b the learner reads use the dates, AT-2 to AT-4.)
+//   First the fixtures are recaptured from a41f7d8 (LMS_BASE_ROOT, default .base-w8/) and must match.
 // - AT-5.2: the Opening dates page makes at most 2 statements from the gate
 //   on (the gate, then the outline with due and opening dates); each press
 //   one gate read, one chapter read and at most one write.
+// - AT-5.2 (W8-1b): every 3.4 request makes at most as many D1 statements as
+//   a41f7d8 on the same database, and reads at most as many rows (D1 rows_read,
+//   each read replayed on a local D1 copy).
+// - AT-5.4 (W8-1b): no wave 8 action changes or deletes a done mark, due date,
+//   quiz, attempt, announcement or activity row.
 // - AT-5.3: migration 0017 is additive; a41f7d8's code runs on the migrated
 //   database (W8-a's dates stored) with every chapter open; the down script
 //   restores a41f7d8's schema and record.
 // Made-up data only.
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { inProcess } from '../support/product.ts';
 import type { InProcessWorker } from '../support/in-process.ts';
-import { BASE_ROOT, BASE_SHA, CLOCKS, capture, captureOn, differences, readFixture, type Captured, type ClockKey } from './n1.ts';
-import { AMAL, AT8, HADEER, ID, OPENINGS, adminOf, editorOf, openPage, openPost, seedW8, w8World, type Twin, type W8World } from './world.ts';
+import { BASE_ROOT, BASE_SHA, CLOCKS, capture, captureOn, differences, readFixture, requestList, type Captured, type ClockKey } from './n1.ts';
+import { AMAL, AT8, HADEER, ID, MONA, OMAR, OPENINGS, OWNER8, RANA, SALMA, adminOf, editorOf, openPage, openPost, seedW8, w8World, type Twin, type W8World } from './world.ts';
+import { learnerData, rowCounts } from './learner.ts';
+import { Client } from '../support/http.ts';
 
 const repo = fileURLToPath(new URL('../..', import.meta.url));
 const MIGRATION = '0017_chapter_opening.sql';
@@ -42,7 +48,7 @@ function same(what: string, got: Captured[], clock: ClockKey): void {
 }
 
 // ------------------------------------------------------------------ AT-5.1 ----
-describe('W8 AT-5.1 every 3.4 response is identical (N1) to the stored a41f7d8 fixtures: W8-0, W8-a with every date passed, and in W8-1a W8-a at any clock', { concurrency: false }, () => {
+describe('W8 AT-5.1 every 3.4 response is identical (N1) to the stored a41f7d8 fixtures: W8-0, and W8-a with every date passed', { concurrency: false }, () => {
   it('W8 AT-5.1 recapture: a41f7d8\'s responses at each clock equal the stored fixtures', async (t) => {
     baseIsThere();
     for (const clock of Object.keys(CLOCKS) as ClockKey[]) {
@@ -60,10 +66,6 @@ describe('W8 AT-5.1 every 3.4 response is identical (N1) to the stored a41f7d8 f
 
   it('W8 AT-5.1 W8-a with every date passed (2027-01-01) on the candidate', async () => {
     same('W8-a at 2027-01-01', await capture({ dates: true, atMs: CLOCKS.y2027 }), 'y2027');
-  });
-
-  it('W8 AT-5.1 W8-a before, at and after each opening instant (W8-1a: no learner read uses the dates)', async () => {
-    for (const clock of ['d9', 'd9end', 'd10', 'd17'] as const) same(`W8-a at ${clock}`, await capture({ dates: true, atMs: CLOCKS[clock] }), clock);
   });
 
   it('W8 AT-5.1 self-check: one changed byte, status or header is found', () => {
@@ -231,6 +233,155 @@ describe('W8 AT-5.3 migration 0017 is additive; a41f7d8\'s code runs on the migr
     assert.ok(part.startsWith('**Opening dates (LMS wave 8):**'), 'a wave 8 entry in "Rollback"');
     for (const phrase of ['migrations-down/0017_chapter_opening.down.sql', "owner's RED decision", 'first redeploy the earlier code, then run the down script', 'every chapter is open']) {
       assert.ok(part.includes(phrase), `the README's wave 8 rollback text says: ${phrase}`);
+    }
+  });
+});
+
+// --------------------------------------------------- AT-5.2 (W8-1b part) ----
+type Stmt = { sql: string; params: (string | number | null)[] };
+
+/** Every statement each 3.4 request makes (session reads included), on one product holding the world. */
+async function statementsOf(p: Twin): Promise<{ label: string; stmts: Stmt[] }[]> {
+  const clients = new Map<string, Client>();
+  for (const who of [SALMA, OMAR, MONA, RANA, AMAL, HADEER, OWNER8]) {
+    const c = new Client(p.worker.url, { lang: null });
+    assert.equal((await c.post('/signin', { username: who.username, password: who.password })).status, 302);
+    clients.set(who.key, c);
+  }
+  const out: { label: string; stmts: Stmt[] }[] = [];
+  for (const r of requestList()) {
+    const c = clients.get(r.who.key)!;
+    const stmts: Stmt[] = [];
+    p.faults!.set({ seen: (sql, params) => void stmts.push({ sql, params: [...params] }) });
+    const res = r.method === 'GET' ? await c.get(r.path) : await c.post(r.path, r.fields ?? {});
+    await res.arrayBuffer();
+    await p.worker.settle();
+    p.faults!.set({});
+    out.push({ label: `${r.who.key} ${r.method} ${r.path}`, stmts });
+  }
+  return out;
+}
+
+type LocalD1 = { prepare(q: string): { bind(...p: unknown[]): { all(): Promise<{ meta: unknown }> } } };
+
+/** D1's own rows_read for each list of read statements, on one local D1 (Miniflare, no network) holding a copy of `file`. */
+async function rowsReadOnLocalD1(file: string, lists: Stmt[][]): Promise<number[]> {
+  const { Miniflare, convertV4MiniflareOptions } = (await import('miniflare')) as unknown as {
+    Miniflare: new (o: unknown) => { getD1Database(n: string): Promise<LocalD1 & { prepare(q: string): { all(): Promise<unknown> } }>; dispose(): Promise<void> };
+    convertV4MiniflareOptions(o: unknown): unknown;
+  };
+  const dir = mkdtempSync(join(tmpdir(), 'lms-w8-d1-'));
+  const options = () => convertV4MiniflareOptions({ modules: true, script: 'export default { fetch() { return new Response(null, { status: 404 }); } }', d1Databases: ['DB'], resourcePersistencePath: dir, compatibilityDate: '2026-10-01' });
+  try {
+    let mf = new Miniflare(options());
+    try {
+      await (await mf.getD1Database('DB')).prepare('SELECT 1').all();
+    } finally {
+      await mf.dispose();
+    }
+    const found = readdirSync(dir, { recursive: true, withFileTypes: true }).filter((f) => f.isFile() && f.name.endsWith('.sqlite') && f.name !== 'metadata.sqlite');
+    assert.equal(found.length, 1, 'the local D1 keeps one database file');
+    const target = join(found[0].parentPath, found[0].name);
+    for (const f of [target, `${target}-wal`, `${target}-shm`]) rmSync(f, { force: true });
+    copyFileSync(file, target);
+    mf = new Miniflare(options());
+    try {
+      const db = await mf.getD1Database('DB');
+      const sums: number[] = [];
+      for (const list of lists) {
+        let sum = 0;
+        for (const s of list) {
+          const r = await db.prepare(s.sql).bind(...s.params).all();
+          const meta = r.meta as Record<string, unknown>;
+          assert.ok(typeof meta.rows_read === 'number', `local D1 reports rows_read (${JSON.stringify(meta)})`);
+          sum += Number(meta.rows_read);
+        }
+        sums.push(sum);
+      }
+      return sums;
+    } finally {
+      await mf.dispose();
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+describe('W8 AT-5.2 (W8-1b) every 3.4 request makes at most a41f7d8\'s D1 statements and reads at most its rows, on the same database', { concurrency: false }, () => {
+  for (const inOrder of [false, true]) {
+    it(`W8 AT-5.2 W8-a, Open in order ${inOrder ? 'on' : 'off'}, at 2026-12-09: statements per request and rows read (local D1) of the candidate <= a41f7d8's`, async (t) => {
+      baseIsThere();
+      const w = await w8World({ dates: true, inOrder, atMs: AT8.d9 });
+      const file = join(tmpdir(), `lms-w8-at52-${process.pid}-${inOrder ? 'on' : 'off'}.sqlite`);
+      let old: Twin | null = null;
+      try {
+        // The same database for both builds: a copy before any request (a41f7d8 ignores the two new columns, AT-5.3).
+        w.p.worker.sqlite.exec(`VACUUM INTO '${file.replace(/'/g, "''")}'`);
+        old = (await inProcess({ root: BASE_ROOT, sqlite: new DatabaseSync(file), files: w.p.worker.files })) as Twin;
+        const pin = await fetch(old.worker.url + '/__test/clock-fixed', { method: 'POST', headers: { 'content-type': 'application/json', origin: old.worker.url }, body: JSON.stringify({ atMs: AT8.d9 }) });
+        assert.equal(pin.status, 200);
+        const fresh = join(tmpdir(), `lms-w8-at52-${process.pid}-fresh.sqlite`);
+        rmSync(fresh, { force: true });
+        w.p.worker.sqlite.exec(`VACUUM INTO '${fresh.replace(/'/g, "''")}'`);
+        const cand = await statementsOf(w.p);
+        const base = await statementsOf(old);
+        assert.equal(cand.length, base.length);
+        const reads = (l: { stmts: Stmt[] }[]) => l.map((r) => r.stmts.filter((s) => READ.test(s.sql)));
+        const rowsCand = await rowsReadOnLocalD1(fresh, reads(cand));
+        const rowsBase = await rowsReadOnLocalD1(fresh, reads(base));
+        rmSync(fresh, { force: true });
+        const lines: string[] = [];
+        for (let i = 0; i < cand.length; i++) {
+          lines.push(`${cand[i].label}: ${cand[i].stmts.length}/${base[i].stmts.length} statements, ${rowsCand[i]}/${rowsBase[i]} rows read`);
+          assert.ok(cand[i].stmts.length <= base[i].stmts.length, `${cand[i].label}: ${cand[i].stmts.length} statements, a41f7d8 ${base[i].stmts.length}`);
+          assert.ok(rowsCand[i] <= rowsBase[i], `${cand[i].label}: ${rowsCand[i]} rows read, a41f7d8 ${rowsBase[i]}`);
+          for (const s of cand[i].stmts) assert.ok(s.params.length <= 100, `${cand[i].label}: at most 100 bound parameters (${s.params.length})`);
+        }
+        t.diagnostic(`AT-5.2 candidate/a41f7d8 per request:\n${lines.join('\n')}`);
+      } finally {
+        await old?.stop();
+        await w.close();
+        rmSync(file, { force: true });
+      }
+    });
+  }
+});
+
+// ------------------------------------------------------------------ AT-5.4 ----
+describe('W8 AT-5.4 no wave 8 action changes or deletes a done mark, due date, quiz, attempt, announcement or activity row', { concurrency: false }, () => {
+  it('W8 AT-5.4 Amal and Hadeer set, change, hide and clear dates on every chapter (Salma has marks and opens on them); learners meet the locks; every such row is unchanged (row counts and contents)', async (t) => {
+    const w = await w8World({ dates: false, inOrder: true, atMs: AT8.d9 });
+    try {
+      for (const id of [ID.l11, ID.l21, ID.l41]) w.run('INSERT INTO done_mark (space_id, learner_user_id, lesson_id, marked_at) VALUES (?, ?, ?, ?)', ID.space, SALMA.id, id, Date.parse('2026-12-02T10:00:00.000Z'));
+      w.run('INSERT INTO lesson_view (space_id, lesson_id, learner_user_id, last_opened_on) VALUES (?, ?, ?, ?)', ID.space, ID.l21, SALMA.id, '2026-12-03');
+      const before = { counts: rowCounts(w), data: learnerData(w) };
+      const amal = await w.as(AMAL, 'en');
+      const hadeer = await w.as(HADEER, 'en');
+      let presses = 0;
+      for (const [c, from] of [[amal, editorOf()], [hadeer, adminOf()]] as const) {
+        for (const ch of [ID.ch1, ID.ch2, ID.ch3, ID.ch4, ID.ch5]) {
+          for (const fields of [
+            { action: 'save', opens_on: '2026-12-20', before: 'locked' }, { action: 'save', opens_on: '2026-12-20', before: 'hidden' },
+            { action: 'save', opens_on: '2026-12-24', before: 'hidden' }, { action: 'clear', opens_on: '', before: 'locked' },
+          ]) {
+            assert.equal((await c.post(openPost(from, ch), fields)).status, 303);
+            presses++;
+          }
+        }
+      }
+      // Dated again, then the learners, Mona and the previews meet them (locked and hidden addresses only write nothing).
+      for (const ch of [ID.ch1, ID.ch2]) assert.equal((await amal.post(openPost(editorOf(), ch), { action: 'save', opens_on: '2026-12-20', before: ch === ID.ch1 ? 'locked' : 'hidden' })).status, 303);
+      const salma = await w.as(SALMA, 'en');
+      for (const path of [`/s/${ID.space}`, `/s/${ID.space}/learn/${ID.math}`, `/s/${ID.space}/read/${ID.l11}`, `/s/${ID.space}/read/${ID.l21}`, `/s/${ID.space}/file/${ID.pdf}`]) await (await salma.get(path)).arrayBuffer();
+      for (const [id, state] of [[ID.l11, 'not-done'], [ID.l21, 'not-done'], [ID.l12, 'done']]) assert.equal((await salma.post(`/s/${ID.space}/read/${id}/done`, { state })).status, 403, `Salma ${state} ${id}: refused`);
+      for (const [who, path] of [[MONA, `/s/${ID.space}/linked/${SALMA.id}/activity`], [HADEER, `/s/${ID.space}/preview/read/${ID.l21}`]] as const) await (await (await w.as(who, 'en')).get(path)).arrayBuffer();
+      for (const ch of [ID.ch1, ID.ch2]) assert.equal((await amal.post(openPost(editorOf(), ch), { action: 'clear', opens_on: '', before: 'locked' })).status, 303);
+      const after = { counts: rowCounts(w), data: learnerData(w) };
+      assert.deepEqual(after.counts, before.counts, 'row counts unchanged');
+      assert.equal(after.data, before.data, 'every done mark, due date, quiz, attempt, announcement and activity row unchanged');
+      t.diagnostic(`AT-5.4 ${presses + 4} Opening dates presses; row counts ${JSON.stringify(after.counts)}`);
+    } finally {
+      await w.close();
     }
   });
 });

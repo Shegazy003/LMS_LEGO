@@ -38,6 +38,9 @@ export interface OutlineChapter {
   lessons: { id: string; title: string; due_on?: string | null }[];
   /** LMS wave 6 (section 5.5): the due date of the chapter (null without one), from the same outline read; each lesson carries its own. */
   due_on?: string | null;
+  /** LMS wave 8 (section 3.1, D2): the opening date (null without one) and the before-opening choice (1 hidden, 0 shown locked), from the same outline read. */
+  opens_on?: string | null;
+  opens_hidden?: number;
 }
 
 export interface LessonRow {
@@ -47,6 +50,9 @@ export interface LessonRow {
   chapter_id: string;
   chapter_title: string;
   subject_id: string;
+  /** LMS wave 8 (section 3.3): the opening date and choice of its chapter, from the same read. */
+  opens_on?: string | null;
+  opens_hidden?: number;
 }
 
 export type MaterialKind = 'pdf' | 'image' | 'video_link' | 'link' | 'note';
@@ -67,6 +73,9 @@ export interface FileRow {
   subject_id: string;
   /** LMS wave 4 (section 5.4): the lesson the file belongs to, from the same read, so a locked lesson's files are refused. */
   lesson_id: string;
+  /** LMS wave 8 (section 3.3): the opening date and choice of its chapter, from the same read. */
+  opens_on?: string | null;
+  opens_hidden?: number;
 }
 
 /** The learner rule (LMS wave 7, W7-3; contract v3 addendum on PIL-285, G4.4),
@@ -101,13 +110,23 @@ export interface LearnerCard {
   steps: SequenceStep[];
   /** LMS wave 4 (section 5.4): the subject opens its chapters in order, from the same read. */
   inOrder: boolean;
+  /** LMS wave 8 (section 3.3): the chapters of the steps not open yet today (shown locked), by id, with their date; a hidden one is in no step. */
+  opening: Map<string, string>;
+  /** LMS wave 8 (L2): for a learner with no marks here, the chapter they wait for when no lesson of the card is open yet; null otherwise. */
+  next: WaitingFor | null;
+}
+
+/** LMS wave 8 (L2): the first chapter not open yet that holds what is left to do, with its date. */
+export interface WaitingFor {
+  title: string;
+  date: string;
 }
 
 /** The learner home’s cards in one read, whatever the number of subjects
  * (section 4.5): exactly the subjects of subjectsForLearner, in its order. */
-export async function learnerCards(db: Db, spaceId: string, userId: string): Promise<LearnerCard[]> {
+export async function learnerCards(db: Db, spaceId: string, userId: string, today: string): Promise<LearnerCard[]> {
   const rows = await db.all<CardRow>(
-    `SELECT s.id AS subject_id, s.title AS subject_title, s.chapters_in_order AS in_order, u.display_name AS publisher_name, c.id AS chapter_id, c.title AS chapter_title, l.id AS lesson_id, l.title AS lesson_title
+    `SELECT s.id AS subject_id, s.title AS subject_title, s.chapters_in_order AS in_order, u.display_name AS publisher_name, c.id AS chapter_id, c.title AS chapter_title, c.opens_on, c.opens_hidden, l.id AS lesson_id, l.title AS lesson_title
        FROM subject s
        LEFT JOIN user u ON u.id = s.publisher_user_id
        LEFT JOIN chapter c ON c.subject_id = s.id AND c.space_id = s.space_id AND c.removed_at IS NULL
@@ -121,7 +140,7 @@ export async function learnerCards(db: Db, spaceId: string, userId: string): Pro
       ORDER BY s.title, s.id, c.position, c.title, c.id, l.position, l.title, l.id`,
     spaceId, userId, userId,
   );
-  return cardsOf(rows);
+  return cardsOf(rows, today);
 }
 
 /** An item of the home's announcement block (LMS wave 5, section 5.3). */
@@ -221,9 +240,10 @@ export function previewTodo(db: Db, spaceId: string, previewer: Previewer, today
            JOIN chapter c ON c.id = l.chapter_id AND +c.space_id = l.space_id AND c.removed_at IS NULL
            JOIN subject s ON s.id = c.subject_id AND +s.space_id = c.space_id
           WHERE l.space_id = ? AND l.removed_at IS NULL AND l.due_on IS NOT NULL AND l.due_on <= ? AND s.is_published = 1
+            AND (c.opens_on IS NULL OR c.opens_on <= ?)
             AND (s.chapters_in_order <> 1 OR NOT EXISTS (
               SELECT 1 FROM chapter pc
-               WHERE pc.space_id = c.space_id AND pc.subject_id = c.subject_id AND pc.removed_at IS NULL
+               WHERE pc.space_id = c.space_id AND pc.subject_id = c.subject_id AND pc.removed_at IS NULL AND (pc.opens_on IS NULL OR pc.opens_hidden = 0 OR pc.opens_on <= ?)
                  AND pc.position <= c.position AND (pc.position < c.position OR (pc.position = c.position AND (pc.title < c.title OR (pc.title = c.title AND pc.id < c.id))))
                      AND EXISTS (SELECT 1 FROM lesson pl WHERE pl.space_id = pc.space_id AND pl.chapter_id = pc.id AND pl.removed_at IS NULL)))
          UNION ALL
@@ -234,9 +254,10 @@ export function previewTodo(db: Db, spaceId: string, previewer: Previewer, today
                FROM chapter c
                JOIN subject s ON s.id = c.subject_id AND +s.space_id = c.space_id
               WHERE c.space_id = ? AND c.removed_at IS NULL AND c.due_on IS NOT NULL AND c.due_on <= ? AND s.is_published = 1
+                AND (c.opens_on IS NULL OR c.opens_on <= ?)
                 AND (s.chapters_in_order <> 1 OR NOT EXISTS (
                   SELECT 1 FROM chapter pc
-                   WHERE pc.space_id = c.space_id AND pc.subject_id = c.subject_id AND pc.removed_at IS NULL
+                   WHERE pc.space_id = c.space_id AND pc.subject_id = c.subject_id AND pc.removed_at IS NULL AND (pc.opens_on IS NULL OR pc.opens_hidden = 0 OR pc.opens_on <= ?)
                      AND pc.position <= c.position AND (pc.position < c.position OR (pc.position = c.position AND (pc.title < c.title OR (pc.title = c.title AND pc.id < c.id))))
                      AND EXISTS (SELECT 1 FROM lesson pl WHERE pl.space_id = pc.space_id AND pl.chapter_id = pc.id AND pl.removed_at IS NULL)))
            ) x
@@ -250,7 +271,8 @@ export function previewTodo(db: Db, spaceId: string, previewer: Previewer, today
            WINDOW w AS (PARTITION BY grp ORDER BY due_on, subject_title, subject_id, c_pos, c_title, chapter_id, k, l_pos, l_title, id)
        )
        SELECT kind, id, title, due_on, subject_id, subject_title, chapter_id, total, done, grp, n FROM ranked WHERE rn <= ? ORDER BY grp, rn`,
-      spaceId, last, spaceId, last, today, today, cap,
+      // LMS wave 8 (section 3.6): today also in each item filter and each order test (a hidden chapter not open yet is outside the order rule).
+      spaceId, last, today, today, spaceId, last, today, today, today, today, cap,
     )
     : db.all<TodoRow>(
       `WITH item AS (
@@ -260,9 +282,10 @@ export function previewTodo(db: Db, spaceId: string, previewer: Previewer, today
            JOIN chapter c ON c.id = l.chapter_id AND +c.space_id = l.space_id AND c.removed_at IS NULL
            JOIN subject s ON s.id = c.subject_id AND +s.space_id = c.space_id
           WHERE l.space_id = ? AND l.removed_at IS NULL AND l.due_on IS NOT NULL AND l.due_on <= ? AND s.is_published = 1 AND s.publisher_user_id = ?
+            AND (c.opens_on IS NULL OR c.opens_on <= ?)
             AND (s.chapters_in_order <> 1 OR NOT EXISTS (
               SELECT 1 FROM chapter pc
-               WHERE pc.space_id = c.space_id AND pc.subject_id = c.subject_id AND pc.removed_at IS NULL
+               WHERE pc.space_id = c.space_id AND pc.subject_id = c.subject_id AND pc.removed_at IS NULL AND (pc.opens_on IS NULL OR pc.opens_hidden = 0 OR pc.opens_on <= ?)
                  AND pc.position <= c.position AND (pc.position < c.position OR (pc.position = c.position AND (pc.title < c.title OR (pc.title = c.title AND pc.id < c.id))))
                      AND EXISTS (SELECT 1 FROM lesson pl WHERE pl.space_id = pc.space_id AND pl.chapter_id = pc.id AND pl.removed_at IS NULL)))
          UNION ALL
@@ -273,9 +296,10 @@ export function previewTodo(db: Db, spaceId: string, previewer: Previewer, today
                FROM chapter c
                JOIN subject s ON s.id = c.subject_id AND +s.space_id = c.space_id
               WHERE c.space_id = ? AND c.removed_at IS NULL AND c.due_on IS NOT NULL AND c.due_on <= ? AND s.is_published = 1 AND s.publisher_user_id = ?
+                AND (c.opens_on IS NULL OR c.opens_on <= ?)
                 AND (s.chapters_in_order <> 1 OR NOT EXISTS (
                   SELECT 1 FROM chapter pc
-                   WHERE pc.space_id = c.space_id AND pc.subject_id = c.subject_id AND pc.removed_at IS NULL
+                   WHERE pc.space_id = c.space_id AND pc.subject_id = c.subject_id AND pc.removed_at IS NULL AND (pc.opens_on IS NULL OR pc.opens_hidden = 0 OR pc.opens_on <= ?)
                      AND pc.position <= c.position AND (pc.position < c.position OR (pc.position = c.position AND (pc.title < c.title OR (pc.title = c.title AND pc.id < c.id))))
                      AND EXISTS (SELECT 1 FROM lesson pl WHERE pl.space_id = pc.space_id AND pl.chapter_id = pc.id AND pl.removed_at IS NULL)))
            ) x
@@ -289,13 +313,13 @@ export function previewTodo(db: Db, spaceId: string, previewer: Previewer, today
            WINDOW w AS (PARTITION BY grp ORDER BY due_on, subject_title, subject_id, c_pos, c_title, chapter_id, k, l_pos, l_title, id)
        )
        SELECT kind, id, title, due_on, subject_id, subject_title, chapter_id, total, done, grp, n FROM ranked WHERE rn <= ? ORDER BY grp, rn`,
-      spaceId, last, previewer.userId, spaceId, last, previewer.userId, today, today, cap,
+      spaceId, last, previewer.userId, today, today, spaceId, last, previewer.userId, today, today, today, today, cap,
     );
 }
 
 type CardRow = {
   subject_id: string; subject_title: string; in_order: number; publisher_name: string | null;
-  chapter_id: string | null; chapter_title: string | null; lesson_id: string | null; lesson_title: string | null;
+  chapter_id: string | null; chapter_title: string | null; opens_on: string | null; opens_hidden: number | null; lesson_id: string | null; lesson_title: string | null;
 };
 
 /** Who a preview is drawn for (LMS wave 3a, contract section 4.1): the admin
@@ -310,10 +334,10 @@ export interface Previewer {
  * assigned every published subject of the space (admin), or every published
  * subject this publisher publishes, would see. One read, in the learner home's
  * order and with its counting, whatever the number of subjects (AT-5.4). */
-export async function previewCards(db: Db, spaceId: string, previewer: Previewer): Promise<LearnerCard[]> {
+export async function previewCards(db: Db, spaceId: string, previewer: Previewer, today: string): Promise<LearnerCard[]> {
   const rows = previewer.kind === 'admin'
     ? await db.all<CardRow>(
-      `SELECT s.id AS subject_id, s.title AS subject_title, s.chapters_in_order AS in_order, u.display_name AS publisher_name, c.id AS chapter_id, c.title AS chapter_title, l.id AS lesson_id, l.title AS lesson_title
+      `SELECT s.id AS subject_id, s.title AS subject_title, s.chapters_in_order AS in_order, u.display_name AS publisher_name, c.id AS chapter_id, c.title AS chapter_title, c.opens_on, c.opens_hidden, l.id AS lesson_id, l.title AS lesson_title
          FROM subject s
          LEFT JOIN user u ON u.id = s.publisher_user_id
          LEFT JOIN chapter c ON c.subject_id = s.id AND c.space_id = s.space_id AND c.removed_at IS NULL
@@ -323,7 +347,7 @@ export async function previewCards(db: Db, spaceId: string, previewer: Previewer
       spaceId,
     )
     : await db.all<CardRow>(
-      `SELECT s.id AS subject_id, s.title AS subject_title, s.chapters_in_order AS in_order, u.display_name AS publisher_name, c.id AS chapter_id, c.title AS chapter_title, l.id AS lesson_id, l.title AS lesson_title
+      `SELECT s.id AS subject_id, s.title AS subject_title, s.chapters_in_order AS in_order, u.display_name AS publisher_name, c.id AS chapter_id, c.title AS chapter_title, c.opens_on, c.opens_hidden, l.id AS lesson_id, l.title AS lesson_title
          FROM subject s
          LEFT JOIN user u ON u.id = s.publisher_user_id
          LEFT JOIN chapter c ON c.subject_id = s.id AND c.space_id = s.space_id AND c.removed_at IS NULL
@@ -332,7 +356,7 @@ export async function previewCards(db: Db, spaceId: string, previewer: Previewer
         ORDER BY s.title, s.id, c.position, c.title, c.id, l.position, l.title, l.id`,
       spaceId, previewer.userId,
     );
-  return cardsOf(rows);
+  return cardsOf(rows, today);
 }
 
 /** A subject this person may preview (section 4.1), published or not; null otherwise. */
@@ -345,19 +369,36 @@ export async function previewableSubject(db: Db, spaceId: string, previewer: Pre
   return previewer.kind === 'admin' || subject.publisher_user_id === previewer.userId ? subject : null;
 }
 
-function cardsOf(rows: CardRow[]): LearnerCard[] {
+function cardsOf(rows: CardRow[], today: string): LearnerCard[] {
   const cards: LearnerCard[] = [];
   for (const r of rows) {
     let card = cards.at(-1);
     if (!card || card.id !== r.subject_id) {
-      cards.push((card = { id: r.subject_id, title: r.subject_title, publisherName: r.publisher_name, count: 0, first: null, steps: [], inOrder: r.in_order === 1 }));
+      cards.push((card = { id: r.subject_id, title: r.subject_title, publisherName: r.publisher_name, count: 0, first: null, steps: [], inOrder: r.in_order === 1, opening: new Map(), next: null }));
     }
     if (!r.lesson_id) continue;
+    // LMS wave 8 (section 3.3, L1): a hidden chapter not open yet adds nothing (no lesson, no count, no step).
+    const ch = { opens_on: r.opens_on, opens_hidden: Number(r.opens_hidden ?? 0) };
+    if (hiddenNow(ch, today)) continue;
+    if (notOpenYet(ch, today)) card.opening.set(r.chapter_id ?? '', r.opens_on!);
     card.count++;
-    card.first ??= { id: r.lesson_id, title: r.lesson_title ?? '' };
     card.steps.push({ id: r.lesson_id, title: r.lesson_title ?? '', chapterId: r.chapter_id ?? '', chapterTitle: r.chapter_title ?? '' });
   }
+  // Start leads to the first lesson a learner with no marks can open: wave 1's first lesson, and from LMS wave 8 (L2) never one not open yet.
+  for (const card of cards) {
+    const locked = chapterLocks(chaptersOfCard(card), new Set(), { today, inOrder: card.inOrder }).locked;
+    const open = card.steps.find((s) => !locked.has(s.chapterId));
+    card.first = open ? { id: open.id, title: open.title } : null;
+    card.next = !open && card.steps.length ? waitingFor(card, card.steps) : null;
+  }
   return cards;
+}
+
+/** LMS wave 8 (L2): the chapter of the first of these steps when it is not open yet (shown locked), with its date; otherwise null. */
+function waitingFor(card: LearnerCard, left: SequenceStep[]): WaitingFor | null {
+  const first = left[0];
+  const date = first ? card.opening.get(first.chapterId) : undefined;
+  return first && date ? { title: first.chapterTitle, date } : null;
 }
 
 /** A card's progress (LMS wave 2, W2-2, section 8.3): how many of its lessons
@@ -365,20 +406,24 @@ function cardsOf(rows: CardRow[]): LearnerCard[] {
 export interface CardProgress {
   done: number;
   target: SequenceStep | null;
+  /** LMS wave 8 (L2): when lessons are left but none is open now, the chapter they wait for; null otherwise. */
+  waiting?: WaitingFor | null;
 }
 
 /** The home's "Continue where you stopped" area (section 8.3). */
 export type ContinueArea =
   | { kind: 'first' }
   | { kind: 'all-done' }
-  | { kind: 'target'; card: LearnerCard; done: number; target: SequenceStep };
+  | { kind: 'target'; card: LearnerCard; done: number; target: SequenceStep }
+  /** LMS wave 8 (L2): what is left waits for an opening date; no link. */
+  | { kind: 'waiting'; card: LearnerCard; done: number; next: WaitingFor };
 
 /** Where the learner continues (section 8.2), from their own marks only: `order`
  * holds the lesson ids they marked done, newest first, lessons marked at the same
  * time together (progress.ts markOrder). A mark counts only on a lesson of a card
  * (published, assigned, not removed: section 6.3). Nothing else enters the rule:
  * no lesson open, no activity setting, no notice. Pure, so no read is added. */
-export function continueWhere(cards: LearnerCard[], order: string[][]): { area: ContinueArea; progress: Map<string, CardProgress> } {
+export function continueWhere(cards: LearnerCard[], order: string[][], today: string): { area: ContinueArea; progress: Map<string, CardProgress> } {
   const progress = new Map<string, CardProgress>();
   const started: { card: LearnerCard; newest: number; p: CardProgress }[] = [];
   const marked = new Set(order.flat());
@@ -389,12 +434,14 @@ export function continueWhere(cards: LearnerCard[], order: string[][]): { area: 
     // Its newest marked lesson: the latest press; equal times go to the later lesson in reading order.
     const group = order.findIndex((g) => g.some((id) => pos.has(id)));
     const at = Math.max(...order[group].filter((id) => pos.has(id)).map((id) => pos.get(id)!));
-    // The first lesson not done after it; if none, the first not-done lesson from the start.
-    let target = card.steps.slice(at + 1).find((s) => !done.has(s.id)) ?? card.steps.find((s) => !done.has(s.id)) ?? null;
-    // LMS wave 4 (section 5.4, A9): in a subject opened in order, a target in a locked chapter gives way to the
-    // first not-done lesson in reading order, which is always open. With the setting off, wave 2's target.
-    if (card.inOrder && target && chapterLocks(chaptersOfSteps(card.steps), done).locked.has(target.chapterId)) target = card.steps.find((s) => !done.has(s.id)) ?? null;
-    const p = { done: done.size, target };
+    // The first lesson not done after it; if none, the first not-done lesson from the start. LMS wave 4 (section 5.4,
+    // A9) and wave 8 (C5, L2): only a lesson open now, by order and by date. With no lock this is wave 2's target;
+    // with order alone it is wave 4's (a locked target gave way to the first not-done lesson, which is then open).
+    const locked = chapterLocks(chaptersOfCard(card), done, { today, inOrder: card.inOrder }).locked;
+    const left = (s: SequenceStep) => !done.has(s.id);
+    const open = (s: SequenceStep) => left(s) && !locked.has(s.chapterId);
+    const target = card.steps.slice(at + 1).find(open) ?? card.steps.find(open) ?? null;
+    const p: CardProgress = { done: done.size, target, waiting: target ? null : waitingFor(card, card.steps.filter(left)) };
     progress.set(card.id, p);
     started.push({ card, newest: group, p });
   }
@@ -402,8 +449,10 @@ export function continueWhere(cards: LearnerCard[], order: string[][]): { area: 
   // Subjects by their newest mark, newest first; equal times keep the home's order (a stable sort).
   started.sort((a, b) => a.newest - b.newest);
   const first = started.find((s) => s.p.target);
+  const waits = first ? undefined : started.find((s) => s.p.waiting);
   return {
-    area: first ? { kind: 'target', card: first.card, done: first.p.done, target: first.p.target! } : { kind: 'all-done' },
+    area: first ? { kind: 'target', card: first.card, done: first.p.done, target: first.p.target! }
+      : waits ? { kind: 'waiting', card: waits.card, done: waits.p.done, next: waits.p.waiting! } : { kind: 'all-done' },
     progress,
   };
 }
@@ -437,16 +486,54 @@ export function lessonSequence(chapters: OutlineChapter[]): SequenceStep[] {
  * blocking chapter and how many of its shown lessons are not done; every later
  * one counts the not-done shown lessons of all chapters before it. */
 export type LockReason =
-  | { kind: 'first'; blocking: { id: string; title: string }; left: number }
-  | { kind: 'later'; left: number };
+  | { kind: 'first'; blocking: { id: string; title: string }; left: number; opensOn?: string }
+  | { kind: 'later'; left: number; opensOn?: string }
+  /** LMS wave 8 (C4): not open yet by its date alone. A reason by order carries `opensOn` too when both apply. */
+  | { kind: 'date'; opensOn: string };
 
 export interface ChapterLocks {
   /** The locked chapters, by id, each with its reason. A chapter not here is open. */
   locked: Map<string, LockReason>;
   /** The earliest chapter with a not-done shown lesson (it is open), or null when every lesson is done. */
   blocking: string | null;
-  /** The first not-done lesson in reading order while any chapter is locked ("Go to"); null otherwise. */
+  /** The first not-done lesson in reading order while any chapter is locked ("Go to"); null otherwise. LMS wave 8 (C5): only in a chapter open now, and only while a chapter is locked by order. */
   goTo: { id: string; title: string } | null;
+  /** LMS wave 8: whether the order rule applied (the order box of wave 4); false when only dates lock. */
+  inOrder: boolean;
+}
+
+/** A chapter as the lock rule reads it: its shown lessons in order and (LMS wave 8) its opening. */
+export interface LockChapter {
+  id: string;
+  title: string;
+  lessons: { id: string; title: string }[];
+  opens_on?: string | null;
+  opens_hidden?: number;
+}
+
+// ------------------------------------------------------- opening dates ----
+// LMS wave 8, W8-1b (product-contract v2 on PIL-299, sections 3.1 to 3.6). A
+// chapter with opening date X is not open before 00:00 UTC on day X (D1): the
+// one `today` of the request is before X. Before it, a learner (and the made-up
+// learner of a preview, A1) meets it shown locked, or not at all when hidden.
+// From day X every page is as if it had no date (D3). Worked out at each load
+// from the outline row; nothing about it is stored.
+
+/** Not open yet on `today` (D1): it has a date and today is before it. */
+export const notOpenYet = (ch: { opens_on?: string | null }, today: string): boolean => Boolean(ch.opens_on) && today < ch.opens_on!;
+
+/** Hidden today (D2): not open yet, and its before-opening choice is hidden. */
+export const hiddenNow = (ch: { opens_on?: string | null; opens_hidden?: number | null }, today: string): boolean => notOpenYet(ch, today) && Number(ch.opens_hidden) === 1;
+
+/** The chapters a learner sees today (section 3.3, L1, C2): a hidden chapter not open yet is left out, with its lessons. */
+export function shownChapters<T extends { opens_on?: string | null; opens_hidden?: number }>(chapters: T[], today: string): T[] {
+  return chapters.filter((ch) => !hiddenNow(ch, today));
+}
+
+/** The locks a learner meets in a subject (or the made-up learner of a preview, with no marks): null when nothing locks and the order rule is off, so the page is main's. */
+export function learnerChapterLocks(chapters: LockChapter[], done: Set<string>, inOrder: boolean, today: string): ChapterLocks | null {
+  const locks = chapterLocks(chapters, done, { today, inOrder });
+  return inOrder || locks.locked.size ? locks : null;
 }
 
 /** The lock rule (section 5.2): a chapter is open when every shown lesson of
@@ -457,31 +544,41 @@ export interface ChapterLocks {
  * with no shown lesson is done by definition and is never shown locked. Marks
  * inside a locked chapter are kept and counted but open nothing before the
  * chapters before it are done. Pure: no read. */
-export function chapterLocks(chapters: { id: string; title: string; lessons: { id: string; title: string }[] }[], done: Set<string>): ChapterLocks {
+export function chapterLocks(chapters: LockChapter[], done: Set<string>, opts?: { today: string; inOrder: boolean }): ChapterLocks {
+  // Without `opts`: wave 4's rule exactly (order on, no date). LMS wave 8 (C1 to C4): with `opts`, a chapter not
+  // open yet by its date is locked by it too (shown locked, also when empty, D5); a hidden one not open yet is left
+  // out of the rule, as if it had no lessons (C2); a shown-locked one counts in the order rule (C3).
+  const today = opts?.today;
+  const inOrder = opts?.inOrder ?? true;
   const locked = new Map<string, LockReason>();
   let blocking: { id: string; title: string; left: number } | null = null;
   let goTo: { id: string; title: string } | null = null;
   let leftBefore = 0;
+  let byOrder = 0;
   for (const ch of chapters) {
+    if (today !== undefined && hiddenNow(ch, today)) continue;
     const notDone = ch.lessons.filter((l) => !done.has(l.id));
-    if (leftBefore > 0 && ch.lessons.length > 0) {
-      locked.set(ch.id, locked.size === 0 ? { kind: 'first', blocking: { id: blocking!.id, title: blocking!.title }, left: blocking!.left } : { kind: 'later', left: leftBefore });
+    let reason: LockReason | null = null;
+    if (inOrder && leftBefore > 0 && ch.lessons.length > 0) {
+      reason = byOrder === 0 ? { kind: 'first', blocking: { id: blocking!.id, title: blocking!.title }, left: blocking!.left } : { kind: 'later', left: leftBefore };
+      byOrder++;
     }
-    if (!blocking && notDone.length > 0) {
-      blocking = { id: ch.id, title: ch.title, left: notDone.length };
-      goTo = notDone[0];
-    }
+    if (today !== undefined && notOpenYet(ch, today)) reason = reason ? { ...reason, opensOn: ch.opens_on! } : { kind: 'date', opensOn: ch.opens_on! };
+    if (reason) locked.set(ch.id, reason);
+    if (!blocking && notDone.length > 0) blocking = { id: ch.id, title: ch.title, left: notDone.length };
+    // "Go to" (C5): the first not-done lesson of a chapter open now.
+    if (!goTo && !reason && notDone.length > 0) goTo = notDone[0];
     leftBefore += notDone.length;
   }
-  return { locked, blocking: blocking?.id ?? null, goTo: locked.size ? goTo : null };
+  return { locked, blocking: blocking?.id ?? null, goTo: byOrder ? goTo : null, inOrder };
 }
 
-/** The chapters of a reading sequence (a home card's steps), in order: enough for the lock rule, since a chapter without lessons never locks or blocks. */
-function chaptersOfSteps(steps: SequenceStep[]): { id: string; title: string; lessons: { id: string; title: string }[] }[] {
-  const out: { id: string; title: string; lessons: { id: string; title: string }[] }[] = [];
-  for (const s of steps) {
+/** The chapters of the steps of a home card, in order, each with its opening date when not open yet: enough for the lock rule, since a chapter without lessons never locks by order and leads nowhere. */
+function chaptersOfCard(card: LearnerCard): LockChapter[] {
+  const out: LockChapter[] = [];
+  for (const s of card.steps) {
     let ch = out.at(-1);
-    if (!ch || ch.id !== s.chapterId) out.push((ch = { id: s.chapterId, title: s.chapterTitle, lessons: [] }));
+    if (!ch || ch.id !== s.chapterId) out.push((ch = { id: s.chapterId, title: s.chapterTitle, lessons: [], opens_on: card.opening.get(s.chapterId) ?? null, opens_hidden: 0 }));
     ch.lessons.push({ id: s.id, title: s.title });
   }
   return out;
@@ -527,8 +624,9 @@ export async function readableSubject(db: Db, space: CurrentSpace, userId: strin
  * section 5.1; the learner home uses the same order). */
 export async function outline(db: Db, spaceId: string, subjectId: string): Promise<OutlineChapter[]> {
   // LMS wave 6 (section 6.1): the outline read gains the two due_on columns, no new statement.
-  const rows = await db.all<{ chapter_id: string; chapter_title: string; chapter_due: string | null; lesson_id: string | null; lesson_title: string | null; lesson_due: string | null }>(
-    `SELECT c.id AS chapter_id, c.title AS chapter_title, c.due_on AS chapter_due, l.id AS lesson_id, l.title AS lesson_title, l.due_on AS lesson_due
+  // LMS wave 8 (section 3.6): and the opening date and choice of each chapter, no new statement.
+  const rows = await db.all<{ chapter_id: string; chapter_title: string; chapter_due: string | null; opens_on: string | null; opens_hidden: number; lesson_id: string | null; lesson_title: string | null; lesson_due: string | null }>(
+    `SELECT c.id AS chapter_id, c.title AS chapter_title, c.due_on AS chapter_due, c.opens_on, c.opens_hidden, l.id AS lesson_id, l.title AS lesson_title, l.due_on AS lesson_due
        FROM chapter c LEFT JOIN lesson l ON l.chapter_id = c.id AND l.space_id = c.space_id AND l.removed_at IS NULL
       WHERE c.space_id = ? AND c.subject_id = ? AND c.removed_at IS NULL
       ORDER BY c.position, c.title, c.id, l.position, l.title, l.id`,
@@ -537,7 +635,7 @@ export async function outline(db: Db, spaceId: string, subjectId: string): Promi
   const chapters: OutlineChapter[] = [];
   for (const r of rows) {
     let ch = chapters.at(-1);
-    if (!ch || ch.id !== r.chapter_id) chapters.push((ch = { id: r.chapter_id, title: r.chapter_title, lessons: [], due_on: r.chapter_due ?? null }));
+    if (!ch || ch.id !== r.chapter_id) chapters.push((ch = { id: r.chapter_id, title: r.chapter_title, lessons: [], due_on: r.chapter_due ?? null, opens_on: r.opens_on ?? null, opens_hidden: Number(r.opens_hidden ?? 0) }));
     if (r.lesson_id) ch.lessons.push({ id: r.lesson_id, title: r.lesson_title ?? '', due_on: r.lesson_due ?? null });
   }
   return chapters;
@@ -545,7 +643,7 @@ export async function outline(db: Db, spaceId: string, subjectId: string): Promi
 
 export function findLesson(db: Db, spaceId: string, lessonId: string): Promise<LessonRow | null> {
   return db.first<LessonRow>(
-    `SELECT l.id, l.title, l.body_text, l.chapter_id, c.title AS chapter_title, c.subject_id
+    `SELECT l.id, l.title, l.body_text, l.chapter_id, c.title AS chapter_title, c.subject_id, c.opens_on, c.opens_hidden
        FROM lesson l JOIN chapter c ON c.id = l.chapter_id AND c.space_id = l.space_id AND c.removed_at IS NULL
       WHERE l.id = ? AND l.space_id = ? AND l.removed_at IS NULL`,
     lessonId, spaceId,
@@ -563,7 +661,7 @@ export function lessonMaterials(db: Db, spaceId: string, lessonId: string): Prom
 /** A stored file (PDF or image) with the subject it belongs to. */
 export function findFile(db: Db, spaceId: string, materialId: string): Promise<FileRow | null> {
   return db.first<FileRow>(
-    `SELECT m.id, m.kind, m.title, m.storage_key, c.subject_id, l.id AS lesson_id
+    `SELECT m.id, m.kind, m.title, m.storage_key, c.subject_id, l.id AS lesson_id, c.opens_on, c.opens_hidden
        FROM material m
        JOIN lesson l ON l.id = m.lesson_id AND l.space_id = m.space_id AND l.removed_at IS NULL
        JOIN chapter c ON c.id = l.chapter_id AND c.space_id = l.space_id AND c.removed_at IS NULL

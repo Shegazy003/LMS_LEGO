@@ -2076,9 +2076,10 @@ jobs:
         with:
           name: evidence-wave-7
           path: evidence/
-  # LMS wave 8, W8-1a (product-contract v2 on PIL-299): teachers set chapter opening dates. No learner, guardian or
-  # preview read uses the dates yet (N1): AT-5.1 compares every learner-side response with the stored fixtures of
-  # main a41f7d8 (pinned), which is checked out beside this commit and recaptured in the same process.
+  # LMS wave 8, W8-1a (product-contract v2 on PIL-299): teachers set chapter opening dates. AT-5.1 compares every
+  # learner-side response of a world with no date, or with every date passed, with the stored fixtures of main
+  # a41f7d8 (pinned), which is checked out beside this commit and recaptured in the same process.
+  # W8-1b: learners, guardians and the preview meet the dates (AT-2 to AT-4, AT-5.2, AT-5.4, UX-88 to UX-91, UX-93).
   wave-8:
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -2142,6 +2143,60 @@ jobs:
       - name: W8 AT-4.1 teacher pages show all five chapters and no learner lock state
         if: success() || failure()
         run: npm run test:wave3b -- --test-name-pattern='^W8 AT-4\.1 ' test/wave8/at1.test.ts
+      - name: W8 AT-2.1 before the day Salma meets the shown-locked column for Ch2 and Ch5 and the hidden column for Ch3, no open recorded
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W8 AT-2\.1 ' test/wave8/at2.test.ts
+      - name: W8 AT-2.2 at 00:00 UTC Ch2 and Ch5 open, Ch2 identical (N1) to the world without its date and to W8-0 but the hidden Ch3
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W8 AT-2\.2 ' test/wave8/at2.test.ts
+      - name: W8 AT-2.3 Ch3 hidden at the last instant before 2026-12-17 and open, identical to W8-0, at 00:00 UTC
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W8 AT-2\.3 ' test/wave8/at2.test.ts
+      - name: W8 AT-2.4 Ch3 lesson and file addresses equal a made-up id, done presses on Ch2 and Ch3 store nothing
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W8 AT-2\.4 ' test/wave8/at2.test.ts
+      - name: W8 AT-2.5 the Ch2 lesson due before its opening is overdue on the day it opens, for Salma and in Mona's block
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W8 AT-2\.5 ' test/wave8/at2.test.ts
+      - name: W8 AT-2.6 the card counts 6 then 7 lessons and the counter k of 6 then k of 7, marks kept
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W8 AT-2\.6 ' test/wave8/at2.test.ts
+      - name: W8 AT-3.1 in order, Ch2 the date line only, Ch4 wave 4's line naming Ch2, Ch3 absent and outside the rule, Ch5 tag and date
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W8 AT-3\.1 ' test/wave8/at3.test.ts
+      - name: W8 AT-3.2 Go to and Continue never lead into Ch2
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W8 AT-3\.2 ' test/wave8/at3.test.ts
+      - name: W8 AT-3.3 the card shows Next, Fractions, opens on 2026-12-10
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W8 AT-3\.3 ' test/wave8/at3.test.ts
+      - name: W8 AT-3.4 marking the last Ch1 lesson never says Fractions is open now
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W8 AT-3\.4 ' test/wave8/at3.test.ts
+      - name: W8 AT-3.5 Omar's Ch4 relocks behind Ch3 on 2026-12-17 with marks kept, Salma's does not
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W8 AT-3\.5 ' test/wave8/at3.test.ts
+      - name: W8 AT-3.6 both reasons, the date line then wave 4's line
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W8 AT-3\.6 ' test/wave8/at3.test.ts
+      - name: W8 AT-3.7 learnerTodo and both previewTodo variants agree with chapterLocks on every combination
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W8 AT-3\.7 ' test/wave6/at2.test.ts
+      - name: W8 AT-3.8 wave 4's own tests pass untouched (its base comparison runs in job wave-4)
+        if: success() || failure()
+        run: npm run test:wave3b -- test/wave4/at1.test.ts test/wave4/at2.test.ts test/wave4/at3.test.ts test/wave4/at4.test.ts test/wave4/at5.test.ts test/wave4/ux.test.ts
+      - name: W8 AT-4.2 the preview matches A1 on the home, the outline and the lesson page
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W8 AT-4\.2 ' test/wave8/at4.test.ts
+      - name: W8 AT-4.3 Mona's pages and Rana's admin pages are W8-0's apart from the 3.4 changes
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W8 AT-4\.3 ' test/wave8/at4.test.ts
+      - name: W8 AT-4.4 the allow-list scan of every 3.4 surface finds nothing of Ch3 before 2026-12-17
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W8 AT-4\.4 ' test/wave8/at4.test.ts
+      - name: W8 AT-4.5 openedOn and openNext render in three kits and two languages
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W8 AT-4\.5 ' test/wave8/at4.test.ts
       - name: Check out main a41f7d8 for the N1 comparison (code only, never run but by the comparison)
         if: success() || failure()
         uses: actions/checkout@v4
@@ -2158,12 +2213,20 @@ jobs:
         if: success() || failure()
         env:
           LMS_BASE_ROOT: ${{ github.workspace }}/.base-w8
-        run: npm run test:wave3b -- --test-name-pattern='^W8 AT-5\.2 ' test/wave8/at5.test.ts
+        run: npm run test:wave3b -- --test-name-pattern='^W8 AT-5\.2 (\(W8-1a|the page)' test/wave8/at5.test.ts
       - name: W8 AT-5.3 migration 0017 is additive, a41f7d8 runs on the migrated database, the down script restores its schema
         if: success() || failure()
         env:
           LMS_BASE_ROOT: ${{ github.workspace }}/.base-w8
         run: npm run test:wave3b -- --test-name-pattern='^W8 AT-5\.3 ' test/wave8/at5.test.ts
+      - name: W8 AT-5.2 (W8-1b) every 3.4 request makes at most a41f7d8's statements and rows read on the same database
+        if: success() || failure()
+        env:
+          LMS_BASE_ROOT: ${{ github.workspace }}/.base-w8
+        run: npm run test:wave3b -- --test-name-pattern='^W8 AT-5\.2 (\(W8-1b|W8-a)' test/wave8/at5.test.ts
+      - name: W8 AT-5.4 no wave 8 action changes or deletes a done mark, due date, quiz, attempt, announcement or activity row
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^W8 AT-5\.4 ' test/wave8/at5.test.ts
       - name: UX-86 opening page structure, same controls per row, return-to-row
         if: success() || failure()
         run: npm run test:wave3b -- --test-name-pattern='^UX-86 ' test/wave8/ux.test.ts
@@ -2179,6 +2242,21 @@ jobs:
       - name: UX-93 wording in 3 kits x 2 languages
         if: success() || failure()
         run: npm run test:wave3b -- --test-name-pattern='^UX-93 ' test/wave8/ux.test.ts
+      - name: UX-88 outline date lock, both reasons, hidden absent, counter
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-88 ' test/wave8/ux-learn.test.ts
+      - name: UX-89 date-locked lesson page
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-89 ' test/wave8/ux-learn.test.ts
+      - name: UX-90 no link into a not-open chapter
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-90 ' test/wave8/ux-learn.test.ts
+      - name: UX-91 rtl, bdi and no horizontal overflow at 390/768/1280 (learner screens)
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-91 ' test/wave8/ux-learn.test.ts
+      - name: UX-93 wording in 3 kits x 2 languages (learner keys)
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^UX-93 ' test/wave8/ux-learn.test.ts
       - name: Upload evidence (wave 8 screenshots)
         if: always() && hashFiles('evidence/**') != ''
         uses: actions/upload-artifact@v4
