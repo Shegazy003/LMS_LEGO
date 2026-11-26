@@ -19,13 +19,24 @@ const L = (w: Wave1World, title: string) => w.school.lessons[title];
 const CHAPTERS = ['Fractions', 'Empty chapter', 'Decimals', 'Percent', 'Review'];
 const LOCKED = (reason: string) => ({ tag: 'Locked', reason });
 
+/** The Opening dates page's own wording about the teacher's before-opening choice (W8-1a). */
+const OPENING_PAGE_KEYS = ['openCardHelp', 'openShowLocked', 'openStateLocked'] as const;
+
 /** Every sign of a lock a page could carry: its markers anywhere, its words in the text a person reads. */
 function lockSigns(body: string): string[] {
   const hits: string[] = [];
   for (const marker of ['id="order-box"', 'data-locked', 'class="lock-tag"', 'id="go-to"', 'id="next-locked"', 'class="lock-item"', 'id="lock-reason"', 'id="open-change"']) {
     if (body.includes(marker)) hits.push(marker);
   }
-  const text = inline(body, { hidden: true });
+  let text = inline(body, { hidden: true });
+  // LMS wave 8 (W8-1a, ux-plan v2 on PIL-299): the teacher's Opening dates page names the choice "shown locked"
+  // in its help and radio wording (the Arabic holds the locked tag's words). That is the teacher's setting, not a
+  // learner's lock state, so those fixed phrases are taken out before the scan. Named in CANDIDATE READY.
+  for (const lang of ['en', 'ar'] as const) {
+    for (const key of OPENING_PAGE_KEYS) {
+      for (const part of UI[lang][key].split(/{[^}]*}/).map((x) => x.trim()).filter((x) => x.length > 2)) text = text.split(part).join(' ');
+    }
+  }
   for (const lang of ['en', 'ar'] as const) {
     // W4-1b: and the two status lines after a press.
     for (const key of ['orderLine', 'lockedTag', 'lockedReason', 'lockedLater', 'goTo', 'markedOpened', 'markedRelocked'] as const) {
@@ -46,6 +57,8 @@ function lockSigns(body: string): string[] {
 const withoutSetting = (body: string) => body
   .replace(/<section id="order-state"[\s\S]*?<\/section>/g, '[setting card]')
   .replace(/<p class="order-note" data-order-note>[\s\S]*?<\/p>/g, '')
+  // LMS wave 8 (W8-1a): the Opening dates page's note on Open in order shows only with the setting on.
+  .replace(/<p class="due-help" id="open-order-note">[\s\S]*?<\/p>/g, '')
   // The owner's usage today counts the crawl's own requests, so it grows between the two crawls.
   .replace(/<div id="usage"[\s\S]*?(?=<h2|<\/main>)/g, '[usage today]');
 

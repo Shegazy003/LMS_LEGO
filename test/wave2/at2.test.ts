@@ -18,6 +18,13 @@ function byId(html: string, id: string): string | null {
   return m ? plain(m[2]) : null;
 }
 
+/** LMS wave 8 (W8-1a, ux-plan v2 on PIL-299): the teacher's Opening dates page explains the rule with the words of a
+ * done mark (English "Done marks are kept."); its rule lines show no learner's mark, so they are taken out before the
+ * scans, as the order card is. Named in CANDIDATE READY (outside section 8; the Lead decides). */
+const withoutOpeningRule = (body: string) => body
+  .replace(/<p class="draft" data-line="open\w+">[\s\S]*?<\/p>/g, ' ')
+  .replace(/<p class="due-help" id="open-order-note">[\s\S]*?<\/p>/g, ' ');
+
 /** Statements that name the done-mark table. */
 const naming = (statements: string[]) => statements.filter((s) => /\bdone_mark\b/i.test(s));
 
@@ -137,7 +144,7 @@ describe('W2 AT-2.2 no page the admin, the publisher, the guardian or the owner 
           // The preview draws "Mark as done" inert (AT-4.3); nothing else of a done mark anywhere.
           // LMS wave 4 (product-contract v2 on PIL-238, section 4.2): the setting card and the change note explain the rule by
           // naming the done mark (Arabic «علامة "تمّ"»); they show no learner's mark, so they are taken out before this scan.
-          const withoutOrder = p.body.replace(/<section id="order-state"[\s\S]*?<\/section>/g, ' ').replace(/<p class="order-note" data-order-note>[\s\S]*?<\/p>/g, ' ');
+          const withoutOrder = withoutOpeningRule(p.body.replace(/<section id="order-state"[\s\S]*?<\/section>/g, ' ').replace(/<p class="order-note" data-order-note>[\s\S]*?<\/p>/g, ' '));
           assert.deepEqual(doneHits(withoutOrder, doneWords(p.path.includes('/preview'))), [], `${v.name} ${lang} ${p.path}: no done word or marker`);
           if (/\/(learn|read)\//.test(p.path) && !p.path.includes('/preview')) {
             assert.ok(!/id="done-(state|progress|tag)"/.test(p.body), `${v.name} ${lang} ${p.path}: no done block, tag or progress line`);
@@ -316,7 +323,7 @@ describe('W2 AT-2.6 (W2-e) Amal and Mona, each also a learner, mark only as them
     assert.ok(previewPages.some((p) => p.path.includes('/preview/read/') && p.status === 200), 'the crawl reached a preview lesson');
     for (const [what, pages, words] of [['admin', adminPages, doneWords(false)], ['guardian', guardianPages, doneWords(false)], ['preview', previewPages, doneWords(true)]] as const) {
       assert.ok(pages.length >= 2,`${what}: pages ${pages.length}`);
-      for (const p of pages) if (p.contentType.startsWith('text/')) assert.deepEqual(doneHits(p.body, words), [], `${what} ${p.path}`);
+      for (const p of pages) if (p.contentType.startsWith('text/')) assert.deepEqual(doneHits(withoutOpeningRule(p.body), words), [], `${what} ${p.path}`);
     }
   });
 });

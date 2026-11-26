@@ -295,6 +295,10 @@ const W8_CHANGED_TESTS: Record<string, string> = {
   'test/guards/role-gates.test.ts': 'W8 S1: role-gates lists the Opening dates addresses',
   'test/guards/cross-origin.test.ts': 'W8 S1: the same-origin sweep gains the Opening dates POST addresses',
   'test/guards/log-redaction.test.ts': 'W8: the fixed events gain opening date write failed, as each wave adds its event',
+  // W8-1a fix round 1 (CI run 45815410094): W4 AT-2.7 skips the admin-only /admin/ addresses as it skips /publish/.
+  // (W4 AT-4.1 in test/wave4/at4.test.ts and W2 AT-2.2/2.6 in test/wave2/at2.test.ts also take out the Opening dates
+  // wording before their scans; both files are already named above.)
+  'test/wave4/at2.test.ts': 'W8 S1: W4 AT-2.7 skips the admin-only /admin/ addresses (the admin Opening dates POST takes a :chapterId)',
 };
 /** W7-1's additions to the workflow: the job wave-7 (W7 11.6) and the rollback job's AT-6.3 step (W7 11.6); W8-1a's job wave-8. */
 const W7_JOBS = ['wave-7', 'wave-8'];
