@@ -42,6 +42,7 @@ import {
   ADMIN, AT, HADEER, KARIM5, MONA, NOUR6, OMAR, QB_QUESTIONS, QL, QL_QUESTIONS, QUIZ_CARD, RANA5, SALMA, W7A, W7_CSS_MAX, W7_MARK, YOUSSEF, annBlock, as, closeWave6, clockAt, insertQuiz, publisherQuizzes, questionForm,
   resultsOf, wave4World, wave7BlockProblem, wave7World, withAt2, withW5a, withW6a, withW7a, withW7b, withW7d, withW7e, type Wave1World,
 } from './world.ts';
+import { OPENING_CARD } from '../wave8/world.ts';
 
 const repo = fileURLToPath(new URL('../..', import.meta.url));
 /** The pinned base: W6-main 6ce8366 (W6-1c merged, wave 6 complete; the Lead's MAIN_SHA for W7-1). */
@@ -214,9 +215,10 @@ async function same(p: Pair, who: Who, method: 'GET' | 'POST', path: string, out
   // W7-3 (v3 addendum on PIL-285, G9.1): on a linked learner's page the guardian's quiz block `#quiz-guardian` is the allowed
   // difference; it is cut there (its content is W7 AT-7 and AT-8.2's) and nowhere else.
   const cb0 = LINKED_PAGE.test(path) ? withoutElement(cb, 'quiz-guardian') : cb;
-  const cut = cb0.replace(CARD, '');
-  const card = cut !== cb0;
   const teacher = isTeacherPage(path);
+  // LMS wave 8 (contract on PIL-299, B1): the Opening dates card, after the quiz card, is the teacher pages' other allowed difference.
+  const cut = (teacher ? cb0.replace(OPENING_CARD, '') : cb0).replace(CARD, '');
+  const card = cut !== cb0;
   if (card && !teacher) problems.push('a quiz card on a page that is not a teacher page');
   if (cut !== bb) problems.push(`another body ${firstDifference(bb, cut)}`);
   const annB = annBlock(bb);

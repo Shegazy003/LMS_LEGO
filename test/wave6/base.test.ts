@@ -44,6 +44,7 @@ import {
 } from './world.ts';
 import { onLocalD1, todoOf, withW6d, withW6e, withoutGuardianTodo } from './todo.ts';
 import { QUIZ_CARD, cutWave7Style } from '../wave7/world.ts';
+import { OPENING_CARD } from '../wave8/world.ts';
 
 const repo = fileURLToPath(new URL('../..', import.meta.url));
 /** The pinned base: W5-main f0125980 (wave 5 merged, main CI run 44864862736 green), the contract's "main". */
@@ -220,7 +221,8 @@ async function same(p: Pair, who: Who, method: 'GET' | 'POST', path: string, out
   const teacher = isTeacherPage(path);
   if (card && !teacher) problems.push('a due card on a page that is not a teacher page');
   // LMS wave 7 (W7 contract on PIL-261, section 11 item 3): the quiz card, right after the due card, is the teacher pages' other allowed difference.
-  const cut = dueCut.replace(QUIZ_CARD, '');
+  // LMS wave 8 (contract on PIL-299, B1): the Opening dates card, after the quiz card, on the same pages.
+  const cut = (teacher ? dueCut.replace(OPENING_CARD, '') : dueCut).replace(QUIZ_CARD, '');
   if (cut !== dueCut && !teacher) problems.push('a quiz card on a page that is not a teacher page');
   if (cut !== bb) problems.push(`another body ${firstDifference(bb, cut)}`);
   // Wave 5's announcement blocks, byte-identical (AT-4.1b): compared on both sides.

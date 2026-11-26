@@ -31,6 +31,7 @@ import { inProcess, startProductWith, type Product } from '../support/product.ts
 import type { InProcessWorker } from '../support/in-process.ts';
 import { HADEER, MONA, OMAR, SALMA, YOUSSEF, adminOrder, publisherOrder, wave4World, type Wave1World } from './world.ts';
 import { QUIZ_CARD, cutWave7Style } from '../wave7/world.ts';
+import { OPENING_CARD } from '../wave8/world.ts';
 
 const repo = fileURLToPath(new URL('../..', import.meta.url));
 /** The pinned base: main b4ad669 (wave 3b merged), the contract's "main". */
@@ -158,7 +159,9 @@ function withoutCard(body: string): { body: string; card: boolean } {
     // LMS wave 6 (contract on PIL-257, section 11 item 3): the due card, on the same pages.
     .replace(/<section id="due-dates"[\s\S]*?<\/section>/g, '')
     // LMS wave 7 (W7 contract on PIL-261, section 11 item 3): the quiz card, on the same pages.
-    .replace(QUIZ_CARD, '');
+    .replace(QUIZ_CARD, '')
+    // LMS wave 8 (W8 contract on PIL-299, B1): the Opening dates card, after the quiz card, on the same pages.
+    .replace(OPENING_CARD, '');
   return { body: out, card: out !== body };
 }
 

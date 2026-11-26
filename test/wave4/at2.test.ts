@@ -215,12 +215,15 @@ const LESSON_KEYED = [
   'GET /s/:spaceId/file/:materialId',
 ];
 
+// LMS wave 8 (W8-1a, product-contract v2 on PIL-299, S1): the admin's Opening dates POST takes a :chapterId under
+// /admin/, an admin-only address (role-gates covers it), not a learner route; /admin/ is skipped like /publish/.
+// Named in CANDIDATE READY (outside section 8; the Lead decides).
 describe('W4 AT-2.7 every lesson-keyed learner route is gated: the route table has exactly the three of Code facts', () => {
   it('W4 AT-2.7 the routes taking :lessonId, :materialId or :chapterId outside /publish/ and /preview/ are exactly the listed three', async (t) => {
     (globalThis as { __TEST_HOOKS__?: boolean }).__TEST_HOOKS__ = true;
     const { app, MIDDLEWARE } = await import('../../src/app.ts');
     const keyed = [...new Set((app.routes as { method: string; path: string; handler: unknown }[])
-      .filter((r) => /:(lessonId|materialId|chapterId)\b/.test(r.path) && !/\/(publish|preview)\//.test(r.path) && !(r.method === 'ALL' && MIDDLEWARE.has(r.handler)))
+      .filter((r) => /:(lessonId|materialId|chapterId)\b/.test(r.path) && !/\/(publish|preview|admin)\//.test(r.path) && !(r.method === 'ALL' && MIDDLEWARE.has(r.handler)))
       .map((r) => `${r.method} ${r.path}`))].sort();
     t.diagnostic(`AT-2.7 lesson-keyed learner routes: ${keyed.join(', ')}`);
     assert.deepEqual(keyed, [...LESSON_KEYED].sort(), 'a new such route must be added here with its own locked case');

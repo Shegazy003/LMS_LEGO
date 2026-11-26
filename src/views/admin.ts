@@ -217,6 +217,8 @@ export function topicPage(
     due?: Html;
     /** LMS wave 7 (section 4.2): the quiz card, after the due card. */
     quizzes?: Html;
+    /** LMS wave 8 (S1, UX-86): the Opening dates card, after the quiz card. */
+    opening?: Html;
   },
 ): Html {
   const action = `${base(space)}/topics/${v.topic.id}`;
@@ -235,6 +237,6 @@ ${errorBox(v.error)}
   <button type="submit">${t('save')}</button>
 </form>
 ${renameForm(t, { id: 'rename-topic', heading: t('renameItem', { item: t('subject') }), action: `${action}/name`, field: 'title', value: v.typedName ?? v.topic.title })}
-${orderCard(t, lang, { action: `${action}/order`, on: v.topic.chapters_in_order === 1, status: v.order ?? null, own: true })}${v.announcements ?? ''}${v.due ?? ''}${v.quizzes ?? ''}`;
+${orderCard(t, lang, { action: `${action}/order`, on: v.topic.chapters_in_order === 1, status: v.order ?? null, own: true })}${v.announcements ?? ''}${v.due ?? ''}${v.quizzes ?? ''}${v.opening ?? ''}`;
   return spacePage(t, lang, space, v.topic.title, body);
 }

@@ -33,6 +33,7 @@ import { HALA7, NABIL7, QZ_TITLE, SAMI7, byId, domOf, dropIds, guardianAllowed, 
 import {
   ADMIN, AT, HADEER, KARIM5, MONA, OMAR, RANA5, SALMA, SHIMAA, TITLES, W7A, adminQuizzes, cutWave7Style, linkedPath, publisherQuizzes, resultsOf, selectorsOf, wave7World, words, type Wave1World,
 } from './world.ts';
+import { OPENING_CARD } from '../wave8/world.ts';
 
 const repo = fileURLToPath(new URL('../..', import.meta.url));
 /** The pinned base: W7-2-main c1a9d14 (PR #56 merged, 13 of 13 checks), the contract's "today's". */
@@ -199,6 +200,10 @@ async function same(p: Pair, who: Who, path: string, out: Result[], allowBlock: 
       cb = cb.replace(HELP, `$1${/<p class="quiz-help">[\s\S]*?<\/p>/.exec(bb.slice(help.index + help[1].length))![0]}`);
       if (before !== cb) cut.push('quizCardHelp');
     }
+    // LMS wave 8 (contract on PIL-299, B1): the Opening dates card, after the quiz card, is the teacher pages' allowed difference.
+    const before = cb;
+    cb = cb.replace(OPENING_CARD, '');
+    if (before !== cb) cut.push('#opening-dates');
   }
   if (ADMIN_LIST.test(path)) {
     const before = cb;

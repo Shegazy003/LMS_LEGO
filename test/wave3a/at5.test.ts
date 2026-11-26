@@ -121,9 +121,9 @@ test('W3a AT-5.1 every existing step of contract section 10 is still in its job 
   check('wave-3a', WAVE_3A, true);
   // Wave 3b adds its own one new job, `wave-3b` (W3b contract section 11), wave 4 `wave-4` (W4 contract section 11 item 3)
   // and wave 5 `wave-5` (W5 contract section 11 item 5), wave 6 `wave-6` (W6 contract section 11 item 5), wave 7 `wave-7`
-  // (W7 contract on PIL-261, section 11 item 6); nothing else may appear.
-  const known = new Set(Object.keys(SECTION_10).concat('wave-3a', 'wave-3b', 'wave-4', 'wave-5', 'wave-6', 'wave-7', 'push')); // "push" is the trigger under on:, not a job
-  assert.deepEqual(Object.keys(ci).filter((j) => !known.has(j)), [], 'at most one new job per wave (wave-3a, then wave-3b, wave-4, wave-5, wave-6, wave-7)');
+  // (W7 contract on PIL-261, section 11 item 6), wave 8 `wave-8` (W8 contract on PIL-299, section 6 N1); nothing else may appear.
+  const known = new Set(Object.keys(SECTION_10).concat('wave-3a', 'wave-3b', 'wave-4', 'wave-5', 'wave-6', 'wave-7', 'wave-8', 'push')); // "push" is the trigger under on:, not a job
+  assert.deepEqual(Object.keys(ci).filter((j) => !known.has(j)), [], 'at most one new job per wave (wave-3a, then wave-3b, wave-4, wave-5, wave-6, wave-7, wave-8)');
 });
 
 describe('W3a AT-5 keep working', { concurrency: false }, () => {

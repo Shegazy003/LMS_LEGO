@@ -279,8 +279,29 @@ const W7_CHANGED_TESTS: Record<string, string> = {
   'test/wave4/at1.test.ts': 'W7-2 11.4 (outside section 11\'s list, named in CANDIDATE READY): the pinned read counts gain WAVE7 +1 on the learner and preview subject pages',
   'test/wave4/at4.test.ts': 'W7-2 11.4 (outside section 11\'s list, named in CANDIDATE READY): the pinned read counts gain WAVE7 +1 on the learner and preview subject pages',
 };
-/** W7-1's additions to the workflow: the job wave-7 (W7 11.6) and the rollback job's AT-6.3 step (W7 11.6). */
-const W7_JOBS = ['wave-7'];
+/** LMS wave 8, W8-1a (product-contract v2 on PIL-299): the existing test files W8-1a changes, each with its reason
+ * (named in CANDIDATE READY for the Lead). Files W7 also changed are listed in W7_CHANGED_TESTS already. */
+const W8_CHANGED_TESTS: Record<string, string> = {
+  'test/wave1/at3-4.test.ts': 'W8 R1: the migration list gains 0017_chapter_opening.sql',
+  'test/l2/at5-5.test.ts': 'W8 R1: the migration list gains 0017_chapter_opening.sql',
+  'test/wave3a/at3.test.ts': 'W8 R1: the migration list gains 0017_chapter_opening.sql',
+  'test/wave3a/at5.test.ts': 'W8 N1: the job list gains wave-8',
+  'test/wave4/base.test.ts': 'W8 B1: the Opening dates card on teacher pages',
+  'test/wave5/base.test.ts': 'W8 B1: the Opening dates card on teacher pages',
+  'test/wave6/base.test.ts': 'W8 B1: the Opening dates card on teacher pages',
+  'test/wave6/base-guardian.test.ts': 'W8 B1: the Opening dates card on teacher pages',
+  'test/wave7/base.test.ts': 'W8 B1: the Opening dates card on teacher pages',
+  'test/wave7/base-guardian.test.ts': 'W8 B1: the Opening dates card on teacher pages',
+  'test/guards/role-gates.test.ts': 'W8 S1: role-gates lists the Opening dates addresses',
+  'test/guards/cross-origin.test.ts': 'W8 S1: the same-origin sweep gains the Opening dates POST addresses',
+  'test/guards/log-redaction.test.ts': 'W8: the fixed events gain opening date write failed, as each wave adds its event',
+  // W8-1a fix round 1 (CI run 45815410094): W4 AT-2.7 skips the admin-only /admin/ addresses as it skips /publish/.
+  // (W4 AT-4.1 in test/wave4/at4.test.ts and W2 AT-2.2/2.6 in test/wave2/at2.test.ts also take out the Opening dates
+  // wording before their scans; both files are already named above.)
+  'test/wave4/at2.test.ts': 'W8 S1: W4 AT-2.7 skips the admin-only /admin/ addresses (the admin Opening dates POST takes a :chapterId)',
+};
+/** W7-1's additions to the workflow: the job wave-7 (W7 11.6) and the rollback job's AT-6.3 step (W7 11.6); W8-1a's job wave-8. */
+const W7_JOBS = ['wave-7', 'wave-8'];
 const W7_ROLLBACK_STEP = /^W7 AT-6\.3 /;
 
 describe('W6 AT-7.5 keep working: every existing CI step and the rollback job are W6-1b-main\'s; only the named test files changed', { concurrency: false }, () => {
@@ -312,7 +333,7 @@ describe('W6 AT-7.5 keep working: every existing CI step and the rollback job ar
     assert.deepEqual(removed, [], 'no test file removed');
     // W6-1c's named files all changed; any other changed file is one W7-1 names (section 11).
     assert.deepEqual(Object.keys(CHANGED_TESTS).filter((p) => !changed.includes(p)), [], 'every file W6-1c names is changed');
-    assert.deepEqual(changed.filter((p) => !CHANGED_TESTS[p] && !W7_CHANGED_TESTS[p]), [], 'only the named test files changed (W6-1c\'s, and W7-1\'s)');
-    t.diagnostic(`AT-7.5: ${steps} W6-1b-main steps unchanged in ${base.size} jobs (rollback included); ${added.length} steps added to wave-6; changed test files:\n${changed.map((p) => `${p}: ${CHANGED_TESTS[p] ?? W7_CHANGED_TESTS[p]}`).join('\n')}`);
+    assert.deepEqual(changed.filter((p) => !CHANGED_TESTS[p] && !W7_CHANGED_TESTS[p] && !W8_CHANGED_TESTS[p]), [], 'only the named test files changed (W6-1c\'s, W7\'s and W8\'s)');
+    t.diagnostic(`AT-7.5: ${steps} W6-1b-main steps unchanged in ${base.size} jobs (rollback included); ${added.length} steps added to wave-6; changed test files:\n${changed.map((p) => `${p}: ${CHANGED_TESTS[p] ?? W7_CHANGED_TESTS[p] ?? W8_CHANGED_TESTS[p]}`).join('\n')}`);
   });
 });
