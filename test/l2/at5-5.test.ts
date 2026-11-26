@@ -42,6 +42,8 @@ const BASE_MIGRATIONS: Record<string, string> = {
   '0015_due_dates.sql': '16d726cef46a654fbec914b9ddf0834414a35f1f1d1852e33d2d115772455160',
   // LMS wave 7 (contract on PIL-261, section 11 item 1): the quiz and quiz_attempt tables and their indexes.
   '0016_quizzes.sql': 'ace1442b6cd38a4f2c6128367e7e51dff8d131d8be75c0cbadee333e3e2bc4da',
+  // LMS wave 8 (contract on PIL-299, R1): chapter.opens_on and chapter.opens_hidden.
+  '0017_chapter_opening.sql': '5135d7abb8ccdce8cf9b3727c69e0d9b79dd81981b6e6acc1b2ccd0bb38bf449',
 };
 
 const schemaQuery = "SELECT type, name, tbl_name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND name <> 'd1_migrations' ORDER BY type, name";

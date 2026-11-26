@@ -1,0 +1,238 @@
+// LMS wave 8, W8-1a (product-contract v2 on PIL-299, AT-5.1, AT-5.2 page part,
+// AT-5.3; section 6, N1 and B1; section 5, R1 and R2).
+// - AT-5.1: every 3.4 surface (test/wave8/n1.ts requestList) answers, by N1,
+//   exactly as a41f7d8's stored captures (test/wave8/fixtures/): for W8-0, for
+//   W8-a with every date passed (2027-01-01) and, in W8-1a, for W8-a at any
+//   clock, since no learner read uses the dates yet. First the fixtures are
+//   recaptured from a41f7d8 (LMS_BASE_ROOT, default .base-w8/) and must match.
+// - AT-5.2: the Opening dates page makes at most 2 statements from the gate
+//   on (the gate, then the outline with due and opening dates); each press
+//   one gate read, one chapter read and at most one write.
+// - AT-5.3: migration 0017 is additive; a41f7d8's code runs on the migrated
+//   database (W8-a's dates stored) with every chapter open; the down script
+//   restores a41f7d8's schema and record.
+// Made-up data only.
+import { describe, it, before, after } from 'node:test';
+import assert from 'node:assert/strict';
+import { existsSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { DatabaseSync } from 'node:sqlite';
+import { inProcess } from '../support/product.ts';
+import type { InProcessWorker } from '../support/in-process.ts';
+import { BASE_ROOT, BASE_SHA, CLOCKS, capture, captureOn, differences, readFixture, type Captured, type ClockKey } from './n1.ts';
+import { AMAL, AT8, HADEER, ID, OPENINGS, adminOf, editorOf, openPage, openPost, seedW8, w8World, type Twin, type W8World } from './world.ts';
+
+const repo = fileURLToPath(new URL('../..', import.meta.url));
+const MIGRATION = '0017_chapter_opening.sql';
+const DOWN = join('migrations-down', '0017_chapter_opening.down.sql');
+
+function baseIsThere(): void {
+  assert.ok(existsSync(join(BASE_ROOT, 'src', 'app.ts')), `a41f7d8 ${BASE_SHA} is checked out at ${BASE_ROOT}`);
+  assert.ok(existsSync(join(BASE_ROOT, 'migrations', '0016_quizzes.sql')) && !existsSync(join(BASE_ROOT, 'migrations', MIGRATION)), 'the base is main after wave 7 and before wave 8');
+}
+
+/** a41f7d8's live captures of this run, per clock (for the first-difference hint). */
+const live = new Map<ClockKey, Captured[]>();
+
+function same(what: string, got: Captured[], clock: ClockKey): void {
+  const diff = differences(got, readFixture(clock), live.get(clock));
+  assert.equal(diff.join('\n'), '', `${what}: identical (N1) to a41f7d8's stored responses at ${clock}`);
+}
+
+// ------------------------------------------------------------------ AT-5.1 ----
+describe('W8 AT-5.1 every 3.4 response is identical (N1) to the stored a41f7d8 fixtures: W8-0, W8-a with every date passed, and in W8-1a W8-a at any clock', { concurrency: false }, () => {
+  it('W8 AT-5.1 recapture: a41f7d8\'s responses at each clock equal the stored fixtures', async (t) => {
+    baseIsThere();
+    for (const clock of Object.keys(CLOCKS) as ClockKey[]) {
+      const got = await capture({ root: BASE_ROOT, dates: false, atMs: CLOCKS[clock] });
+      live.set(clock, got);
+      assert.equal(differences(got, readFixture(clock)).join('\n'), '', `a41f7d8 at ${clock}: the recapture equals the stored fixture`);
+    }
+    const one = live.get('d9')!;
+    t.diagnostic(`AT-5.1 ${Object.keys(CLOCKS).length} clocks x ${one.length} responses recaptured from a41f7d8 ${BASE_SHA.slice(0, 7)}; statuses at d9: ${[...new Set(one.map((r) => r.status))].join(', ')}; people: ${[...new Set(one.map((r) => r.who))].join(', ')}`);
+  });
+
+  it('W8 AT-5.1 W8-0 (no date stored) on the candidate, at 2026-12-09 and 2027-01-01', async () => {
+    for (const clock of ['d9', 'y2027'] as const) same(`W8-0 at ${clock}`, await capture({ dates: false, atMs: CLOCKS[clock] }), clock);
+  });
+
+  it('W8 AT-5.1 W8-a with every date passed (2027-01-01) on the candidate', async () => {
+    same('W8-a at 2027-01-01', await capture({ dates: true, atMs: CLOCKS.y2027 }), 'y2027');
+  });
+
+  it('W8 AT-5.1 W8-a before, at and after each opening instant (W8-1a: no learner read uses the dates)', async () => {
+    for (const clock of ['d9', 'd9end', 'd10', 'd17'] as const) same(`W8-a at ${clock}`, await capture({ dates: true, atMs: CLOCKS[clock] }), clock);
+  });
+
+  it('W8 AT-5.1 self-check: one changed byte, status or header is found', () => {
+    const stored = readFixture('d9');
+    const base = stored.map((r) => ({ ...r, body: Buffer.alloc(0) }));
+    assert.deepEqual(differences(base, stored), [], 'identical to itself');
+    assert.equal(differences(base.map((r, i) => (i === 3 ? { ...r, sha256: '0'.repeat(64) } : r)), stored).length, 1, 'a body');
+    assert.equal(differences(base.map((r, i) => (i === 5 ? { ...r, status: 500 } : r)), stored).length, 1, 'a status');
+    assert.equal(differences(base.map((r, i) => (i === 7 ? { ...r, headers: [...r.headers, ['x-extra', '1']] as [string, string][] } : r)), stored).length, 1, 'a header');
+  });
+});
+
+// ------------------------------------------------------------------ AT-5.2 ----
+const READ = /^\s*(SELECT|WITH)\b/i;
+const PUBLISHER_GATE = /FROM subject s WHERE s\.id = \? AND s\.space_id = \? AND s\.publisher_user_id = \?/;
+const ADMIN_GATE = /FROM subject s LEFT JOIN user u ON u\.id = s\.publisher_user_id\s+WHERE s\.id = \? AND s\.space_id = \?/;
+
+/** The statements one request makes from the gate on (the session and membership reads before it are every page's). */
+async function fromGate(w: W8World, c: Awaited<ReturnType<W8World['as']>>, method: 'GET' | 'POST', path: string, gate: RegExp, fields: Record<string, string> = {}) {
+  w.p.spy!.start();
+  const res = method === 'GET' ? await c.get(path) : await c.post(path, fields);
+  await res.arrayBuffer();
+  const all = await w.p.spy!.stop();
+  const at = all.findIndex((s) => gate.test(s));
+  assert.ok(at >= 0, `${path}: the gate's statement was seen`);
+  const own = all.slice(at);
+  return { status: res.status, total: all.length, own, reads: own.filter((s) => READ.test(s)), writes: own.filter((s) => !READ.test(s)) };
+}
+
+describe('W8 AT-5.2 (W8-1a part) the Opening dates page makes at most 2 statements: the gate, then the outline with due and opening dates', { concurrency: false }, () => {
+  let w: W8World;
+  before(async () => {
+    w = await w8World({ inOrder: true });
+  });
+  after(async () => w?.close());
+
+  it('W8 AT-5.2 the page: 2 statements from the gate on, no write; each press: gate, chapter, at most one write', async (t) => {
+    const figures: string[] = [];
+    for (const [who, person, from, gate] of [['Amal', AMAL, editorOf(), PUBLISHER_GATE], ['Hadeer', HADEER, adminOf(), ADMIN_GATE]] as const) {
+      const c = await w.as(person, 'en');
+      const page = await fromGate(w, c, 'GET', openPage(from), gate);
+      assert.equal(page.status, 200);
+      figures.push(`${who} page: ${page.own.length} statements from the gate on (${page.total} with the session and membership reads)`);
+      assert.ok(page.own.length <= 2, `${who}: at most 2 statements (${page.own.length}):\n${page.own.join('\n')}`);
+      assert.equal(page.writes.length, 0, 'no write');
+      assert.match(page.own[1] ?? '', /FROM chapter c LEFT JOIN lesson l/, 'the second is the outline');
+      for (const [label, fields] of [['save', { action: 'save', opens_on: '2026-12-20', before: 'locked' }], ['clear', { action: 'clear', opens_on: '', before: 'locked' }]] as const) {
+        const press = await fromGate(w, c, 'POST', openPost(from, ID.ch4), gate, fields);
+        assert.equal(press.status, 303, `${who} ${label}`);
+        figures.push(`${who} ${label}: ${press.reads.length} reads and ${press.writes.length} write from the gate on`);
+        assert.equal(press.reads.length, 2, `${who} ${label}: one gate read and one chapter read`);
+        assert.equal(press.writes.length, 1, `${who} ${label}: one write`);
+        assert.match(press.writes[0], /^\s*UPDATE chapter SET opens_on = \?, opens_hidden = \?/, 'the chapter\'s opening');
+      }
+      const nothing = await fromGate(w, c, 'POST', openPost(from, ID.ch1), gate, { action: 'clear', opens_on: '', before: 'locked' });
+      assert.equal(nothing.writes.length, 0, `${who}: Clear on a row without a date writes nothing`);
+    }
+    t.diagnostic(`AT-5.2 ${figures.join('; ')}`);
+  });
+});
+
+// ------------------------------------------------------------------ AT-5.3 ----
+type Row = Record<string, unknown>;
+const schemaOf = (db: DatabaseSync) =>
+  db.prepare("SELECT type, name, tbl_name, sql FROM sqlite_master WHERE name NOT IN ('d1_migrations', 'sqlite_sequence') AND name NOT LIKE 'sqlite_autoindex%' ORDER BY type, name").all() as Row[];
+const columnsOf = (db: DatabaseSync, table: string) => (db.prepare(`SELECT name, type, "notnull", dflt_value, pk FROM pragma_table_info('${table}')`).all() as Row[]).map((r) => ({ ...r }));
+const plain = (rows: Row[]) => rows.map((r) => ({ ...r }));
+
+/** A file's text as the repository stores it (LF; a Windows checkout may give CRLF, which SQLite keeps in the schema text). */
+const lf = (file: string) => readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
+
+/** A database with these migration files applied as Wrangler records them (`d1_migrations`). */
+function migrated(dir: string): DatabaseSync {
+  const db = new DatabaseSync(':memory:');
+  db.exec('CREATE TABLE d1_migrations (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL)');
+  for (const f of readdirSync(dir).filter((n) => n.endsWith('.sql')).sort()) {
+    db.exec(lf(join(dir, f)));
+    db.prepare('INSERT INTO d1_migrations (name) VALUES (?)').run(f);
+  }
+  return db;
+}
+
+describe('W8 AT-5.3 migration 0017 is additive; a41f7d8\'s code runs on the migrated database with every chapter open; the down script restores a41f7d8\'s schema', { concurrency: false }, () => {
+  it('W8 AT-5.3 0017 adds exactly the two columns of R1 and nothing else; the other tables and every existing row are unchanged', () => {
+    baseIsThere();
+    const sql = readFileSync(join(repo, 'migrations', MIGRATION), 'utf8').replace(/--.*$/gm, '');
+    for (const p of [/\bDROP\b/i, /\bRENAME\b/i, /\bDELETE\s+FROM\b/i, /\bUPDATE\s+\w+\s+SET\b/i, /\bCREATE\b/i]) assert.ok(!p.test(sql), `additive: no ${p}`);
+    assert.equal((sql.match(/ALTER TABLE chapter ADD COLUMN/g) ?? []).length, 2, 'two ADD COLUMN on chapter');
+    const base = migrated(join(BASE_ROOT, 'migrations'));
+    const cand = migrated(join(repo, 'migrations'));
+    const added = columnsOf(cand, 'chapter').filter((c) => !columnsOf(base, 'chapter').some((b) => b.name === c.name));
+    assert.deepEqual(added, [
+      { name: 'opens_on', type: 'TEXT', notnull: 0, dflt_value: null, pk: 0 },
+      { name: 'opens_hidden', type: 'INTEGER', notnull: 1, dflt_value: '0', pk: 0 },
+    ], 'chapter gains opens_on TEXT NULL and opens_hidden INTEGER NOT NULL DEFAULT 0');
+    assert.throws(() => cand.exec("INSERT INTO chapter (id, space_id, subject_id, title, position, opens_hidden) VALUES ('x', 's', 'u', 't', 1, 2)"), /CHECK/, 'opens_hidden is 0 or 1');
+    const b = schemaOf(base);
+    const c = schemaOf(cand);
+    for (const r of b) if (r.name !== 'chapter') assert.deepEqual(c.find((x) => x.name === r.name), r, `${String(r.name)}: unchanged`);
+    assert.equal(c.length, b.length, 'no new table or index');
+    // Existing rows: W8-0 on a41f7d8's schema, then 0017 on it: every row is the same, every chapter without a date.
+    const fake = { sqlite: base, files: { put: async () => undefined } } as unknown as InProcessWorker;
+    return seedW8(fake, { dates: false }).then(() => {
+      const before = plain(base.prepare('SELECT * FROM chapter ORDER BY id').all() as Row[]);
+      base.exec(lf(join(repo, 'migrations', MIGRATION)));
+      const after = plain(base.prepare('SELECT * FROM chapter ORDER BY id').all() as Row[]);
+      assert.deepEqual(after.map(({ opens_on: _a, opens_hidden: _b, ...r }) => r), before, 'every existing chapter row is unchanged');
+      assert.ok(after.every((r) => r.opens_on === null && Number(r.opens_hidden) === 0), 'every chapter starts without a date, shown locked');
+    });
+  });
+
+  it('W8 AT-5.3 a41f7d8\'s code on the migrated database with W8-a\'s dates stored answers every 3.4 request as a41f7d8 on W8-0 (every chapter open)', async () => {
+    baseIsThere();
+    for (const clock of ['d9', 'd17'] as const) {
+      const w = await w8World({ dates: true, atMs: CLOCKS[clock] });
+      const file = join(tmpdir(), `lms-w8-at53-${process.pid}-${clock}.sqlite`);
+      let old: Twin | null = null;
+      try {
+        const dated = w.sql('SELECT id, opens_on, opens_hidden FROM chapter WHERE opens_on IS NOT NULL ORDER BY id');
+        assert.deepEqual(dated.map((r) => [r.id, r.opens_on, Number(r.opens_hidden)]), Object.entries(OPENINGS).map(([id, o]) => [id, o.on, o.hidden]), 'W8-a\'s three dates are stored');
+        w.p.worker.sqlite.exec(`VACUUM INTO '${file.replace(/'/g, "''")}'`);
+        old = (await inProcess({ root: BASE_ROOT, sqlite: new DatabaseSync(file), files: w.p.worker.files })) as Twin;
+        const pin = await fetch(old.worker.url + '/__test/clock-fixed', { method: 'POST', headers: { 'content-type': 'application/json', origin: old.worker.url }, body: JSON.stringify({ atMs: CLOCKS[clock] }) });
+        assert.equal(pin.status, 200);
+        const o = old;
+        same(`a41f7d8 on the migrated database at ${clock}`, await captureOn(o.worker.url, () => o.worker.settle()), clock);
+      } finally {
+        await old?.stop();
+        await w.close();
+        rmSync(file, { force: true });
+      }
+    }
+  });
+
+  it('W8 AT-5.3 the down script drops the two columns and the record line: schema and record equal a41f7d8\'s, other rows unchanged; applying again gives wave 8\'s schema', async () => {
+    baseIsThere();
+    assert.ok(existsSync(join(repo, DOWN)) && !existsSync(join(repo, 'migrations', '0017_chapter_opening.down.sql')), 'outside migrations/');
+    for (const f of ['.github/workflows/deploy.yml', 'wrangler.jsonc']) {
+      assert.ok(!/migrations-down|\.down\.sql/.test(readFileSync(join(repo, f), 'utf8')), `${f} does not refer to the down script`);
+    }
+    const base = migrated(join(BASE_ROOT, 'migrations'));
+    const cand = migrated(join(repo, 'migrations'));
+    const fake = { sqlite: cand, files: { put: async () => undefined } } as unknown as InProcessWorker;
+    await seedW8(fake, { dates: true });
+    const tables = (schemaOf(base).filter((r) => r.type === 'table').map((r) => String(r.name)));
+    const snapshot = () => Object.fromEntries(tables.map((t) => [t, plain(cand.prepare(`SELECT * FROM "${t}" ORDER BY rowid`).all() as Row[]).map((r) => {
+      const { opens_on: _a, opens_hidden: _b, ...rest } = r;
+      return t === 'chapter' ? rest : r;
+    })]));
+    const rowsBefore = snapshot();
+    cand.exec(lf(join(repo, DOWN)));
+    assert.deepEqual(schemaOf(cand), schemaOf(base), 'the schema is exactly a41f7d8\'s');
+    for (const t of tables) assert.deepEqual(columnsOf(cand, t), columnsOf(base, t), `${t}: a41f7d8's columns`);
+    assert.deepEqual(cand.prepare('SELECT name FROM d1_migrations ORDER BY id').all().map((r) => (r as Row).name), base.prepare('SELECT name FROM d1_migrations ORDER BY id').all().map((r) => (r as Row).name), 'Wrangler\'s record is exactly a41f7d8\'s');
+    assert.deepEqual(snapshot(), rowsBefore, 'every row is unchanged (but the two dropped columns)');
+    cand.exec(lf(join(repo, 'migrations', MIGRATION)));
+    assert.deepEqual(schemaOf(cand), schemaOf(migrated(join(repo, 'migrations'))), 'a later forward apply gives wave 8\'s schema again');
+    assert.equal(Number((cand.prepare('SELECT COUNT(*) AS n FROM chapter WHERE opens_on IS NOT NULL').get() as Row).n), 0, 'with no date');
+  });
+
+  it('W8 AT-5.3 the README says how to roll back, in that order', () => {
+    const text = readFileSync(join(repo, 'README.md'), 'utf8').replace(/\r\n/g, '\n');
+    const rollback = text.slice(text.indexOf('\n## Rollback'));
+    const part = rollback.slice(rollback.indexOf('**Opening dates (LMS wave 8):**'));
+    assert.ok(part.startsWith('**Opening dates (LMS wave 8):**'), 'a wave 8 entry in "Rollback"');
+    for (const phrase of ['migrations-down/0017_chapter_opening.down.sql', "owner's RED decision", 'first redeploy the earlier code, then run the down script', 'every chapter is open']) {
+      assert.ok(part.includes(phrase), `the README's wave 8 rollback text says: ${phrase}`);
+    }
+  });
+});
+
+void AT8;

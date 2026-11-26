@@ -43,6 +43,8 @@ import {
 } from './views/announcements.ts';
 import { DUE_MAX_DAYS, TODO_MAX_PER_GROUP, dueChoice, dueItem, dueOutline, isDueKind, todoGroups, todoWindow, writeDue, type DueChapter, type DueWriter } from './due.ts';
 import { dueCard, duePage, type DueRefusal, type DueStatus } from './views/due.ts';
+import { OPEN_MAX_DAYS, ROW_PARAM, openChoice, openItem, openOutline, rowAnchor, writeOpening, type OpenRow } from './opening.ts';
+import { openingCard, openingPage, type OpenRefusal, type OpenStatus } from './views/opening.ts';
 import {
   ANSWER_FIELDS, QUIZ_OPTIONS_MAX, QUIZ_OPTIONS_MIN, QUIZ_OPTION_MAX, QUIZ_PER_SUBJECT_MAX, QUIZ_QUESTIONS_MAX, QUIZ_RESULTS_PAGE, QUIZ_TEXT_MAX, QUIZ_TITLE_MAX,
   buildAttempt, cleanTitle, copyQuiz, createQuiz, insertAttempt, isStateAction, learnerQuizzes, parseAnswers, postedAnswers, questionFrom, quizAttemptOf, quizCount, quizOf,
@@ -1883,6 +1885,8 @@ async function renderTopic(
     due: dueCard(t, lang, `/s/${view.id}/admin/topics/${topic.id}/due`),
     // LMS wave 7 (section 4.2): the quiz card, after the due card (a link only, no read).
     quizzes: quizCard(t, lang, `/s/${view.id}/admin/topics/${topic.id}/quizzes`, topic.title),
+    // LMS wave 8 (S1): the Opening dates card, after the quiz card (a link only, no read).
+    opening: openingCard(t, `/s/${view.id}/admin/topics/${topic.id}/opening`),
     topic,
     publishers: await publishersOf(db, view.id),
     sets: (await setsOf(db, view.id)).map((s) => ({ id: s.id, display_name: s.name })),
@@ -2042,7 +2046,7 @@ async function renderSubjectEditor(c: C, subject: SubjectRow, error?: LabelKey, 
   const parts = await outline(c.get('db'), view.id, subject.id);
   // LMS wave 5 (section 4.1): the announcement card after the card of Publish, Preview and the setting.
   const card = await announcementsOf(c, { subjectId: subject.id, role: 'publisher', page: subjectEditorPath(view.id, subject.id), published: subject.is_published === 1 }, refusal);
-  return page(c, subjectEditor(t, lang, view, subject, parts, error && t(error), notice, orderStatus(c, subject.chapters_in_order), card, dueCard(t, lang, `${subjectEditorPath(view.id, subject.id)}/due`), quizCard(t, lang, `${subjectEditorPath(view.id, subject.id)}/quizzes`, subject.title)), error || refusal ? 400 : 200);
+  return page(c, subjectEditor(t, lang, view, subject, parts, error && t(error), notice, orderStatus(c, subject.chapters_in_order), card, dueCard(t, lang, `${subjectEditorPath(view.id, subject.id)}/due`), quizCard(t, lang, `${subjectEditorPath(view.id, subject.id)}/quizzes`, subject.title), openingCard(t, `${subjectEditorPath(view.id, subject.id)}/opening`)), error || refusal ? 400 : 200);
 }
 
 // LMS wave 4 (product-contract v2 on PIL-238, section 4): the subject's "open
@@ -2264,6 +2268,8 @@ interface DuePlace {
   writer: DueWriter;
   /** The editor or the subject admin page (the back link). */
   from: string;
+  /** LMS wave 8 (C3): the subject's "Open in order", from the same gate read (the Opening dates page's cascade line). */
+  inOrder: boolean;
 }
 
 /** The publisher's place: only the subject they are responsible for (one read). */
@@ -2272,7 +2278,7 @@ async function publisherDuePlace(c: C): Promise<DuePlace | null> {
   const userId = c.get('user')!.id;
   const subject = await editableSubject(c.get('db'), spaceId, userId, c.req.param('subjectId') ?? '');
   if (!subject) return null;
-  return { subjectId: subject.id, subjectTitle: subject.title, writer: { role: 'publisher', userId }, from: subjectEditorPath(spaceId, subject.id) };
+  return { subjectId: subject.id, subjectTitle: subject.title, writer: { role: 'publisher', userId }, from: subjectEditorPath(spaceId, subject.id), inOrder: subject.chapters_in_order === 1 };
 }
 
 /** The admin's place: any subject of the space (one read). */
@@ -2280,7 +2286,7 @@ async function adminDuePlace(c: C): Promise<DuePlace | null> {
   const spaceId = c.get('space').id;
   const topic = await findTopic(c.get('db'), spaceId, c.req.param('subjectId') ?? '');
   if (!topic) return null;
-  return { subjectId: topic.id, subjectTitle: topic.title, writer: { role: 'admin' }, from: `/s/${spaceId}/admin/topics/${topic.id}` };
+  return { subjectId: topic.id, subjectTitle: topic.title, writer: { role: 'admin' }, from: `/s/${spaceId}/admin/topics/${topic.id}`, inOrder: topic.chapters_in_order === 1 };
 }
 
 /** The row's status line (section 4.2): ?due=saved or cleared only when it matches the stored state of that row; failed always. */
@@ -2343,6 +2349,80 @@ function dueRoutes(prefix: string, placeOf: (c: C) => Promise<DuePlace | null>) 
 
 dueRoutes('/s/:spaceId/publish/edit/:subjectId', publisherDuePlace);
 dueRoutes('/s/:spaceId/admin/topics/:subjectId', adminDuePlace);
+
+// ------------------------------------------------------- opening dates ----
+// LMS wave 8, W8-1a (product-contract v2 on PIL-299, sections 3.1, 3.2, 3.7
+// and 6): a subject's Opening dates page, reached from the card on the
+// responsible publisher's editor and on the admin's subject page, behind the
+// same gates as the due-dates page (S1). The page is two reads: the gate's,
+// then the chapters with their opening and due dates (B2). Each press is one
+// gate read, one chapter read (404 unless it is this subject's and not
+// removed) and at most one write that repeats the gate (S3); then 303 back to
+// the row (#chapter-id). A refused Save draws the page again with 400 and
+// stores nothing (S2a, S2b). In W8-1a no learner, guardian or preview read
+// uses the dates (every learner response is a41f7d8's, N1).
+
+/** The row's status line: ?opening=saved or cleared only when it matches the stored state of that row; failed always. */
+function openStatus(c: C, rows: OpenRow[]): OpenStatus {
+  const said = c.req.query('opening');
+  const chapter = c.req.query(ROW_PARAM) ?? '';
+  const row = rows.find((r) => r.id === chapter);
+  if (!row) return null;
+  if (said === 'failed') return { chapter, said };
+  if (said === 'saved' && row.opens_on !== null) return { chapter, said };
+  if (said === 'cleared' && row.opens_on === null) return { chapter, said };
+  return null;
+}
+
+async function renderOpening(c: C, place: DuePlace, at: number, refusal: OpenRefusal | null = null) {
+  const { t, lang, view } = spaceLabel(c);
+  const rows = await openOutline(c.get('db'), view.id, place.subjectId);
+  const body = openingPage(t, lang, view, {
+    subjectTitle: place.subjectTitle, back: place.from, action: `${place.from}/opening`, rows, inOrder: place.inOrder, now: at,
+    status: refusal ? null : openStatus(c, rows), refusal,
+  });
+  return page(c, body, refusal ? 400 : 200);
+}
+
+function openingRoutes(prefix: string, placeOf: (c: C) => Promise<DuePlace | null>) {
+  app.get(`${prefix}/opening`, async (c) => {
+    const place = await placeOf(c);
+    if (!place) return refuse(c, 403, 'noAccess');
+    return renderOpening(c, place, now());
+  });
+  app.post(`${prefix}/opening/:chapterId`, async (c) => {
+    const at = now();
+    const place = await placeOf(c);
+    if (!place) return refuse(c, 403, 'noAccess');
+    const db = c.get('db');
+    const spaceId = c.get('space').id;
+    const item = await openItem(db, spaceId, place.subjectId, c.req.param('chapterId'));
+    if (!item) return refuse(c, 404, 'notFound');
+    const body = await c.req.parseBody();
+    const posted = { action: field(body, 'action'), opens_on: field(body, 'opens_on'), before: field(body, 'before') };
+    const choice = openChoice(posted, item, at);
+    const back = (said: string) => c.redirect(`${place.from}/opening?opening=${said}&${ROW_PARAM}=${item.id}#${rowAnchor(item.id)}`, 303);
+    if (choice.kind === 'needs-date' || choice.kind === 'invalid') {
+      const { t } = spaceLabel(c);
+      const error = choice.kind === 'needs-date' ? t('openNeedsDate') : t('openInvalid', { date: addDays(utcDate(at), OPEN_MAX_DAYS) });
+      return renderOpening(c, place, at, { chapter: item.id, kept: choice.kind === 'invalid' ? choice.kept : '', error, before: posted.before === 'hidden' ? 'hidden' : 'locked' });
+    }
+    // The stored date and choice re-sent, or Clear on a row with no date, store nothing (S2c, S3).
+    if (choice.kind === 'same') return back('saved');
+    if (choice.kind === 'cleared-already') return back('cleared');
+    const [date, hidden] = choice.kind === 'set' ? [choice.date, choice.hidden] : choice.kind === 'choice' ? [item.opens_on, choice.hidden] : [null, false];
+    try {
+      if (!(await writeOpening(db, spaceId, place.subjectId, item.id, date, hidden, place.writer))) return refuse(c, 403, 'noAccess');
+    } catch {
+      logError('opening date write failed');
+      return back('failed');
+    }
+    return back(choice.kind === 'clear' ? 'cleared' : 'saved');
+  });
+}
+
+openingRoutes('/s/:spaceId/publish/edit/:subjectId', publisherDuePlace);
+openingRoutes('/s/:spaceId/admin/topics/:subjectId', adminDuePlace);
 
 // ------------------------------------------------------------- quizzes ----
 // LMS wave 7, W7-1 (product-contract v2 on PIL-261, sections 4, 5.5 and 7):

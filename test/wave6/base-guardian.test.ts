@@ -38,6 +38,7 @@ import {
   wave4World, withAt2, withHuda, withTamer, withW5a, withW5d, withW6a, withW6b, withW6f, words, type Load, type W6a, type W6b, type Wave1World,
 } from './world.ts';
 import { QUIZ_CARD, cutWave7Style } from '../wave7/world.ts';
+import { OPENING_CARD } from '../wave8/world.ts';
 import { expectedItems, guardianTodoOf, listed, onLocalD1, sequenceOf, todoOf, withW6d, withW6e, withoutGuardianTodo } from './todo.ts';
 
 const repo = fileURLToPath(new URL('../..', import.meta.url));
@@ -246,7 +247,8 @@ async function same(p: Pair, who: Who, method: 'GET' | 'POST', path: string, out
     if (w7.problem) problems.push(`style: ${w7.problem}`);
     cb = cb.replace(HEAD_STYLE, (_m, a: string, _s: string, z: string) => a + w7.rest + z);
   }
-  const quizCut = cb.replace(QUIZ_CARD, '');
+  // LMS wave 8 (contract on PIL-299, B1): the Opening dates card, after the quiz card, on the same pages.
+  const quizCut = (isTeacherPage(path) ? cb.replace(OPENING_CARD, '') : cb).replace(QUIZ_CARD, '');
   if (quizCut !== cb && !isTeacherPage(path)) problems.push('a quiz card on a page that is not a teacher page');
   cb = quizCut;
   let cut = withoutGuardianTodo(cb);

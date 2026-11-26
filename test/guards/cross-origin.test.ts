@@ -205,6 +205,8 @@ describe('AT-5 guard: every form refuses a cross-origin post', { concurrency: fa
       '/s/:spaceId/publish/edit/:subjectId/due/:kind/:itemId', '/s/:spaceId/admin/topics/:subjectId/due/:kind/:itemId',
       // LMS wave 7 (W7-2): a learner's quiz sending and the preview's.
       '/s/:spaceId/quiz/:quizId', '/s/:spaceId/preview/quiz/:quizId',
+      // LMS wave 8 (W8-1a, S1): a chapter's opening date, from the editor's and the subject admin page's Opening dates page.
+      '/s/:spaceId/publish/edit/:subjectId/opening/:chapterId', '/s/:spaceId/admin/topics/:subjectId/opening/:chapterId',
     ]) assert.ok(posts.includes(must), `POST ${must} exists and is in the sweep`);
 
     const dataBefore: Snapshot = await snapshot(worker);

@@ -110,6 +110,8 @@ export function subjectEditor(
   due: Html | string = '',
   /** LMS wave 7 (section 4.2): the quiz card, after the due card. */
   quizzes: Html | string = '',
+  /** LMS wave 8 (S1, UX-86): the Opening dates card, after the quiz card. */
+  opening: Html | string = '',
 ): Html {
   const inOrder = subject.chapters_in_order === 1;
   const published = subject.is_published === 1;
@@ -126,7 +128,7 @@ ${errorBox(error)}
   ${orderCard(t, lang, { action: `${action}/order`, on: inOrder, status: order, own: false })}
   <p><a id="preview-subject" href="${previewPath(space.id, `/learn/${subject.id}`, `subject:${subject.id}`)}">${t('preview')}</a></p>
 </div>
-${announcements}${due}${quizzes}<h2>${t('chapter')} <span class="muted">· ${t('lesson')}</span></h2>
+${announcements}${due}${quizzes}${opening}<h2>${t('chapter')} <span class="muted">· ${t('lesson')}</span></h2>
 <div id="outline">${parts.map((ch, i) => chapterEditor(t, lang, space, ch, i, parts.length, inOrder))}</div>
 ${parts.length ? '' : html`<p class="card muted">${t('nothingHere')}</p>`}
 <form id="add-chapter" class="stack card" method="post" action="${action}/add">
