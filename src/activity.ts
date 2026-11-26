@@ -82,13 +82,15 @@ export async function switchOff(db: Db, v: { spaceId: string; by: string; now: n
  * One statement, which repeats every rule: the setting is on, the lesson and
  * its chapter are not removed, and its subject is published and assigned to
  * this learner directly or through a group. The caller has checked that the
- * person opens it as a learner. Returns whether a row was written. */
+ * person opens it as a learner. Returns whether a row was written.
+ * LMS wave 8 (section 3.6): and its chapter is open by date (no date, or today
+ * is on or after it), in the join it already makes. */
 export async function recordOpen(db: Db, v: { spaceId: string; lessonId: string; learnerId: string; now: number }): Promise<boolean> {
   const changed = await db.run(
     `INSERT INTO lesson_view (space_id, lesson_id, learner_user_id, last_opened_on)
      SELECT l.space_id, l.id, ?, ?
        FROM lesson l
-       JOIN chapter c ON c.id = l.chapter_id AND c.space_id = l.space_id AND c.removed_at IS NULL
+       JOIN chapter c ON c.id = l.chapter_id AND c.space_id = l.space_id AND c.removed_at IS NULL AND (c.opens_on IS NULL OR c.opens_on <= ?)
        JOIN subject s ON s.id = c.subject_id AND s.space_id = l.space_id AND s.is_published = 1
       WHERE l.id = ? AND l.space_id = ? AND l.removed_at IS NULL
         AND EXISTS (SELECT 1 FROM lesson_view_setting v WHERE v.space_id = l.space_id AND v.enabled = 1)
@@ -99,7 +101,7 @@ export async function recordOpen(db: Db, v: { spaceId: string; lessonId: string;
                SELECT gm.group_id FROM group_member gm WHERE gm.space_id = l.space_id AND gm.user_id = ?)))
      ON CONFLICT (space_id, lesson_id, learner_user_id) DO UPDATE SET last_opened_on = excluded.last_opened_on
       WHERE excluded.last_opened_on > lesson_view.last_opened_on`,
-    v.learnerId, utcDate(v.now), v.lessonId, v.spaceId, v.learnerId, v.learnerId,
+    v.learnerId, utcDate(v.now), utcDate(v.now), v.lessonId, v.spaceId, v.learnerId, v.learnerId,
   );
   return changed === 1;
 }
@@ -126,14 +128,15 @@ export const recordingSince = (switchedOn: string, linked: string): string => (l
  * lessons never; the newest date wins, and on a tie the first in the page's
  * order (subject title, chapter, lesson). A learner with nothing shown has no
  * entry ("No open recorded"). The caller keeps only the learners
- * linkedLearners found. */
-export async function lastOpenedOfLinked(db: Db, spaceId: string, guardianId: string, switchedOn: string): Promise<Map<string, { title: string; date: string }>> {
+ * linkedLearners found. LMS wave 8 (section 3.4): a lesson of a hidden chapter
+ * not open yet `today` is left out, in the join it already makes. */
+export async function lastOpenedOfLinked(db: Db, spaceId: string, guardianId: string, switchedOn: string, today: string): Promise<Map<string, { title: string; date: string }>> {
   const rows = await db.all<{ learner_id: string; linked_at: number; title: string; last_opened_on: string }>(
     `SELECT gl.learner_user_id AS learner_id, gl.created_at AS linked_at, l.title, v.last_opened_on
        FROM guardian_link gl
        JOIN lesson_view v ON v.space_id = gl.space_id AND v.learner_user_id = gl.learner_user_id AND v.last_opened_on >= ?
        JOIN lesson l ON l.id = v.lesson_id AND l.space_id = v.space_id AND l.removed_at IS NULL
-       JOIN chapter c ON c.id = l.chapter_id AND c.space_id = l.space_id AND c.removed_at IS NULL
+       JOIN chapter c ON c.id = l.chapter_id AND c.space_id = l.space_id AND c.removed_at IS NULL AND (c.opens_on IS NULL OR c.opens_hidden = 0 OR c.opens_on <= ?)
        JOIN subject s ON s.id = c.subject_id AND s.space_id = l.space_id AND s.is_published = 1
       WHERE gl.space_id = ? AND gl.guardian_user_id = ? AND gl.ended_at IS NULL
         AND EXISTS (
@@ -142,7 +145,7 @@ export async function lastOpenedOfLinked(db: Db, spaceId: string, guardianId: st
              AND (a.user_id = gl.learner_user_id OR a.group_id IN (
                SELECT gm.group_id FROM group_member gm WHERE gm.space_id = s.space_id AND gm.user_id = gl.learner_user_id)))
       ORDER BY gl.learner_user_id, s.title, s.id, c.position, c.id, l.position, l.id`,
-    switchedOn, spaceId, guardianId,
+    switchedOn, today, spaceId, guardianId,
   );
   const out = new Map<string, { title: string; date: string }>();
   for (const r of rows) {
@@ -158,12 +161,14 @@ export async function lastOpenedOfLinked(db: Db, spaceId: string, guardianId: st
  * assigned to the learner (as on the learner's own home), each with its
  * lessons in order (removed ones never), and per lesson the last-opened date
  * if it is on or after `since`, else null. Lesson titles and dates only: no
- * id, content, file or link. */
-export async function activityOf(db: Db, spaceId: string, learnerId: string, since: string): Promise<ActivitySubject[]> {
+ * id, content, file or link. LMS wave 8 (section 3.4): the lessons of a
+ * hidden chapter not open yet `today` are left out, in the join it already
+ * makes; a shown-locked chapter is listed as any other. */
+export async function activityOf(db: Db, spaceId: string, learnerId: string, since: string, today: string): Promise<ActivitySubject[]> {
   const rows = await db.all<{ subject_id: string; subject_title: string; lesson_id: string | null; lesson_title: string | null; last_opened_on: string | null }>(
     `SELECT s.id AS subject_id, s.title AS subject_title, l.id AS lesson_id, l.title AS lesson_title, v.last_opened_on
        FROM subject s
-       LEFT JOIN chapter c ON c.subject_id = s.id AND c.space_id = s.space_id AND c.removed_at IS NULL
+       LEFT JOIN chapter c ON c.subject_id = s.id AND c.space_id = s.space_id AND c.removed_at IS NULL AND (c.opens_on IS NULL OR c.opens_hidden = 0 OR c.opens_on <= ?)
        LEFT JOIN lesson l ON l.chapter_id = c.id AND l.space_id = s.space_id AND l.removed_at IS NULL
        LEFT JOIN lesson_view v ON v.space_id = s.space_id AND v.lesson_id = l.id AND v.learner_user_id = ? AND v.last_opened_on >= ?
       WHERE s.space_id = ? AND s.is_published = 1
@@ -173,7 +178,7 @@ export async function activityOf(db: Db, spaceId: string, learnerId: string, sin
              AND (a.user_id = ? OR a.group_id IN (
                SELECT gm.group_id FROM group_member gm WHERE gm.space_id = s.space_id AND gm.user_id = ?)))
       ORDER BY s.title, s.id, c.position, c.id, l.position, l.id`,
-    learnerId, since, spaceId, learnerId, learnerId,
+    today, learnerId, since, spaceId, learnerId, learnerId,
   );
   const subjects: (ActivitySubject & { id: string })[] = [];
   for (const r of rows) {

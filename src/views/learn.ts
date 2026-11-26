@@ -11,7 +11,7 @@
 import { html, raw } from 'hono/html';
 import { TODO_AHEAD_DAYS, TODO_MAX_PER_GROUP, type TodoGroup, type TodoItem } from '../due.ts';
 import type { Label, Lang, LabelKey } from '../labels.ts';
-import type { CardProgress, ChapterLocks, ContinueArea, LearnerCard, LessonRow, LockReason, MaterialKind, MaterialRow, OutlineChapter, SequenceStep } from '../learning.ts';
+import type { CardProgress, ChapterLocks, ContinueArea, LearnerCard, LessonRow, LockReason, MaterialKind, MaterialRow, OutlineChapter, SequenceStep, WaitingFor } from '../learning.ts';
 import { externalUrl } from '../links.ts';
 import type { NoticeForm } from '../notice.ts';
 import { activityNotice } from './activity.ts';
@@ -44,13 +44,23 @@ function lessonCount(t: Label, lang: Lang, n: number): Html[] | string[] {
  * in place of the count, and "Continue: <its target>" (or "Read again: <first lesson>") in place of Start; an unstarted card is exactly today's. */
 function subjectCard(t: Label, lang: Lang, space: SpaceView, card: LearnerCard, p?: CardProgress): Html {
   const teacher = card.publisherName ? html`<p class="teacher">${sentence(t, 'teacherLine', { publisher: t('publisher'), name: card.publisherName })}</p>` : '';
-  const go = p?.target ?? card.first;
-  const work = p && go
+  // LMS wave 8 (L2, UX-90): when what is left waits for an opening date, the card says so as plain text, never as a link.
+  const waiting = p ? (p.target ? null : p.waiting ?? null) : null;
+  const go = waiting ? null : p?.target ?? card.first;
+  const work = p && waiting
+    ? html`<p class="count done-count" data-done="card">${doneLine(t, lang, p.done, card.count)}</p>
+  ${openNextLine(t, waiting)}`
+    : p && go
     ? html`<p class="count done-count" data-done="card">${doneLine(t, lang, p.done, card.count)}</p>
   <a class="button start" data-action="${p.target ? 'continue' : 'read-again'}" href="${lessonHref(space, go.id)}"><span>${sentence(t, p.target ? 'continueLink' : 'readAgain', { title: go.title })}</span></a>`
+    : p
+    ? html`<p class="count done-count" data-done="card">${doneLine(t, lang, p.done, card.count)}</p>`
     : card.first
     ? html`<p class="count muted">${lessonCount(t, lang, card.count)}</p>
   <a class="button start" href="${lessonHref(space, card.first.id)}"><span>${sentence(t, 'startLesson', { title: card.first.title })}</span></a>`
+    : card.next
+    ? html`<p class="count muted">${lessonCount(t, lang, card.count)}</p>
+  ${openNextLine(t, card.next)}`
     : html`<p class="none muted">${t('noLessonsYet')}</p>`;
   return html`<li class="card" data-subject="${card.id}">
   <h2 class="title"><a href="${subjectHref(space, card.id)}"><bdi>${card.title}</bdi></a></h2>
@@ -78,6 +88,11 @@ function continueArea(t: Label, lang: Lang, space: SpaceView, area: ContinueArea
     inner = html`<p id="continue-subject"><span class="muted">${t('subject')}:</span> <bdi>${area.card.title}</bdi></p>
 <p id="continue-progress" data-done="area">${doneLine(t, lang, area.done, area.card.count)}</p>
 <a id="continue-link" class="go next" href="${lessonHref(space, area.target.id)}"><span class="line1">${sentence(t, 'continueLink', { title: area.target.title })}</span><span class="line2">${sentence(t, 'chapterLine', { title: area.target.chapterTitle })}</span><span class="arrow" aria-hidden="true">${forward}</span></a>`;
+  } else if (area.kind === 'waiting') {
+    // LMS wave 8 (L2, UX-90): the subject and its progress, then what it waits for, with no link.
+    inner = html`<p id="continue-subject"><span class="muted">${t('subject')}:</span> <bdi>${area.card.title}</bdi></p>
+<p id="continue-progress" data-done="area">${doneLine(t, lang, area.done, area.card.count)}</p>
+${openNextLine(t, area.next, 'continue-state')}`;
   } else if (area.kind === 'all-done') {
     inner = html`<p id="continue-state" data-done="area">${t('everythingDone')}</p>`;
   } else {
@@ -203,7 +218,7 @@ function chapterBlock(t: Label, lang: Lang, space: SpaceView, ch: OutlineChapter
     : html`<p class="none muted">${t('noLessonsYet')}</p>`;
   const allDone = entries.length > 0 && entries.every((l) => done.has(l.id)) ? html` ${tick(t, 'chapter')}` : '';
   // Inside the summary, so it shows while folded: the tag and the reason with its count. No control inside a summary.
-  const lockLine = lock ? html`<span class="lock-line">${lockTag(t)} <span class="lock-reason">${lockReasonText(t, lang, lock)}</span></span>` : '';
+  const lockLine = lock ? html`<span class="lock-line">${lockTag(t)} ${reasonSpans(t, lang, lock)}</span>` : '';
   return html`<details class="card fold${lock ? ' locked' : ''}" id="chapter-${ch.id}" data-chapter="${ch.id}"${lock ? html` data-locked` : ''}${open ? html` open` : ''}>
   <summary><span class="mark" aria-hidden="true"></span><span class="head"><span class="muted">${t('chapter')}</span> <bdi class="title">${ch.title}</bdi>${allDone}${ch.due_on ? html`<span class="due-line">${dueLine(t, ch.due_on)}</span>` : ''}</span> <span class="count muted">${lessonCount(t, lang, ch.lessons.length)}</span>${lockLine}</summary>
   ${list}
@@ -245,8 +260,39 @@ function withMarkup(t: Label, key: LabelKey, values: Record<string, Html | (Html
   return t(key, markers).split(/\u0001(\d+)\u0002/).map((part, i) => (i % 2 === 1 ? values[names[Number(part)]] : part));
 }
 
+// ------------------------------------------------------- opening dates ----
+// LMS wave 8, W8-1b (product-contract v2 on PIL-299, sections 3.3 and 3.5;
+// ux-plan UX-88 to UX-91): a chapter not open yet by its date carries wave 4's
+// tag and reason classes, with the date line first (openedOn) and wave 4's
+// line after it when both apply (C4). Dates are drawn as wave 6's due dates.
+// A page with no date reason carries none of this.
+
+/** Each reason on its own line in the outline's summary and on the locked page. */
+const DATE_CSS = `details.fold .lock-line .lock-reason[data-reason=date]{flex:1 0 100%}
+#lock-reason>.lock-reason{display:block}
+#lock-reason>.lock-reason+.lock-reason{margin-top:4px}
+.open-next{margin:0;overflow-wrap:anywhere}
+.open-next .due-date,.lock-reason[data-reason=date] .due-date{white-space:nowrap}`;
+const dateStyle = html`<style>${raw(DATE_CSS)}</style>`;
+
+/** Whether a reason carries an opening date. */
+const dateOf = (r: LockReason): string | null => (r.kind === 'date' ? r.opensOn : r.opensOn ?? null);
+
+/** A reason in wave 4's markup: by order alone, exactly wave 4's span; with a date, the date line first, then wave 4's line if it applies (C4). */
+function reasonSpans(t: Label, lang: Lang, r: LockReason): Html {
+  const date = dateOf(r);
+  const order = r.kind === 'date' ? null : html`<span class="lock-reason">${lockReasonText(t, lang, r)}</span>`;
+  if (!date) return order!;
+  return html`<span class="lock-reason" data-reason="date">${withMarkup(t, 'openedOn', { date: dueDate(date) })}</span>${order ? html` ${order}` : ''}`;
+}
+
+/** "Next: <chapter>: <title>, opens on <date>." (openNext, L2, UX-90): plain text, never a link. */
+function openNextLine(t: Label, next: WaitingFor, id?: string): Html {
+  return html`${dateStyle}<p${id ? html` id="${id}"` : ''} class="open-next">${withMarkup(t, 'openNext', { title: html`<bdi>${next.title}</bdi>`, date: dueDate(next.date) })}</p>`;
+}
+
 /** A chapter's reason (section 5.4): the first locked chapter names the blocking chapter, every later one says "everything before it"; each with the count left. */
-function lockReasonText(t: Label, lang: Lang, r: LockReason): (Html | string | (Html | string)[])[] {
+function lockReasonText(t: Label, lang: Lang, r: Exclude<LockReason, { kind: 'date' }>): (Html | string | (Html | string)[])[] {
   const count = r.left === 1
     ? sentence(t, 'lockedCountOne', { lesson: t('lesson').toLocaleLowerCase(lang) })
     : sentence(t, 'lockedCount', { n: String(r.left) });
@@ -317,8 +363,10 @@ export function subjectPage(
   const fold = parts.length > 3
     ? html`<p id="fold-all" class="fold-all"><a id="expand-all" class="button plain" href="${learnerUrl(space, `/learn/${head.id}?open=all`)}">${t('expandAll')}</a><a id="collapse-all" class="button plain" href="${learnerUrl(space, `/learn/${head.id}?open=none`)}">${t('collapseAll')}</a></p>`
     : '';
+  // LMS wave 8: the order box only where the order rule applies (dates alone lock no order); the date style only with a date reason.
+  const dated = locks && [...locks.locked.values()].some((r) => dateOf(r)) ? dateStyle : '';
   const body = html`<p class="muted">${t('subject')}</p>
-<h1 id="subject-title" dir="auto">${head.title}</h1>${progressLine(t, lang, done.size, ids.length)}${locks ? orderBox(t, lang, space, locks) : ''}${announcements}${quizzes}
+<h1 id="subject-title" dir="auto">${head.title}</h1>${progressLine(t, lang, done.size, ids.length)}${locks?.inOrder ? orderBox(t, lang, space, locks) : ''}${dated}${announcements}${quizzes}
 ${fold}
 <div id="outline">${blocks}</div>`;
   return spacePage(t, lang, space, head.title, body);
@@ -377,7 +425,7 @@ function lessonNav(t: Label, lang: Lang, space: SpaceView, subject: { id: string
   // When Next crosses into another chapter, that chapter goes on a second line of the same link.
   const crossing = next && next.chapterId !== lesson.chapter_id ? html`<span class="line2">${sentence(t, 'chapterLine', { title: next.chapterTitle })}</span>` : '';
   const nextLink = nextLock
-    ? html`<div id="next-locked" class="next-locked">${orderStyle}<span class="line1">${sentence(t, 'nextLesson', { title: next.title })}</span>${lockTag(t)}<span class="lock-reason">${lockReasonText(t, lang, nextLock)}</span></div>`
+    ? html`<div id="next-locked" class="next-locked">${orderStyle}<span class="line1">${sentence(t, 'nextLesson', { title: next.title })}</span>${lockTag(t)}${reasonSpans(t, lang, nextLock)}</div>`
     : next
     ? html`<a id="next-lesson" class="go next" href="${lessonHref(space, next.id)}"><span class="line1">${sentence(t, 'nextLesson', { title: next.title })}</span>${crossing}<span class="arrow" aria-hidden="true">${forward}</span></a>`
     : '';
@@ -497,6 +545,24 @@ export function lockedLessonPage(
 ): Html {
   const top = { id: v.subject.id, title: v.subject.title };
   const back = subjectHref(space, top.id, v.locks.blocking ?? v.lesson.chapter_id);
+  // LMS wave 8 (UX-89, J2.3): not open yet by its date: the title, the tag, the date line (then wave 4's line), and
+  // "Back to <subject>" as the first focusable item after the heading, then "Go to" when the order rule offers one.
+  if (dateOf(v.reason)) {
+    const toSubject = subjectHref(space, top.id, v.lesson.chapter_id);
+    const dated = html`<nav id="trail" class="trail muted">
+  <span>${t('subject')}: <a href="${subjectHref(space, top.id, v.lesson.chapter_id)}"><bdi>${top.title}</bdi></a></span> ·
+  <span>${t('chapter')}: <bdi>${v.lesson.chapter_title}</bdi></span> ·
+  <span>${t('lesson')}</span>
+</nav>
+<section id="locked-lesson" class="locked-page" data-locked>${orderStyle}${dateStyle}
+<h1 id="lesson-title" dir="auto">${v.lesson.title}</h1>
+<p id="lock-tag">${lockTag(t)}</p>
+<p id="lock-reason" class="lock-reason">${reasonSpans(t, lang, v.reason)}</p>
+<p><a id="back-to-subject" class="go back" href="${toSubject}"><span>${withMarkup(t, 'quizBackToSubject', { subjectTitle: html`<bdi>${top.title}</bdi>` })}</span></a></p>
+${v.locks.goTo ? html`<p>${goToLink(t, space, v.locks.goTo)}</p>` : ''}
+</section>`;
+    return spacePage(t, lang, space, v.lesson.title, dated);
+  }
   const body = html`<nav id="trail" class="trail muted">
   <span>${t('subject')}: <a href="${subjectHref(space, top.id, v.lesson.chapter_id)}"><bdi>${top.title}</bdi></a></span> ·
   <span>${t('chapter')}: <bdi>${v.lesson.chapter_title}</bdi></span> ·
@@ -505,7 +571,7 @@ export function lockedLessonPage(
 <section id="locked-lesson" class="locked-page" data-locked>${orderStyle}
 <h1 id="lesson-title" dir="auto">${v.lesson.title}</h1>
 <p id="lock-tag">${lockTag(t)}</p>
-<p id="lock-reason" class="lock-reason">${lockReasonText(t, lang, v.reason)}</p>
+<p id="lock-reason" class="lock-reason">${lockReasonText(t, lang, v.reason as Exclude<LockReason, { kind: 'date' }>)}</p>
 ${v.locks.goTo ? html`<p>${goToLink(t, space, v.locks.goTo)}</p>` : ''}
 <p><a id="back-to-outline" class="go back" href="${back}">${t('backToOutline')}</a></p>
 </section>`;

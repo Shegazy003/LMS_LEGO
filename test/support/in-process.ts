@@ -136,6 +136,12 @@ export async function startInProcess(vars: Record<string, string> = {}, from: In
   if (!from.sqlite) {
     const dir = join(from.root ?? root, 'migrations');
     for (const f of readdirSync(dir).filter((n) => n.endsWith('.sql')).sort()) sqlite.exec(readFileSync(join(dir, f), 'utf8'));
+  } else if (!from.root) {
+    // LMS wave 8 (W8-1b, contract on PIL-299, C6 and AT-3.8): this checkout's learner reads use the opening-date
+    // columns. A database copy filled by an earlier build (the base comparisons; wave 4's must stay untouched) gains
+    // the additive migration 0017 here, with no date stored, as each later wave's copy gained its own migration.
+    const cols = sqlite.prepare("SELECT name FROM pragma_table_info('chapter')").all().map((r) => String(r.name));
+    if (cols.length && !cols.includes('opens_on')) sqlite.exec(readFileSync(join(root, 'migrations', '0017_chapter_opening.sql'), 'utf8'));
   }
   const files = from.files ?? r2InMemory();
   let hooks: StatementHooks = {};

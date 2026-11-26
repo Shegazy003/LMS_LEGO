@@ -22,8 +22,8 @@ import { LANGS, LANG_COOKIE, deviceLang, langChoice, makeLabel, type Concept, ty
 import { cleanDisplayName, cleanItemName, isUsername, typedUsername } from './names.ts';
 import { readLabels, switchedKit } from './kits/edit.ts';
 import {
-  chapterLocks, continueWhere, findFile, findLesson, learnerAnnouncements, learnerCards, lessonMaterials, lessonSequence, outline, previewAnnouncements, previewCards, previewTodo,
-  previewableSubject, readableSubject,
+  chapterLocks, continueWhere, findFile, findLesson, hiddenNow, learnerAnnouncements, learnerCards, learnerChapterLocks, lessonMaterials, lessonSequence, notOpenYet, outline,
+  previewAnnouncements, previewCards, previewTodo, previewableSubject, readableSubject, shownChapters,
   subjectsForPublisher, type ChapterLocks, type OutlineChapter, type Previewer, type SubjectRow,
 } from './learning.ts';
 import { doneLessonIds, isDone, learnerTodo, linkedAsLearner, markDone, markNotDone, markOrder, readsAsLearner, signedInLearner } from './progress.ts';
@@ -884,18 +884,21 @@ async function renderLearnerHome(c: C) {
   const { t, lang, view } = spaceLabel(c);
   const user = c.get('user')!;
   const learner = c.get('space').roles.includes('learner');
+  // LMS wave 8 (D1): the one instant of the request, and its UTC day, for every date rule below.
+  const at = now();
+  const today = utcDate(at);
   // Wave 1 (section 4): one card per subject, from one read whatever their number.
-  const cards = learner ? await learnerCards(c.get('db'), view.id, user.id) : [];
+  const cards = learner ? await learnerCards(c.get('db'), view.id, user.id, today) : [];
   // R2-d (AT-15f): every learner is told while lesson activity is on, whether or not a guardian is linked.
   const notice = learner ? noticeFor(c, await activitySetting(c.get('db'), view.id)) : null;
   // LMS wave 2, W2-2 (section 8): "Continue where you stopped" and the cards'
   // done lines, from this learner's own marks (one more read, whatever their
   // number); a mark counts only on a lesson of one of these cards (section 6.3).
-  const where = learner ? continueWhere(cards, await markOrder(c.get('db'), signedInLearner(c))) : null;
+  const where = learner ? continueWhere(cards, await markOrder(c.get('db'), signedInLearner(c)), today) : null;
   // LMS wave 5 (section 5.3): the newest announcements of the last 30 days across these cards' subjects, one more read.
   const ann = learner ? homeBlock(t, lang, view, await learnerAnnouncements(c.get('db'), view.id, user.id, homeSince(now()), ANN_HOME)) : '';
   // LMS wave 6 (sections 5.1 to 5.4): this learner's own to-do list, one more read, every group from one instant.
-  const day = todoWindow(now());
+  const day = todoWindow(at);
   const todo = learner ? todoBlock(t, lang, view, todoGroups(await learnerTodo(c.get('db'), signedInLearner(c), day.today, day.last, TODO_MAX_PER_GROUP))) : '';
   return page(c, learnerHome(t, lang, view, user.display_name, cards, notice, where, ann, todo));
 }
@@ -921,7 +924,7 @@ async function renderGuardianHome(c: C) {
   if (learners.length) {
     const subjects = await subjectsSeenByLinked(db, view.id, user.id);
     const latest = await latestResultsOfLinked(db, view.id, user.id);
-    const opened = on ? await lastOpenedOfLinked(db, view.id, user.id, setting.since!) : new Map<string, { title: string; date: string }>();
+    const opened = on ? await lastOpenedOfLinked(db, view.id, user.id, setting.since!, utcDate(now())) : new Map<string, { title: string; date: string }>();
     for (const learner of learners) {
       cards.push({ learner, subjects: subjects.get(learner.id) ?? [], latest: latest.get(learner.id) ?? null, lastOpened: opened.get(learner.id) ?? null });
     }
@@ -983,7 +986,7 @@ app.get('/s/:spaceId/linked/:learnerId/activity', async (c) => {
   let on = null;
   if (setting.enabled && setting.since && linked) {
     const since = recordingSince(setting.since, linked);
-    on = { since, blocks: await activityOf(db, view.id, learner.id, since) };
+    on = { since, blocks: await activityOf(db, view.id, learner.id, since, utcDate(now())) };
   }
   return page(c, guardianActivityPage(t, lang, view, { learners, learner, on }));
 });
@@ -1074,12 +1077,14 @@ app.get('/s/:spaceId/preview', async (c) => {
   const previewer = previewerOf(c)!;
   const { t, lang } = spaceLabel(c);
   const view = await previewView(c, previewer, 'home');
-  const cards = await previewCards(c.get('db'), view.id, previewer);
+  // LMS wave 8 (A1): the made-up learner meets the dates of today, from the request's one instant.
+  const at = now();
+  const cards = await previewCards(c.get('db'), view.id, previewer, utcDate(at));
   const notice = await previewNotice(c, previewer);
   // LMS wave 5 (section 5.4): the home block of a made-up learner assigned exactly these cards' subjects, one more read.
   const ann = homeBlock(t, lang, view, await previewAnnouncements(c.get('db'), view.id, previewer, homeSince(now()), ANN_HOME));
   // LMS wave 6 (section 5.6): the to-do block of that made-up learner, with no done marks, one more read.
-  const day = todoWindow(now());
+  const day = todoWindow(at);
   const todo = todoBlock(t, lang, view, todoGroups(await previewTodo(c.get('db'), view.id, previewer, day.today, day.last, TODO_MAX_PER_GROUP)));
   return page(c, learnerHome(t, lang, view, t('learner'), cards, notice, undefined, ann, todo));
 });
@@ -1099,18 +1104,21 @@ app.get('/s/:spaceId/preview/learn/:subjectId', async (c) => {
   if (!subject) return refuse(c, 403, 'noAccess');
   const { t, lang } = spaceLabel(c);
   const view = await previewView(c, previewer, 'one', subject.is_published !== 1);
-  const parts = await outline(db, space.id, subject.id);
+  // LMS wave 8 (A1): a new learner today: a hidden chapter not open yet is absent.
+  const today = utcDate(now());
+  const parts = shownChapters(await outline(db, space.id, subject.id), today);
   // LMS wave 5 (section 5.4): the block exactly as a learner sees it (an unpublished subject's as it will be once published), one more read.
   const ann = subjectBlock(t, lang, await subjectRows(db, space.id, subject.id));
   // LMS wave 7 (section 5.6): the quiz section of a made-up learner with no attempt, one more read.
   const quizzes = quizSection(t, view, await learnerQuizzes(db, space.id, subject.id, PREVIEW_LEARNER));
   // LMS wave 4 (section 5.5): a subject in order shows a new learner's locks (no marks); no done mark is read.
-  return page(c, subjectPage(t, lang, view, subject, parts, c.req.query('open'), undefined, newLearnerLocks(subject, parts), ann, quizzes));
+  return page(c, subjectPage(t, lang, view, subject, parts, c.req.query('open'), undefined, newLearnerLocks(subject, parts, today), ann, quizzes));
 });
 
-/** LMS wave 4 (section 5.5): the locks a new learner with no marks meets in a subject in order (the preview's made-up learner); null with the setting off. */
-const newLearnerLocks = (subject: SubjectRow, parts: OutlineChapter[]): ChapterLocks | null =>
-  (subject.chapters_in_order === 1 ? chapterLocks(parts, new Set()) : null);
+/** LMS wave 4 (section 5.5): the locks a new learner with no marks meets in a subject in order (the made-up learner of a preview); null with the setting off.
+ * LMS wave 8 (A1): and the dates of today, so a chapter not open yet is locked with its date; null when nothing locks and the setting is off. */
+const newLearnerLocks = (subject: SubjectRow, parts: OutlineChapter[], today: string): ChapterLocks | null =>
+  learnerChapterLocks(parts, new Set(), subject.chapters_in_order === 1, today);
 
 app.get('/s/:spaceId/preview/read/:lessonId', async (c) => {
   const previewer = previewerOf(c)!;
@@ -1125,11 +1133,14 @@ app.get('/s/:spaceId/preview/read/:lessonId', async (c) => {
   }
   const subject = await previewableSubject(db, space.id, previewer, lesson.subject_id);
   if (!subject) return refuse(c, 403, 'noAccess');
+  // LMS wave 8 (A1, L1): a lesson of a hidden chapter not open yet answers as a lesson id that does not exist.
+  const today = utcDate(now());
+  if (hiddenNow(lesson, today)) return refuse(c, 403, 'noAccess');
   const { t, lang } = spaceLabel(c);
   const view = await previewView(c, previewer, 'one', subject.is_published !== 1);
-  const parts = await outline(db, space.id, subject.id);
-  // LMS wave 4 (section 5.5): in a subject in order, a lesson a new learner cannot open yet is the locked page, with preview addresses.
-  const locks = newLearnerLocks(subject, parts);
+  const parts = shownChapters(await outline(db, space.id, subject.id), today);
+  // LMS wave 4 (section 5.5): in a subject in order, a lesson a new learner cannot open yet is the locked page, with preview addresses (wave 8: also by date).
+  const locks = newLearnerLocks(subject, parts, today);
   const reason = locks?.locked.get(lesson.chapter_id);
   if (locks && reason) return page(c, lockedLessonPage(t, lang, view, { subject, lesson, reason, locks }));
   const materials = await lessonMaterials(db, space.id, lesson.id);
@@ -1158,9 +1169,13 @@ app.get('/s/:spaceId/learn/:subjectId', async (c) => {
   const { t, lang, view } = spaceLabel(c);
   // LMS wave 2 (section 5): ticks and the progress line, from this person's own marks, only when they read it as a learner.
   const marks = (await readsAsLearner(db, space, c.get('user')!.id, subject)) ? await doneLessonIds(db, signedInLearner(c)) : undefined;
-  const parts = await outline(db, space.id, subject.id);
-  // LMS wave 4 (section 5.1): the locks, from the same outline and marks, only for a subject in order read as a learner.
-  const locks = subject.chapters_in_order === 1 && marks ? chapterLocks(parts, marks) : null;
+  // LMS wave 8 (section 3.3, T1): read as a learner, a hidden chapter not open yet is absent; everyone else sees every chapter.
+  const today = utcDate(now());
+  const all = await outline(db, space.id, subject.id);
+  const parts = marks ? shownChapters(all, today) : all;
+  // LMS wave 4 (section 5.1): the locks, from the same outline and marks, only for a subject read as a learner: by order
+  // when the subject is in order, and (LMS wave 8, C1) by date; null when nothing locks with the setting off.
+  const locks = marks ? learnerChapterLocks(parts, marks, subject.chapters_in_order === 1, today) : null;
   // LMS wave 5 (sections 5.1, 5.2): the subject's announcements for everyone who reads it here, one more read.
   const ann = subjectBlock(t, lang, await subjectRows(db, space.id, subject.id));
   // LMS wave 7 (section 5.1): the quiz section, one more read, with this person's own scores (staff have none).
@@ -1172,14 +1187,16 @@ app.get('/s/:spaceId/learn/:subjectId', async (c) => {
 /** LMS wave 4 (sections 5.1 to 5.4): for a subject in order read as a learner,
  * the outline, this learner's marks and the locks they give (two reads: the
  * outline and the marks); null with the setting off or for anyone not reading
- * it as a learner, who never meets a lock. */
-async function learnerLocks(c: C, subject: SubjectRow): Promise<{ parts: OutlineChapter[]; marks: Set<string>; locks: ChapterLocks } | null> {
+ * it as a learner, who never meets a lock. LMS wave 8: a route that already
+ * asked wave 2's learner check passes its answer (asLearner), so it is asked once. */
+async function learnerLocks(c: C, subject: SubjectRow, today: string, asLearner?: boolean): Promise<{ parts: OutlineChapter[]; marks: Set<string>; locks: ChapterLocks } | null> {
   const db = c.get('db');
   const space = c.get('space');
-  if (subject.chapters_in_order !== 1 || !(await readsAsLearner(db, space, c.get('user')!.id, subject))) return null;
+  if (subject.chapters_in_order !== 1 || !(asLearner ?? (await readsAsLearner(db, space, c.get('user')!.id, subject)))) return null;
   const marks = await doneLessonIds(db, signedInLearner(c));
-  const parts = await outline(db, space.id, subject.id);
-  return { parts, marks, locks: chapterLocks(parts, marks) };
+  // LMS wave 8 (C1, C2): the chapters shown today, with their dates in the rule.
+  const parts = shownChapters(await outline(db, space.id, subject.id), today);
+  return { parts, marks, locks: chapterLocks(parts, marks, { today, inOrder: true }) };
 }
 
 /** LMS wave 4, W4-1b (section 5.4): the status line after a press that changed
@@ -1209,13 +1226,26 @@ app.get('/s/:spaceId/read/:lessonId', async (c) => {
   const subject = await readableSubject(db, space, c.get('user')!.id, lesson.subject_id);
   if (!subject) return refuse(c, 403, 'noAccess');
   const { t, lang, view } = spaceLabel(c);
-  // LMS wave 4 (section 5.4): a lesson of a locked chapter is the locked page (200): no material is read, no open recorded, no done block.
-  const order = await learnerLocks(c, subject);
-  const reason = order?.locks.locked.get(lesson.chapter_id);
-  if (order && reason) return page(c, lockedLessonPage(t, lang, view, { subject, lesson, reason, locks: order.locks }));
+  // LMS wave 8 (D1): the request's one instant and its UTC day.
+  const at = now();
+  const today = utcDate(at);
+  // Wave 2's one check whether this person reads the subject as a learner (asked once, as before; free for a learner alone).
+  const asLearner = await readsAsLearner(db, space, c.get('user')!.id, subject);
+  // LMS wave 8 (section 3.3, L1): a lesson of a hidden chapter not open yet answers exactly as a lesson that does not exist.
+  if (asLearner && hiddenNow(lesson, today)) return removedOrRefused(c, null);
+  const inOrder = subject.chapters_in_order === 1;
+  // In order, wave 4's lock gate reads the marks and the outline; otherwise the outline alone.
+  const order = asLearner && inOrder ? await learnerLocks(c, subject, today, true) : null;
+  const marks = order?.marks ?? null;
+  const all = order ? null : await outline(db, space.id, subject.id);
+  const parts = order ? order.parts : asLearner ? shownChapters(all!, today) : all!;
+  // LMS wave 4 (section 5.4) and wave 8 (C1): a lesson of a chapter locked by order or by date is the locked page (200): no material is read, no open recorded, no done block.
+  const locks = order ? order.locks : asLearner ? learnerChapterLocks(parts, new Set(), false, today) : null;
+  const reason = locks?.locked.get(lesson.chapter_id);
+  if (locks && reason) return page(c, lockedLessonPage(t, lang, view, { subject, lesson, reason, locks }));
   const materials = await lessonMaterials(db, space.id, lesson.id);
   // Wave 1 (section 5.1): where the lesson sits in the sequence of its subject, from the outline the subject page shows.
-  const steps = lessonSequence(order?.parts ?? (await outline(db, space.id, subject.id)));
+  const steps = lessonSequence(parts);
   const place = { steps, index: Math.max(0, steps.findIndex((s) => s.id === lesson.id)) };
   // R2-d (AT-15d, 15f): a learner opening their own lesson is told while lesson
   // activity is on, and the day is kept (one statement that checks the setting
@@ -1226,7 +1256,7 @@ app.get('/s/:spaceId/read/:lessonId', async (c) => {
   const notice = learner ? noticeFor(c, await activitySetting(db, space.id)) : null;
   if (notice && c.req.method === 'GET') {
     try {
-      await recordOpen(db, { spaceId: space.id, lessonId: lesson.id, learnerId: c.get('user')!.id, now: now() });
+      await recordOpen(db, { spaceId: space.id, lessonId: lesson.id, learnerId: c.get('user')!.id, now: at });
     } catch {
       logError('activity write failed');
     }
@@ -1235,13 +1265,13 @@ app.get('/s/:spaceId/read/:lessonId', async (c) => {
   // The status line of a press shows only when it matches the stored state; a failed save always says so.
   let done: DoneBlock | null = null;
   // In order, the marks already read give this lesson's state (no further read); otherwise wave 2's one read.
-  if (order || (await readsAsLearner(db, space, c.get('user')!.id, subject))) {
-    const isMarked = order ? order.marks.has(lesson.id) : await isDone(db, signedInLearner(c), lesson.id);
+  if (asLearner) {
+    const isMarked = marks ? marks.has(lesson.id) : await isDone(db, signedInLearner(c), lesson.id);
     const asked = c.req.query('marked');
     const status = asked === 'failed' || (asked === 'done' && isMarked) || (asked === 'not-done' && !isMarked) ? asked : null;
-    done = { kind: 'learner', done: isMarked, status, change: order && status ? openChange(c, order, lesson, status) : null };
+    done = { kind: 'learner', done: isMarked, status, change: inOrder && locks && status ? openChange(c, { parts, locks }, lesson, status) : null };
   }
-  return page(c, lessonPage(t, lang, view, { subject, lesson, materials, place, notice, done, locks: order?.locks ?? null }));
+  return page(c, lessonPage(t, lang, view, { subject, lesson, materials, place, notice, done, locks }));
 });
 
 // LMS wave 2 (section 4): "Mark as done" and "Mark as not done", a plain form
@@ -1261,8 +1291,13 @@ app.post('/s/:spaceId/read/:lessonId/done', async (c) => {
   if (!lesson) return removedOrRefused(c, await removedLessonSubject(db, space.id, c.req.param('lessonId')));
   const subject = await readableSubject(db, space, c.get('user')!.id, lesson.subject_id);
   if (!subject || !(await readsAsLearner(db, space, c.get('user')!.id, subject))) return refuse(c, 403, 'noAccess');
+  // LMS wave 8 (section 3.3): before its chapter opens, a press is refused and nothing is stored: as a lesson
+  // that does not exist when the chapter is hidden, as a locked lesson when it is shown locked.
+  const today = utcDate(now());
+  if (hiddenNow(lesson, today)) return removedOrRefused(c, null);
+  if (notOpenYet(lesson, today)) return refuse(c, 403, 'noAccess');
   // LMS wave 4 (section 5.4): a lesson of a locked chapter accepts no press (done or not-done); nothing is stored.
-  const order = await learnerLocks(c, subject);
+  const order = await learnerLocks(c, subject, today);
   if (order?.locks.locked.has(lesson.chapter_id)) return refuse(c, 403, 'noAccess');
   const state = field(await c.req.parseBody(), 'state');
   if (state !== 'done' && state !== 'not-done') {
@@ -1284,7 +1319,7 @@ app.post('/s/:spaceId/read/:lessonId/done', async (c) => {
     const after = new Set(order.marks);
     if (marked === 'done') after.add(lesson.id);
     else after.delete(lesson.id);
-    const lockedAfter = chapterLocks(order.parts, after).locked;
+    const lockedAfter = chapterLocks(order.parts, after, { today, inOrder: true }).locked;
     const lockedBefore = order.locks.locked;
     if ([...lockedBefore.keys()].some((id) => !lockedAfter.has(id))) change = '&opened=1';
     else if ([...lockedAfter.keys()].some((id) => !lockedBefore.has(id))) change = '&relocked=1';
@@ -1299,8 +1334,15 @@ app.get('/s/:spaceId/file/:materialId', async (c) => {
   if (!file) return removedOrRefused(c, await removedMaterialSubject(db, space.id, c.req.param('materialId')));
   const subject = await readableSubject(db, space, c.get('user')!.id, file.subject_id);
   if (!subject) return refuse(c, 403, 'noAccess');
+  // LMS wave 8 (section 3.3): read as a learner before its chapter opens, a file is refused with no bytes: as a
+  // file that does not exist when the chapter is hidden, as wave 4 refuses a locked lesson's file when shown locked.
+  // The learner check is asked only for a chapter not open yet, so no other request reads more.
+  const today = utcDate(now());
+  if (notOpenYet(file, today) && (await readsAsLearner(db, space, c.get('user')!.id, subject))) {
+    return hiddenNow(file, today) ? removedOrRefused(c, null) : refuse(c, 403, 'noAccess');
+  }
   // LMS wave 4 (section 5.4): a file of a lesson in a locked chapter answers 403, with no bytes.
-  const order = await learnerLocks(c, subject);
+  const order = await learnerLocks(c, subject, today);
   const chapterId = order && chapterOfLesson(order.parts, file.lesson_id);
   if (order && chapterId && order.locks.locked.has(chapterId)) return refuse(c, 403, 'noAccess');
   const obj = await c.env.FILES.get(file.storage_key);
