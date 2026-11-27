@@ -321,6 +321,7 @@ const R1A_CHANGED_TESTS: Record<string, string> = {
   'test/wave6/at7.test.ts': 'R1a UX-62/UX-63 and UX-16a rows: the allow-list\'s guardian lines from the learner\'s to-do page rows; the job redesign-r1a; this map',
   'test/at13/pages.ts': 'R1a S9: the to-do word scan leaves out nav#top-nav (a learner\'s own To-do link); UX-16a row: the results section allows S4 dates',
   'test/at13/at13a.test.ts': 'R1a UX-16a row: the results-section self-check uses S4 dates and <time datetime>',
+  'test/guards/reset-links.test.ts': 'R1a S2/UX-94: the reset page\'s <html> carries the school colour (class and style) after lang and dir; still an Arabic RTL page',
   'test/wave6/ux-guardian.test.ts': 'R1a UX-16a row: UX-81 the guardian line\'s date as S4 shows it, in the page\'s direction',
   'test/wave6/ux-learner.test.ts': 'R1a UX-34/UX-54/UX-62 and UX-62/UX-63 rows: UX-62 to UX-67 read the to-do page and the home strip; UX-16a row: S4 dates',
   'test/at11/at11a.test.ts': 'R1a UX-16a row: the result date read from <time datetime> (shown as S4); the mark scan leaves the dates out',
