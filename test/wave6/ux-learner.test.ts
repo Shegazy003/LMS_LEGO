@@ -16,7 +16,14 @@ import {
   ADMIN, AT, HADEER, KARIM5, LOAD_LEARNER, NOUR6, SALMA, as, browserAs, closeWave6, dPlus, go, home, press, storedAt, subjectPath, uxShot,
   wave6World, withW5a, withW5d, withW6b, words, WIDTHS, YARA6, type W6a, type Wave1World, type Width,
 } from './world.ts';
-import { dueLinesOf, listed, todoOf, withW6d, withW6e } from './todo.ts';
+import { dueLinesOf, stripOf, todoOf, todoPath, withW6d, withW6e } from './todo.ts';
+import { showDate } from '../../src/format.ts';
+
+// LMS redesign R1a (contract c63f0eed section 5, UX-34/UX-54/UX-62 and UX-62/UX-63 rows): the full block is the to-do page's
+// (/s/<space>/todo, heading h1); the home keeps its place for the due-soon strip (#todo.strip, after the hero, before the cards);
+// each row is the subject icon, then the title link and its line ending with the S6 tag. UX-16a row: dates as S4 shows them.
+/** The pinned day of the W6-c noon instant. */
+const TODAY = new Date(AT.noon).toISOString().slice(0, 10);
 
 type Lang = 'ar' | 'en';
 const HOUR = 3_600_000;
@@ -49,7 +56,7 @@ const blockOf = (page: Page) => page.evaluate(() => [...document.querySelectorAl
   folded: [...g.querySelectorAll(':scope > details > ul.todo-list > li')].length,
   open: (g.querySelector(':scope > details') as HTMLDetailsElement | null)?.open ?? null,
   capped: g.querySelector('.todo-capped')?.textContent?.trim() ?? null,
-  items: [...g.querySelectorAll('li.todo-item')].map((li) => ({ parts: [...li.children].map((c) => c.className), href: li.querySelector('a')?.getAttribute('href') })),
+  items: [...g.querySelectorAll('li.todo-item')].map((li) => ({ icon: li.firstElementChild?.className, parts: [...(li.querySelector('.todo-main')?.children ?? [])].map((c) => c.className), href: li.querySelector('a')?.getAttribute('href') })),
 })));
 
 /** A preview page's addresses as the learner's. */
@@ -78,10 +85,12 @@ describe('UX-62 learner home to-do block (W6-a)', { concurrency: false }, () => 
     // A lesson marked done earlier gives the home its "Continue where you stopped" area with a link (wave 2).
     assert.equal((await press(await as(w, SALMA, 'en'), s, s.lessons['Adding fractions'], 'done')).status, 303);
     for (const [lang, width] of [['ar', 'phone'], ['ar', 'tablet'], ['en', 'desktop']] as const) {
-      const k = await open(browser, w, SALMA, home(s), { lang, width });
+      const h = await open(browser, w, SALMA, home(s), { lang, width });
+      assert.equal(await inDomOrder(h.page, ['#continue', '#todo', '#my-list']), 'ok', `${lang} ${width}: the home's due strip after Continue, before the cards`);
+      await h.ctx.close();
+      const k = await open(browser, w, SALMA, todoPath(s), { lang, width });
       const page = k.page;
-      assert.equal(await inDomOrder(page, ['#continue', '#todo', '#my-list']), 'ok', `${lang} ${width}: after Continue, before the cards`);
-      assert.equal((await page.textContent('#todo > h2'))?.trim(), UI[lang].todoTitle, `${lang}: h2 todoTitle`);
+      assert.equal((await page.textContent('#todo > h1'))?.trim(), UI[lang].todoTitle, `${lang}: the to-do page's h1 todoTitle`);
       const t = words('school', lang);
       const groups = await blockOf(page);
       assert.deepEqual(groups.map((g) => g.key), ['overdue', 'today', 'next'], `${lang}: overdue, today, next 7 days`);
@@ -90,14 +99,14 @@ describe('UX-62 learner home to-do block (W6-a)', { concurrency: false }, () => 
       const next = groups[2];
       assert.deepEqual([next.shown, next.folded, next.open], [3, 2, false], `${lang}: 3 shown, a closed fold of 2`);
       assert.equal((await page.textContent('#todo [data-group="next"] details > summary'))?.trim(), t('todoMore', { n: '2' }), `${lang}: todoMore`);
-      for (const g of groups) for (const it of g.items) assert.deepEqual(it.parts.slice(0, 2), ['todo-link', 'todo-line'], `${lang}: title link, then the line`);
-      // Overdue by its words alone: its heading, items and links look as the other groups' (same colours, no icon).
+      for (const g of groups) for (const it of g.items) assert.deepEqual([it.icon, ...it.parts.slice(0, 2)], ['sicon', 'todo-link', 'todo-line'], `${lang}: the subject icon, the title link, then the line`);
+      // Overdue by its words: its heading and links look as the other groups' (same colours); the S6 tag adds its own words, icon and colour (UX-100).
       const look = await page.$$eval('#todo .todo-group', (gs) => gs.map((g) => {
         const h = getComputedStyle(g.querySelector('h3')!);
         const l = getComputedStyle(g.querySelector('a.todo-link')!);
-        return { h: h.color, hb: h.backgroundColor, l: l.color, bg: getComputedStyle(g).backgroundColor, img: g.querySelectorAll('img, svg').length };
+        return { h: h.color, hb: h.backgroundColor, l: l.color, bg: getComputedStyle(g).backgroundColor };
       }));
-      for (const g of look.slice(1)) assert.deepEqual(g, look[0], `${lang}: the overdue group is styled as the others (told apart by its heading)`);
+      for (const g of look.slice(1)) assert.deepEqual(g, look[0], `${lang}: the overdue group is styled as the others (told apart by its heading and its tag's words)`);
       if (lang === 'ar' && width === 'phone') {
         await uxShot(page, 'UX-62-phone-ar');
         await page.click('#todo [data-group="next"] details > summary');
@@ -111,16 +120,19 @@ describe('UX-62 learner home to-do block (W6-a)', { concurrency: false }, () => 
     // After L1 and L2: the overdue group is gone, today keeps G1.
     const salma = await as(w, SALMA, 'en');
     for (const l of [a.L.L1, a.L.L2]) assert.equal((await press(salma, s, l, 'done')).status, 303);
-    const k = await open(browser, w, SALMA, home(s), { lang: 'ar' });
+    const k = await open(browser, w, SALMA, todoPath(s), { lang: 'ar' });
     assert.deepEqual((await blockOf(k.page)).map((g) => g.key), ['today', 'next'], 'after L1 and L2: no overdue group');
     await uxShot(k.page, 'UX-62-phone-ar-after-done');
     await k.ctx.close();
-    // Everything done: no block and no empty message.
+    // Everything done: no group; R1a (UX-98, UX-102): the to-do page and the home's strip keep their heading and say «لا شيء مطلوب الآن».
     for (const l of [a.G1, a.L.L3, a.L.L8, a.L.L9, a.L.L4, ...Object.values(s.lessons).filter((id) => !Object.values(a.L).includes(id))]) await press(salma, s, l, 'done');
     for (const lang of ['ar', 'en'] as const) {
-      const doc = await (await (await as(w, SALMA, lang)).get(home(s))).text();
-      assert.equal(todoOf(doc), null, `${lang}: no block when nothing is left`);
-      assert.ok(!doc.includes(UI[lang].todoTitle), `${lang}: no heading, no empty message`);
+      const c = await as(w, SALMA, lang);
+      const doc = await (await c.get(todoPath(s))).text();
+      assert.equal(todoOf(doc), null, `${lang}: no group when nothing is left`);
+      assert.match(doc, new RegExp(`<p id="todo-none" class="strip-none">${UI[lang].nothingDue}</p>`), `${lang}: the to-do page says nothingDue`);
+      const strip = stripOf(await (await c.get(home(s))).text());
+      assert.ok(strip && strip.ids.length === 0 && strip.markup.includes(UI[lang].nothingDue), `${lang}: the home's strip has no row and says nothingDue`);
     }
   });
 
@@ -128,7 +140,7 @@ describe('UX-62 learner home to-do block (W6-a)', { concurrency: false }, () => 
     const { w, a, browser } = x;
     const s = w.school;
     await w.p.sql(`DELETE FROM done_mark`);
-    const k = await open(browser, w, SALMA, home(s), { lang: 'ar' });
+    const k = await open(browser, w, SALMA, todoPath(s), { lang: 'ar' });
     const page = k.page;
     await page.click('#todo [data-group="next"] details > summary').catch(() => null);
     const link = page.locator(`#todo li[data-item="${a.C2}"] a.todo-link`);
@@ -149,7 +161,7 @@ describe('UX-62 learner home to-do block (W6-e and the first phone screen)', { c
     const load = await withW5d(w);
     await withW6d(w.p.sql, load, dPlus);
     await withW6e(w.p.sql, load, dPlus);
-    const k = await open(browser, w, LOAD_LEARNER, home(load), { lang: 'ar' });
+    const k = await open(browser, w, LOAD_LEARNER, todoPath(load), { lang: 'ar' });
     const page = k.page;
     const over = (await blockOf(page)).find((g) => g.key === 'overdue')!;
     const count = 300 + 75; // every lesson, and the 75 dated chapters of the subjects not in order (the others are locked behind their first chapter)
@@ -238,8 +250,9 @@ describe('UX-63 due lines in the outline', { concurrency: false }, () => {
       const dated = Object.entries(a.dates).filter(([name, d]) => d && name !== 'L7' && name !== 'G1').length;
       assert.equal(lines.length, dated, `${lang}: one line per dated lesson and chapter (${dated}; the removed L7 is not shown, G1 is Arabic grammar's)`);
       for (const l of lines) {
-        assert.equal(l.text, words('school', lang)('dueOn', { date: l.datetime! }), `${lang}: dueOn with the date`);
-        assert.ok(/^\d{4}-\d{2}-\d{2}$/.test(l.timeText ?? '') && l.timeText === l.datetime && l.dir === 'ltr', `${lang}: <time datetime> in Latin digits in dir=ltr`);
+        // R1a (UX-16a row): the date as S4 shows it, Latin digits, in the page's direction; the ISO day stays in `datetime`.
+        assert.equal(l.text, words('school', lang)('dueOn', { date: showDate(l.datetime!, lang, TODAY) }), `${lang}: dueOn with the date`);
+        assert.ok(/^\d{4}-\d{2}-\d{2}$/.test(l.datetime ?? '') && l.timeText === showDate(l.datetime!, lang, TODAY) && l.dir === (lang === 'ar' ? 'rtl' : 'ltr'), `${lang}: <time datetime> with the S4 date (${l.timeText}, ${l.dir})`);
         assert.ok(l.after, `${lang}: after its title`);
       }
       assert.equal(new Set(lines.map((l) => l.color)).size, 1, `${lang}: the same colour for past and future dates`);
@@ -274,7 +287,7 @@ describe('UX-64 Arabic, mixed text and kit words for the learner pages (three ki
     const longest = (lang: Lang) => LEARNER_KEYS.map((k) => [k, UI[lang][k].split(/{[^}]*}/).map((p) => p.trim()).sort((p, q) => q.length - p.length)[0]] as const).filter(([, v]) => v.length >= 3);
     for (const lang of ['ar', 'en'] as const) {
       for (const sp of [w.school, w.company, w.university]) {
-        for (const [where, path] of [['home', home(sp)], ['subject', subjectPath(sp, sp.math)]] as const) {
+        for (const [where, path] of [['home', todoPath(sp)], ['subject', subjectPath(sp, sp.math)]] as const) { // R1a: the block is the to-do page's
           const k = await open(browser, w, SALMA, path, { lang });
           const page = k.page;
           assert.deepEqual(await page.evaluate(() => ({ lang: document.documentElement.lang, dir: document.documentElement.dir })), { lang, dir: lang === 'ar' ? 'rtl' : 'ltr' }, `${sp.kit} ${where} ${lang}: lang and dir`);
@@ -285,9 +298,10 @@ describe('UX-64 Arabic, mixed text and kit words for the learner pages (three ki
             const kinds = await page.$$eval('#todo .todo-line', (ps) => ps.map((p) => p.textContent!.split('·')[0].trim()));
             for (const kind of kinds) assert.ok([words(sp.kit, lang)('lesson'), words(sp.kit, lang)('chapter')].includes(kind), `${sp.kit} ${lang}: the kit's word (${kind})`);
           }
-          const dates = await page.$$eval(`${scope} .due-date time`, (ts) => ts.map((t) => ({ text: t.textContent, dir: t.closest('[dir]')?.getAttribute('dir') })));
+          // R1a (UX-16a row, S6): the block's dates are in its tags (a relative word for yesterday/today/tomorrow), the outline's as S4 shows them.
+          const dates = await page.$$eval(`${scope} ${where === 'home' ? '.tag time' : '.due-date time'}`, (ts) => ts.map((t) => ({ text: t.textContent, datetime: t.getAttribute('datetime') })));
           assert.ok(dates.length > 0, `${sp.kit} ${where} ${lang}: dated items`);
-          for (const d of dates) assert.ok(/^\d{4}-\d{2}-\d{2}$/.test(d.text ?? '') && d.dir === 'ltr', `${sp.kit} ${where} ${lang}: Latin YYYY-MM-DD in dir=ltr (${JSON.stringify(d)})`);
+          for (const d of dates) assert.ok(/^\d{4}-\d{2}-\d{2}$/.test(d.datetime ?? '') && !/\d{4}-\d{2}-\d{2}/.test(d.text ?? '') && !/[٠-٩۰-۹]/.test(d.text ?? ''), `${sp.kit} ${where} ${lang}: no ISO date shown, Latin digits (${JSON.stringify(d)})`);
           const text = where === 'home'
             ? await page.innerText('#todo')
             : (await page.$$eval('.due-line', (ls) => ls.map((l) => l.textContent).join('\n')));
@@ -309,13 +323,14 @@ describe('UX-65 states table, learner screens', { concurrency: false }, () => {
     const { w } = x;
     const s = w.school;
     const salma = await as(w, SALMA, 'en');
-    // Success: the block with groups and a fold (todoCapped over 10 is UX-62's W6-e step).
-    const v = todoOf(await (await salma.get(home(s))).text());
-    assert.ok(v && v.groups.length === 3 && v.groups[2].more, 'home success: groups and a fold');
+    // Success: the block with groups and a fold (todoCapped over 10 is UX-62's W6-e step). R1a: on the to-do page; the home's strip lists its first 3.
+    const v = todoOf(await (await salma.get(todoPath(s))).text());
+    assert.ok(v && v.groups.length === 3 && v.groups[2].more, 'to-do page success: groups and a fold');
+    assert.equal(stripOf(await (await salma.get(home(s))).text())?.ids.length, 3, 'home success: the strip\'s 3 rows');
     assert.ok(dueLinesOf(await (await salma.get(subjectPath(s, s.math))).text()).size > 0, 'outline success: due lines');
     // Preview: as the learner; refusals as today (a learner may not open the preview).
     const hadeer = await as(w, HADEER, 'en');
-    assert.ok(todoOf(await (await hadeer.get(`/s/${s.id}/preview?from=home`)).text()), 'preview home: the block as the learner');
+    assert.ok(stripOf(await (await hadeer.get(`/s/${s.id}/preview?from=home`)).text())?.ids.length, 'preview home: the strip as the learner');
     assert.ok(dueLinesOf(await (await hadeer.get(`/s/${s.id}/preview/learn/${s.math}?from=home`)).text()).size > 0, 'preview subject: the due lines');
     assert.equal((await salma.get(`/s/${s.id}/preview?from=home`)).status, 403, 'preview refused to a learner: today\'s 403');
     // Error: an unreadable subject answers today's 403 (Karim Test, wave 5's W5-a learner, is not assigned Mathematics).
@@ -324,11 +339,12 @@ describe('UX-65 states table, learner screens', { concurrency: false }, () => {
     // Empty: no dates at all: no block, no due lines, and the preview the same.
     await w.p.sql('UPDATE lesson SET due_on = NULL');
     await w.p.sql('UPDATE chapter SET due_on = NULL');
-    const homeDoc = await (await salma.get(home(s))).text();
-    assert.equal(todoOf(homeDoc), null, 'home empty: no block');
-    assert.ok(!homeDoc.includes(UI.en.todoTitle), 'home empty: no message');
+    // R1a (UX-98, UX-102): empty, the to-do page and the strip keep their heading and say nothingDue.
+    assert.equal(todoOf(await (await salma.get(todoPath(s))).text()), null, 'to-do page empty: no group');
+    const homeStrip = stripOf(await (await salma.get(home(s))).text());
+    assert.ok(homeStrip && homeStrip.ids.length === 0 && homeStrip.markup.includes(UI.en.nothingDue), 'home empty: the strip says nothingDue');
     assert.equal(dueLinesOf(await (await salma.get(subjectPath(s, s.math))).text()).size, 0, 'outline empty: no due lines');
-    assert.equal(todoOf(await (await hadeer.get(`/s/${s.id}/preview?from=home`)).text()), null, 'preview empty: as the learner');
+    assert.equal(stripOf(await (await hadeer.get(`/s/${s.id}/preview?from=home`)).text())?.markup, homeStrip.markup, 'preview empty: as the learner');
   });
 });
 
@@ -345,7 +361,7 @@ describe('UX-66 widths, targets, contrast and keyboard, learner pages', { concur
     await w.p.sql(`UPDATE chapter SET title = '${LONG('وحدة Unit')}' WHERE id = '${a.C2}'`);
     const widths: [string, { width: number; height: number }][] = [...Object.entries(WIDTHS), ['reflow', { width: 320, height: 800 }]];
     for (const lang of ['ar', 'en'] as const) {
-      for (const [name, path] of [['home', home(s)], ['outline', `${subjectPath(s, s.math)}?open=${a.practice}`]] as const) {
+      for (const [name, path] of [['home', todoPath(s)], ['outline', `${subjectPath(s, s.math)}?open=${a.practice}`]] as const) { // R1a: the block is the to-do page's
         const k = await open(browser, w, SALMA, path, { lang });
         const page = k.page;
         for (const [wname, size] of widths) {
@@ -360,7 +376,7 @@ describe('UX-66 widths, targets, contrast and keyboard, learner pages', { concur
         await page.reload();
         if (name === 'home') {
           for (const m of await measure(page, '#todo a.todo-link, #todo details > summary')) assert.ok(m.width >= 44 && m.height >= 44, `${lang}: ${m.selector} ${m.width}x${m.height}`);
-          for (const m of await measure(page, '#todo > h2, #todo h3, #todo a.todo-link, #todo .todo-line, #todo details > summary')) {
+          for (const m of await measure(page, '#todo > h1, #todo h3, #todo a.todo-link, #todo .todo-line, #todo details > summary')) {
             if (!m.text.trim()) continue;
             assert.ok(m.contrast >= 4.5, `${lang}: ${m.selector} "${m.text.slice(0, 30)}" ${m.contrast.toFixed(2)}:1`);
           }
@@ -386,13 +402,13 @@ describe('UX-66 widths, targets, contrast and keyboard, learner pages', { concur
         await k.ctx.close();
       }
     }
-    // J3 and J4 by keyboard only: Tab to the first to-do link, Enter opens the lesson; then the subject card's link, Enter opens the outline with its due lines.
+    // J3 and J4 by keyboard only: Tab to the first to-do link (R1a: the home's strip row), Enter opens the lesson; then the subject card's link, Enter opens the outline with its due lines.
     const k = await open(browser, w, SALMA, home(s), { lang: 'ar' });
     const page = k.page;
     let reached = false;
     for (let i = 0; i < 80 && !reached; i++) {
       await page.keyboard.press('Tab');
-      reached = await page.evaluate(() => document.activeElement?.classList.contains('todo-link') ?? false);
+      reached = await page.evaluate(() => document.activeElement?.classList.contains('row-link') ?? false);
     }
     assert.ok(reached, 'J3: a to-do link is reached by Tab (no trap before it)');
     const href = await page.evaluate(() => (document.activeElement as HTMLAnchorElement).getAttribute('href'));
@@ -420,19 +436,20 @@ describe('UX-67 preview shows the list exactly', { concurrency: false }, () => {
     const s = w.school;
     const k = await open(browser, w, HADEER, `/s/${s.id}/preview?from=home`, { lang: 'ar' });
     const page = k.page;
-    const block = await page.$eval('#todo', (e) => e.outerHTML);
-    const hrefs = await page.$$eval('#todo a.todo-link', (as) => as.map((a) => a.getAttribute('href')!));
+    // R1a (UX-34/UX-54/UX-62 rows): the preview home shows the due strip as the learner's ("see all" inert: the to-do page is not previewable).
+    const block = stripOf(await page.$eval('#todo', (e) => e.outerHTML))!.markup;
+    const hrefs = await page.$$eval('#todo a.row-link', (as) => as.map((a) => a.getAttribute('href')!));
     assert.ok(hrefs.length > 0 && hrefs.every((h) => h.startsWith(`/s/${s.id}/preview/`)), `the links lead to preview addresses (${hrefs[0]})`);
     assert.ok(await page.$('#preview-banner') && await page.$('#preview-back'), 'wave 3a\'s banner and Back link');
     await uxShot(page, 'UX-67-phone-ar');
     const n = await open(browser, w, NOUR6, home(s), { lang: 'ar' });
-    const learner = await n.page.$eval('#todo', (e) => e.outerHTML);
+    const learner = stripOf(await n.page.$eval('#todo', (e) => e.outerHTML))!.markup;
     assert.equal(unpreviewed(block, s.id), learner, 'the preview block has Nour Test\'s markup');
     await go(page, w, `/s/${s.id}/preview/learn/${s.math}?from=home`);
     await go(n.page, w, subjectPath(s, s.math));
     const lines = (p: Page) => p.$$eval('.due-line', (ls) => ls.map((l) => l.outerHTML));
     assert.deepEqual(await lines(page), await lines(n.page), 'the preview subject page\'s due lines have Nour Test\'s markup');
-    assert.ok(listed(todoOf(await (await as(w, ADMIN, 'en')).get(`/s/${s.id}/preview?from=home`).then((r) => r.text()))).size > 0, 'Amal\'s preview has a block too');
+    assert.ok((stripOf(await (await as(w, ADMIN, 'en')).get(`/s/${s.id}/preview?from=home`).then((r) => r.text()))?.ids.length ?? 0) > 0, 'Amal\'s preview has a block too');
     await n.ctx.close();
     await k.ctx.close();
   });

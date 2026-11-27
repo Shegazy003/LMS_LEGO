@@ -22,8 +22,8 @@ import { LANGS, LANG_COOKIE, deviceLang, langChoice, makeLabel, type Concept, ty
 import { cleanDisplayName, cleanItemName, isUsername, typedUsername } from './names.ts';
 import { readLabels, switchedKit } from './kits/edit.ts';
 import {
-  chapterLocks, continueWhere, findFile, findLesson, hiddenNow, learnerAnnouncements, learnerCards, learnerChapterLocks, lessonMaterials, lessonSequence, notOpenYet, outline,
-  previewAnnouncements, previewCards, previewTodo, previewableSubject, readableSubject, shownChapters,
+  chapterLocks, continueWhere, findFile, findLesson, hiddenNow, learnerCards, learnerChapterLocks, lessonMaterials, lessonSequence, notOpenYet, outline,
+  previewCards, previewTodo, previewableSubject, readableSubject, shownChapters,
   subjectsForPublisher, type ChapterLocks, type OutlineChapter, type Previewer, type SubjectRow,
 } from './learning.ts';
 import { doneLessonIds, isDone, learnerTodo, linkedAsLearner, markDone, markNotDone, markOrder, readsAsLearner, signedInLearner } from './progress.ts';
@@ -35,11 +35,11 @@ import { adminActivityOffPage, adminActivityPage, guardianActivityPage, type Adm
 import { externalUrl } from './links.ts';
 import { logError } from './log.ts';
 import {
-  ANN_HOME, ANN_MAX, cardRows, checkText, homeSince, mayEdit, mayRemove, oneRow, postAnnouncement, removeAnnouncement, saveAnnouncement, subjectRows,
+  ANN_MAX, cardRows, checkText, latestRows, mayEdit, mayRemove, oneRow, postAnnouncement, removeAnnouncement, saveAnnouncement, subjectRows,
   type AnnouncementRow, type AuthorRole, type CheckedText, type Writer,
 } from './announcements.ts';
 import {
-  announcementCard, announcementEditPage, announcementRemovePage, homeBlock, subjectBlock, type AnnRefusal, type AnnStatus,
+  announcementCard, announcementEditPage, announcementRemovePage, subjectBlock, type AnnRefusal, type AnnStatus,
 } from './views/announcements.ts';
 import { DUE_MAX_DAYS, TODO_MAX_PER_GROUP, dueChoice, dueItem, dueOutline, isDueKind, todoGroups, todoWindow, writeDue, type DueChapter, type DueWriter } from './due.ts';
 import { dueCard, duePage, type DueRefusal, type DueStatus } from './views/due.ts';
@@ -75,7 +75,7 @@ import { accountPage, languagePage } from './views/account.ts';
 import { peoplePage, setPage, setsPage, topicPage, topicsPage, type AppointForm, type ItemNotice, type OrderStatus } from './views/admin.ts';
 import { recoverPage, recoveryCodePage, setupPage, signInPage } from './views/auth.ts';
 import { layout, messagePage, type Html } from './views/layout.ts';
-import { learnerHome, lessonPage, lockedLessonPage, spacePage, subjectPage, todoBlock, type DoneBlock, type OpenChange } from './views/learn.ts';
+import { learnerHome, lessonPage, lockedLessonPage, mySubjectsPage, spacePage, subjectPage, todoPage, type DoneBlock, type OpenChange } from './views/learn.ts';
 import {
   kitConfirmPage, newSpacePage, ownerHome, ownerSpacePage, type AdminRow, type AppointValues, type NewSpaceValues, type OwnerSpaceExtra,
 } from './views/owner.ts';
@@ -98,7 +98,7 @@ import {
   ownResults, publishRows, publishedRows, readMaxMark, readRow, resultsOfExam, rosterOf, saveDraft, secondIds,
   type DraftValue, type ExamRow, type ResultRow, type RosterRow,
 } from './exams.ts';
-import { accessEndedPage, adminHome, membershipsPage, type MembershipItem, type SpaceView } from './views/space.ts';
+import { accessEndedPage, adminHome, membershipsPage, SUBJECTS_SEGMENT, type MembershipItem, type SpaceView } from './views/space.ts';
 import { isSameOrigin } from './origin.ts';
 import {
   UPLOAD_MAX_BODY, UPLOAD_MAX_ROWS, addPeople, check as checkUpload, fileText, isBackFor, repeatOf, uploadOf, uploadsOf, type FileRefusal, type Place as UploadPlace,
@@ -844,6 +844,7 @@ function spaceView(space: CurrentSpace): SpaceView {
   return {
     id: space.id, name: space.name, primaryColor: space.kit.theme.primaryColor, hasLogo: Boolean(space.kit.theme.logoKey),
     guardian: space.roles.includes('guardian'), learner: space.roles.includes('learner'),
+    staff: space.roles.includes('admin') || space.roles.includes('publisher'),
   };
 }
 
@@ -880,6 +881,21 @@ function noticeFor(c: C, setting: ActivitySetting): NoticeForm | null {
   return form;
 }
 
+/** The subject cards of the learner with their progress and latest announcements: the same cards on the home and on My subjects. */
+async function learnerCardsView(c: C, today: string) {
+  const { view } = spaceLabel(c);
+  // Wave 1 (section 4): one card per subject, from one read whatever their number.
+  const cards = await learnerCards(c.get('db'), view.id, c.get('user')!.id, today);
+  // LMS wave 2, W2-2 (section 8): "Continue where you stopped" and the cards'
+  // done lines, from this learner's own marks (one more read, whatever their
+  // number); a mark counts only on a lesson of one of these cards (section 6.3).
+  const where = continueWhere(cards, await markOrder(c.get('db'), signedInLearner(c)), today);
+  // LMS redesign R1a (UX-55 row, S13): each card's latest announcement, as its subject page shows it, one more read
+  // (in place of wave 5's home block, which is gone from the home).
+  const latest = await latestRows(c.get('db'), view.id, cards.map((x) => x.id));
+  return { cards, where, latest };
+}
+
 async function renderLearnerHome(c: C) {
   const { t, lang, view } = spaceLabel(c);
   const user = c.get('user')!;
@@ -887,21 +903,49 @@ async function renderLearnerHome(c: C) {
   // LMS wave 8 (D1): the one instant of the request, and its UTC day, for every date rule below.
   const at = now();
   const today = utcDate(at);
-  // Wave 1 (section 4): one card per subject, from one read whatever their number.
-  const cards = learner ? await learnerCards(c.get('db'), view.id, user.id, today) : [];
+  const { cards, where, latest } = learner ? await learnerCardsView(c, today) : { cards: [], where: null, latest: new Map() };
   // R2-d (AT-15f): every learner is told while lesson activity is on, whether or not a guardian is linked.
   const notice = learner ? noticeFor(c, await activitySetting(c.get('db'), view.id)) : null;
-  // LMS wave 2, W2-2 (section 8): "Continue where you stopped" and the cards'
-  // done lines, from this learner's own marks (one more read, whatever their
-  // number); a mark counts only on a lesson of one of these cards (section 6.3).
-  const where = learner ? continueWhere(cards, await markOrder(c.get('db'), signedInLearner(c)), today) : null;
-  // LMS wave 5 (section 5.3): the newest announcements of the last 30 days across these cards' subjects, one more read.
-  const ann = learner ? homeBlock(t, lang, view, await learnerAnnouncements(c.get('db'), view.id, user.id, homeSince(now()), ANN_HOME)) : '';
-  // LMS wave 6 (sections 5.1 to 5.4): this learner's own to-do list, one more read, every group from one instant.
+  // LMS wave 6 (sections 5.1 to 5.4): this learner's own to-do list, one more read, every group from one instant;
+  // from R1a its first three items are the home's due-soon strip.
   const day = todoWindow(at);
-  const todo = learner ? todoBlock(t, lang, view, todoGroups(await learnerTodo(c.get('db'), signedInLearner(c), day.today, day.last, TODO_MAX_PER_GROUP))) : '';
-  return page(c, learnerHome(t, lang, view, user.display_name, cards, notice, where, ann, todo));
+  const groups = learner ? todoGroups(await learnerTodo(c.get('db'), signedInLearner(c), day.today, day.last, TODO_MAX_PER_GROUP)) : null;
+  return page(c, learnerHome(t, lang, view, user.display_name, cards, notice, where, latest, today, groups));
 }
+
+/** What /s/<space> answers this person (each role's home), so the learner's own pages refuse exactly as the home does. */
+function homeFor(c: C) {
+  const roles = c.get('space').roles;
+  if (roles.includes('admin')) return renderAdminHome(c);
+  if (roles.includes('publisher')) return renderPublisherHome(c);
+  if (roles.includes('guardian') && !roles.includes('learner')) return renderGuardianHome(c);
+  return renderLearnerHome(c);
+}
+
+// LMS redesign R1a (product-contract v2 on PIL-322, S9; ux-plan UX-102): My subjects and the to-do page, read
+// only. Anyone the learner home is not drawn for gets exactly what /s/<space> gives them (the same access check,
+// the same function, AT-R1a.3c); a learner gets the page.
+const learnerHomeShown = (c: C) => {
+  const roles = c.get('space').roles;
+  return roles.includes('learner') && !roles.includes('admin') && !roles.includes('publisher');
+};
+
+app.get(`/s/:spaceId/${SUBJECTS_SEGMENT}`, async (c) => {
+  if (!learnerHomeShown(c)) return homeFor(c);
+  const { t, lang, view } = spaceLabel(c);
+  const user = c.get('user')!;
+  const today = utcDate(now());
+  const { cards, where, latest } = await learnerCardsView(c, today);
+  return page(c, mySubjectsPage(t, lang, view, cards, where.progress, latest));
+});
+
+app.get('/s/:spaceId/todo', async (c) => {
+  if (!learnerHomeShown(c)) return homeFor(c);
+  const { t, lang, view } = spaceLabel(c);
+  const day = todoWindow(now());
+  const groups = todoGroups(await learnerTodo(c.get('db'), signedInLearner(c), day.today, day.last, TODO_MAX_PER_GROUP));
+  return page(c, todoPage(t, lang, view, groups, day.today));
+});
 
 // The guardian home (release 2, R2-a): every learner actively linked to this
 // person whose own access is active today, each with the subjects they see.
@@ -936,13 +980,7 @@ async function renderGuardianHome(c: C) {
 // admin home, a publisher the publisher home, a learner the learner home, and
 // a guardian with no other role here the guardian home. A guardian who also
 // holds another role reaches the guardian home from the nav (AT-9h).
-app.get('/s/:spaceId', (c) => {
-  const roles = c.get('space').roles;
-  if (roles.includes('admin')) return renderAdminHome(c);
-  if (roles.includes('publisher')) return renderPublisherHome(c);
-  if (roles.includes('guardian') && !roles.includes('learner')) return renderGuardianHome(c);
-  return renderLearnerHome(c);
-});
+app.get('/s/:spaceId', (c) => homeFor(c));
 app.get('/s/:spaceId/admin', (c) => renderAdminHome(c));
 app.get('/s/:spaceId/publish', (c) => renderPublisherHome(c));
 app.get('/s/:spaceId/linked', (c) => renderGuardianHome(c));
@@ -1081,12 +1119,12 @@ app.get('/s/:spaceId/preview', async (c) => {
   const at = now();
   const cards = await previewCards(c.get('db'), view.id, previewer, utcDate(at));
   const notice = await previewNotice(c, previewer);
-  // LMS wave 5 (section 5.4): the home block of a made-up learner assigned exactly these cards' subjects, one more read.
-  const ann = homeBlock(t, lang, view, await previewAnnouncements(c.get('db'), view.id, previewer, homeSince(now()), ANN_HOME));
-  // LMS wave 6 (section 5.6): the to-do block of that made-up learner, with no done marks, one more read.
+  // LMS redesign R1a (UX-55 row): each card's latest announcement, as the preview's subject page shows it, one more read.
+  const latest = await latestRows(c.get('db'), view.id, cards.map((x) => x.id));
+  // LMS wave 6 (section 5.6): the to-do list of that made-up learner, with no done marks, one more read (R1a: the due-soon strip).
   const day = todoWindow(at);
-  const todo = todoBlock(t, lang, view, todoGroups(await previewTodo(c.get('db'), view.id, previewer, day.today, day.last, TODO_MAX_PER_GROUP)));
-  return page(c, learnerHome(t, lang, view, t('learner'), cards, notice, undefined, ann, todo));
+  const groups = todoGroups(await previewTodo(c.get('db'), view.id, previewer, day.today, day.last, TODO_MAX_PER_GROUP));
+  return page(c, learnerHome(t, lang, view, t('learner'), cards, notice, undefined, latest, day.today, groups));
 });
 
 app.get('/s/:spaceId/preview/results', async (c) => {

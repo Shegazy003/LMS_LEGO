@@ -386,7 +386,8 @@ describe('UX-21 keyboard and names in preview', { concurrency: false }, () => {
         // The learner's own page, in a fresh browser (the notice in full, as on a first visit).
         const t = await browserAs(browser, w, SALMA, { lang });
         await visit(t.page, learner);
-        const want = await stops(t.page);
+        // LMS redesign R1a (S9, UX-96): My subjects and To do are not previewable, so they are not in the preview's Tab order.
+        const want = (await stops(t.page)).filter((f) => f.id !== 'nav-subjects' && f.id !== 'nav-todo');
         await t.ctx.close();
         assert.deepEqual(got.slice(1, -1).map(orderKey), want.map(orderKey),`${name}: after the top Back, exactly the learner page's Tab order`);
       }
@@ -460,7 +461,8 @@ describe('UX-23 preview states', { concurrency: false }, () => {
       // The publisher with no published subject: today's empty home, and the scope line says why.
       const rami = await open(RAMI, lang);
       await visit(rami, previewHome(w.school, 'home'));
-      assert.equal((await rami.locator('#nothing-yet').innerText()).trim(), word(lang, 'nothingAssigned'), `${lang}: Rami's preview home is empty`);
+      // LMS redesign R1a (UX-103): the nothingAssigned text is the empty home's heading.
+      assert.equal((await rami.locator('#nothing-yet h2').innerText()).trim(), word(lang, 'nothingAssigned'), `${lang}: Rami's preview home is empty`);
       assert.ok((await rami.locator('#preview-scope').innerText()).replace(/\s+/g, ' ').includes(fixedWords(lang, 'previewScopePublisher')[0]), `${lang}: the scope line says each published subject you publish`);
       if (lang === 'ar') await uxShot(rami, 'UX-23-phone-ar-nothing');
       // My results: the empty state.

@@ -20,7 +20,7 @@ import { setClockOffsetDays } from '../support/http.ts';
 import { seed } from '../support/seed.ts';
 import { useLanguage, visible } from '../at13/pages.ts';
 import { A, ADMIN, B, C, G1, G2, as } from '../at9/world.ts';
-import { activityPath, activityWorld, guardianSees, moveToDay, open, switchOn, viewRows, type ActivityWorld } from './activity.ts';
+import { activityPath, activityWorld, guardianSees, moveToDay, open, productToday, switchOn, viewRows, type ActivityWorld } from './activity.ts';
 
 const EVIDENCE = fileURLToPath(new URL('../../evidence/at-15/', import.meta.url));
 const FORTY = Array.from({ length: 40 }, (_, i) => ({ title: `Reading ${String(i + 1).padStart(2, '0')}: a story about the river and the long road home` }));
@@ -99,8 +99,17 @@ describe('AT-15c the guardian\'s lesson-activity page: one row per lesson with t
       assert.ok(!/not opened|never opened|unopened|times|minutes|hours|studied|completed/i.test(text), `${lang}: never "Not opened", a count or a duration`);
       assert.ok(!/لم يُفتح|لم يفتح|مرات|دقيقة|دقائق|ساعة/.test(text), `${lang}: not in Arabic either`);
       assert.ok(!/\b\d{1,2}:\d{2}\b/.test(text), `${lang}: no time of day`);
-      const dates = [...html.matchAll(/<bdi dir="ltr" class="nowrap">([^<]*)<\/bdi>/g)].map((m) => m[1]);
-      assert.ok(dates.length >= 2 && dates.every((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)), `${lang}: every date is a calendar day with its year (${dates.join(', ')})`);
+      // LMS redesign R1a (UX-16a row, contract S4): each date is a calendar day kept in <time datetime>, shown as
+      // day + month name, with the year only when it is not the current UTC year; never a time of day.
+      const dates = [...html.matchAll(/<time datetime="([^"]*)">([^<]*)<\/time>/g)].map((m) => ({ day: m[1], shown: m[2] }));
+      const thisYear = (await productToday(w)).slice(0, 4);
+      assert.ok(dates.length >= 2, `${lang}: the dates are there (${dates.length})`);
+      for (const d of dates) {
+        assert.match(d.day, /^\d{4}-\d{2}-\d{2}$/, `${lang}: the stored day is a calendar day (${d.day})`);
+        const s4 = lang === 'ar' ? /^\d{1,2} [؀-ۿ]+( \d{4})?$/ : /^[A-Z][a-z]{2} \d{1,2}(, \d{4})?$/;
+        assert.match(d.shown, s4, `${lang}: shown as S4 (${d.shown})`);
+        assert.equal(/\d{4}$/.test(d.shown), d.day.slice(0, 4) !== thisYear, `${lang}: the year only when it is not this UTC year (${d.shown})`);
+      }
     }
   });
 

@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 import { chromium, type Browser } from 'playwright';
 import { activityIn } from '../at13/pages.ts';
 import {
-  SALMA, YOUSSEF, activityPage, go, guardianCards, guardianTab, l2World, linkedHome, newestActivityRow, unlinkThrough, words, type GuardianCardSeen, type L2World,
+  SALMA, YOUSSEF, activityPage, go, guardianCards, guardianTab, l2World, linkedHome, newestActivityRow, s4, unlinkThrough, words, type GuardianCardSeen, type L2World,
 } from './world.ts';
 import type { Page } from 'playwright';
 
@@ -54,11 +54,11 @@ describe('AT-4.2 Last opened on the guardian home is the activity page\'s newest
         assert.equal(card.activityHref, activityPage(w.school, card.learnerId), `${card.name}: the existing link to the activity page`);
         await go(tab.page, w, activityPage(w.school, card.learnerId));
         const newest = await newestActivityRow(tab.page);
-        assert.equal(card.lastOpened, newest ? t('lastOpenedLine', { title: newest.title, date: newest.date }) : t('lastOpenedNone'), `${card.name}: the activity page's newest row`);
+        assert.equal(card.lastOpened, newest ? t('lastOpenedLine', { title: newest.title, date: newest.shown }) : t('lastOpenedNone'), `${card.name}: the activity page's newest row`);
       }
-      assert.equal(cards[0].lastOpened, t('lastOpenedLine', { title: 'Reading decimals', date: w.days[2] }));
+      assert.equal(cards[0].lastOpened, t('lastOpenedLine', { title: 'Reading decimals', date: await s4(w, w.days[2], lang) }));
       if (lang === 'en') {
-        assert.equal(cards[0].lastOpened, `Last opened: Reading decimals · ${w.days[2]}`);
+        assert.equal(cards[0].lastOpened, `Last opened: Reading decimals · ${await s4(w, w.days[2], 'en')}`);
         assert.equal(cards[1].lastOpened, 'Last opened: No open recorded');
       }
       assert.ok(!cards[0].text.includes('Adding fractions'), 'never Adding fractions, opened before the link day');
@@ -74,9 +74,9 @@ describe('AT-4.2 Last opened on the guardian home is the activity page\'s newest
     const [salma] = await guardianCards(tab.page);
     await go(tab.page, w, activityPage(w.school, salma.learnerId));
     const newest = await newestActivityRow(tab.page);
-    assert.deepEqual(newest, { title: 'Comparing fractions', date: w.days[1] });
-    assert.equal(salma.lastOpened, t('lastOpenedLine', { title: 'Comparing fractions', date: w.days[1] }));
-    assert.equal(salma.lastOpened, `Last opened: Comparing fractions · ${w.days[1]}`);
+    assert.deepEqual(newest, { title: 'Comparing fractions', date: w.days[1], shown: await s4(w, w.days[1], 'en') });
+    assert.equal(salma.lastOpened, t('lastOpenedLine', { title: 'Comparing fractions', date: await s4(w, w.days[1], 'en') }));
+    assert.equal(salma.lastOpened, `Last opened: Comparing fractions · ${await s4(w, w.days[1], 'en')}`);
     await tab.ctx.close();
   });
 

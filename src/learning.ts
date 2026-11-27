@@ -143,65 +143,6 @@ export async function learnerCards(db: Db, spaceId: string, userId: string, toda
   return cardsOf(rows, today);
 }
 
-/** An item of the home's announcement block (LMS wave 5, section 5.3). */
-export interface HomeAnnouncement {
-  id: string;
-  subject_id: string;
-  subject_title: string;
-  body: string;
-  author_role: 'publisher' | 'admin';
-  created_at: string;
-  edited_at: string | null;
-}
-
-/** LMS wave 5 (product-contract v2 on PIL-246, section 5.1, "one rule, one
- * place"): the newest announcements (posted at or after `since`, not removed)
- * of the subjects on this learner's cards, in one statement with a fixed
- * number of bound parameters (no list of subject ids). Its subject rule is
- * learnerCards' rule, written out whole (the space guard reads every statement
- * as written): published, and assigned directly or through a group of this
- * space; test/wave5/at2.test.ts (AT-2.3) asserts the two rules are the same
- * text, and that every subject this block shows is one of the cards'. */
-export function learnerAnnouncements(db: Db, spaceId: string, userId: string, since: string, limit: number): Promise<HomeAnnouncement[]> {
-  return db.all<HomeAnnouncement>(
-    `SELECT n.id, n.subject_id, s.title AS subject_title, n.body, n.author_role, n.created_at, n.edited_at
-       FROM announcement n
-       JOIN subject s ON s.id = n.subject_id AND s.space_id = n.space_id
-      WHERE n.space_id = ? AND n.removed_at IS NULL AND n.created_at >= ?
-        AND s.space_id = n.space_id AND s.is_published = 1
-        AND EXISTS (
-          SELECT 1 FROM subject_access a
-           WHERE a.space_id = s.space_id AND a.subject_id = s.id
-             AND (a.user_id = ? OR a.group_id IN (
-               SELECT gm.group_id FROM group_member gm WHERE gm.space_id = s.space_id AND gm.user_id = ?)))
-      ORDER BY n.created_at DESC, n.id DESC LIMIT ?`,
-    spaceId, since, userId, userId, limit,
-  );
-}
-
-/** LMS wave 5 (section 5.4): the preview home's announcements, from the
- * subjects of previewCards (every published subject for an admin; the
- * published subjects a publisher is responsible for), on the rules of the home. */
-export function previewAnnouncements(db: Db, spaceId: string, previewer: Previewer, since: string, limit: number): Promise<HomeAnnouncement[]> {
-  return previewer.kind === 'admin'
-    ? db.all<HomeAnnouncement>(
-      `SELECT n.id, n.subject_id, s.title AS subject_title, n.body, n.author_role, n.created_at, n.edited_at
-         FROM announcement n
-         JOIN subject s ON s.id = n.subject_id AND s.space_id = n.space_id
-        WHERE n.space_id = ? AND n.removed_at IS NULL AND n.created_at >= ? AND s.is_published = 1
-        ORDER BY n.created_at DESC, n.id DESC LIMIT ?`,
-      spaceId, since, limit,
-    )
-    : db.all<HomeAnnouncement>(
-      `SELECT n.id, n.subject_id, s.title AS subject_title, n.body, n.author_role, n.created_at, n.edited_at
-         FROM announcement n
-         JOIN subject s ON s.id = n.subject_id AND s.space_id = n.space_id
-        WHERE n.space_id = ? AND n.removed_at IS NULL AND n.created_at >= ? AND s.is_published = 1 AND s.publisher_user_id = ?
-        ORDER BY n.created_at DESC, n.id DESC LIMIT ?`,
-      spaceId, since, previewer.userId, limit,
-    );
-}
-
 /** One row of the to-do statement (LMS wave 6, section 5): a listed lesson or
  * chapter of a group, with the full count of the group; a chapter carries how many
  * of its shown lessons there are and how many this learner marked done. */

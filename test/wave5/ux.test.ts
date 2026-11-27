@@ -25,7 +25,8 @@ const CARD_KEYS = [
   'annEmptyError', 'annTooLong',
 ] as const satisfies readonly UiKey[];
 /** Every wave 5 key (the learner's too), for the checks on the values themselves. */
-const ALL_KEYS = [...CARD_KEYS, 'annHomeTitle', 'annOlder', 'annFull', 'annFullFor'] as const satisfies readonly UiKey[];
+// LMS redesign R1a (UX-55 row): annHomeTitle, annFull and annFullFor went with the home block.
+const ALL_KEYS = [...CARD_KEYS, 'annOlder'] as const satisfies readonly UiKey[];
 
 /** Whether every selector is found, in this DOM order. */
 const inDomOrder = (page: Page, selectors: string[]) => page.evaluate((sels) => {
@@ -96,7 +97,9 @@ describe('UX-51 teacher card order, labels and role controls', { concurrency: fa
       // W5-1b (PM UX GAPS on UX-51): Post announcement is drawn in the non-destructive secondary style, not the dark red of "Unpublish".
       const postColour = await page.$eval('#ann-new button', (b) => getComputedStyle(b).color);
       assert.notEqual(postColour, 'rgb(138, 28, 18)', `Post announcement is not drawn in the destructive dark red (${postColour})`);
-      assert.equal(postColour, 'rgb(11, 61, 145)', 'Post announcement uses the secondary blue');
+      // LMS redesign R1a (UX-94): the secondary style's text is the school's strong colour (was the fixed blue #0b3d91).
+      const schoolStrong = await page.evaluate(() => { const i = document.createElement('i'); i.style.color = 'var(--brand-strong)'; document.body.append(i); const c = getComputedStyle(i).color; i.remove(); return c; });
+      assert.equal(postColour, schoolStrong, 'Post announcement uses the secondary style (the school\'s strong colour)');
       if (who === HADEER) await page.locator('#ann-new').screenshot({ path: 'evidence/ux/UX-51-desktop-en-post.png' });
       const items = await page.$$eval('#announcements .ann-item', (lis) => lis.map((li) => ({
         role: li.getAttribute('data-role'),

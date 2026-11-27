@@ -16,6 +16,8 @@ import { setClockOffsetMs, setClockTo, utcDatePlusDays, workerNow, type Client }
 import { appointAdmin, createSpace, seed } from '../support/seed.ts';
 import { ADMIN, HADEER, SHIMAA, as, editorPath, plain, topicPath, withNile4, words, type Nile, type Wave1World } from '../wave4/world.ts';
 import type { Lang } from '../../src/labels.ts';
+import { utcDate } from '../../src/access.ts';
+import { showDate } from '../../src/format.ts';
 
 export * from '../wave4/world.ts';
 
@@ -266,6 +268,38 @@ export function cardOf(html: string) {
   };
 }
 
-/** The role and date line of an item, as the page writes it (the kit's role word, the ISO date). */
+/** The role and date line of an item on a staff page, as the page writes it (the kit's role word, the ISO date). */
 export const byLine = (lang: Lang, role: 'publisher' | 'admin', iso: string, kit: 'school' | 'company' | 'university' = 'school') =>
   words(kit, lang)('annByLine', { role: words(kit, lang)(role), date: iso.slice(0, 10) });
+
+/** A day on a learner page (LMS redesign R1a, UX-16a row, S4): day and month name, the year only when not this UTC year. */
+export const learnerDay = (iso: string, lang: Lang) => showDate(iso.slice(0, 10), lang, utcDate(Date.now()));
+
+/** The role and date line of an item on a learner page (the subject page's block): the date as S4 shows it. */
+export const learnerByLine = (lang: Lang, role: 'publisher' | 'admin', iso: string, kit: 'school' | 'company' | 'university' = 'school') =>
+  words(kit, lang)('annByLine', { role: words(kit, lang)(role), date: learnerDay(iso, lang) });
+
+/** One card's latest-announcement line on a home or My subjects (LMS redesign R1a, UX-55 row, UX-99). */
+export interface CardLine {
+  subject: string;
+  ann: string;
+  /** The text as shown (unescaped), with its "…" when cut. */
+  text: string;
+  /** The raw markup inside the link. */
+  raw: string;
+  href: string;
+  /** Every link inside the line's paragraph. */
+  links: number;
+}
+
+/** The cards' announcement lines of a page, by subject id (a card with no line is absent). */
+export function cardLines(html: string): Map<string, CardLine> {
+  const out = new Map<string, CardLine>();
+  for (const m of html.matchAll(/<li class="card subj" data-subject="([^"]+)"[^>]*>([\s\S]*?)<\/li>/g)) {
+    const p = /<p class="ann" data-ann="([^"]+)">([\s\S]*?)<\/p>/.exec(m[2]);
+    if (!p) continue;
+    const a = /<a href="([^"]+)" dir="auto">([\s\S]*?)<\/a>/.exec(p[2])!;
+    out.set(m[1], { subject: m[1], ann: p[1], text: unescape(a[2]), raw: a[2], href: unescape(a[1]), links: (p[2].match(/<a\b/g) ?? []).length });
+  }
+  return out;
+}

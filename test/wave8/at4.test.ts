@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { MADE_UP, normalise, requestList } from './n1.ts';
 import { AMAL, AT8, HADEER, ID, MARKER, MONA, OMAR, OWNER8, RANA, SALMA, textOf, w8World, words8, type Kit, type Person, type W8World } from './world.ts';
-import { S, cardOf, got, lessonLinks, outlineOf } from './learner.ts';
+import { S, cardOf, got, lessonLinks, outlineOf, shown as s4 } from './learner.ts';
 import { Client } from '../support/http.ts';
 
 const D16END = Date.parse('2026-12-16T23:59:59.999Z');
@@ -104,7 +104,8 @@ describe('W8 AT-4.3 Mona\'s pages, and Rana\'s as admin, are identical (N1) to W
 
 // ------------------------------------------------------------------ AT-4.4 ----
 /** Everything of Ch3 that must not show before day X (L1). */
-const CH3_SIGNS = [MARKER, ID.ch3, ID.l31, '2026-12-17', 'Revision', 'Exam revision'];
+// R1a (UX-16a row): Ch3's date also as S4 shows it, in both languages.
+const CH3_SIGNS = [MARKER, ID.ch3, ID.l31, '2026-12-17', s4('2026-12-17', 'en'), s4('2026-12-17', 'ar'), 'Revision', 'Exam revision'];
 
 /** Every surface of the 3.4 inventory (requestList) and the guardian, preview and quiz surfaces again, as one person each. */
 function scanList(): { who: Person; path: string; method: 'GET' | 'POST'; fields?: Record<string, string> }[] {
@@ -161,11 +162,11 @@ describe('W8 AT-4.5 every new string renders in all three kits in English and Ar
           const c = await w.as(SALMA, lang);
           const outline = (await got(c, `${S}/learn/${ID.math}?open=all`)).html;
           const ch2 = outlineOf(outline).find((x) => x.id === ID.ch2)!;
-          assert.deepEqual(ch2.reasons.map((r) => r.text), [t('openedOn', { date: '2026-12-10' })], `${kit} ${lang}: openedOn on the outline`);
+          assert.deepEqual(ch2.reasons.map((r) => r.text), [t('openedOn', { date: s4('2026-12-10', lang) })], `${kit} ${lang}: openedOn on the outline`);
           const page = (await got(c, `${S}/read/${ID.l21}`)).html;
-          assert.ok(textOf(page).includes(t('openedOn', { date: '2026-12-10' })), `${kit} ${lang}: openedOn on the locked page`);
+          assert.ok(textOf(page).includes(t('openedOn', { date: s4('2026-12-10', lang) })), `${kit} ${lang}: openedOn on the locked page`);
           const home = (await got(c, S)).html;
-          const next = t('openNext', { title: 'Fractions', date: '2026-12-10' });
+          const next = t('openNext', { title: 'Fractions', date: s4('2026-12-10', lang) });
           assert.equal(cardOf(home).next, next, `${kit} ${lang}: openNext on the card`);
           if (lang === 'en') assert.ok(next.startsWith(`Next: ${t('chapter')}: Fractions`), `${kit}: the kit's own word ("${t('chapter')}")`);
           for (const text of [textOf(outline), textOf(page), textOf(home)]) assert.ok(!/\{[a-zA-Z]+\}/.test(text), `${kit} ${lang}: no {placeholder} left`);

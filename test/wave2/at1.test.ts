@@ -129,7 +129,7 @@ describe('W2 AT-1.3 with three lessons done the outline ticks exactly those and 
     const w22 = (path: string, html: string) => {
       if (path !== home(w.school)) return html;
       let out = html;
-      for (const open of [/<section\b[^>]*\bid="continue"[^>]*>/, new RegExp(`<li class="card" data-subject="${w.school.math}">`)]) {
+      for (const open of [/<section\b[^>]*\bid="continue"[^>]*>/, new RegExp(`<li class="card subj" data-subject="${w.school.math}"[^>]*>`)]) { // LMS redesign R1a (UX-1 row): the card's new markup
         const e = element(out, open);
         assert.ok(e, `the home has ${open}`);
         out = out.slice(0, e.start) + out.slice(e.end);

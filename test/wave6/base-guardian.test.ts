@@ -40,7 +40,8 @@ import {
 import { QUIZ_CARD, cutWave7Style } from '../wave7/world.ts';
 import { OPENING_CARD } from '../wave8/world.ts';
 import { d9People } from '../d9/base.ts';
-import { expectedItems, guardianTodoOf, listed, onLocalD1, sequenceOf, todoOf, withW6d, withW6e, withoutGuardianTodo } from './todo.ts';
+import { linksOf, r1aNormal } from '../redesign/base.ts';
+import { expectedItems, guardianTodoOf, listed, onLocalD1, sequenceOf, stripOf, todoOf, todoPath, withW6d, withW6e, withoutGuardianTodo } from './todo.ts';
 
 const repo = fileURLToPath(new URL('../..', import.meta.url));
 /** The pinned base: W6-1b-main c39af35 (W6-1b merged, PR #53, 12 of 12 checks), the contract's "today's". */
@@ -194,7 +195,8 @@ function helpProblem(bb: string, cb: string): string | null {
 
 function normalised(body: string, url: string): string {
   // LMS-D9 (PIL-320): the appoint form's help line and role choices (test/d9/base.ts).
-  return d9People(body.split(url).join('[product]').replace(/<div id="usage"[\s\S]*?(?=<h2|<\/main>)/g, '[usage today]'));
+  // LMS redesign R1a (PIL-325): the new shell, learner home and S4 dates, on both sides (test/redesign/base.ts).
+  return r1aNormal(d9People(body.split(url).join('[product]').replace(/<div id="usage"[\s\S]*?(?=<h2|<\/main>)/g, '[usage today]')));
 }
 
 function firstDifference(a: string, b: string): string {
@@ -205,7 +207,7 @@ function firstDifference(a: string, b: string): string {
 
 interface Result {
   what: string; who: string; path: string; status: number; problem: string | null; block: boolean;
-  reads: { base: number; cand: number }; todo: number; cache: string; body: string; candBody: string;
+  reads: { base: number; cand: number }; todo: number; cache: string; body: string; candBody: string; links: string[]; emptyHome: boolean; strip: boolean;
 }
 
 async function bodyOf(res: Response): Promise<string> {
@@ -244,7 +246,8 @@ async function same(p: Pair, who: Who, method: 'GET' | 'POST', path: string, out
   // LMS wave 7 (W7 contract on PIL-261, section 11 item 3): wave 7's style block, at the end of the candidate's <style>, is
   // checked and cut off; the quiz card is cut off teacher pages. Everything else is compared as before.
   const style = HEAD_STYLE.exec(cb);
-  if (style) {
+  // LMS redesign R1a (PIL-325): R1a replaces the shared style; r1aNormal made both one token, so no block is left to check.
+  if (style && style[2] !== '[style]') {
     const w7 = cutWave7Style(style[2]);
     if (w7.problem) problems.push(`style: ${w7.problem}`);
     cb = cb.replace(HEAD_STYLE, (_m, a: string, _s: string, z: string) => a + w7.rest + z);
@@ -273,6 +276,11 @@ async function same(p: Pair, who: Who, method: 'GET' | 'POST', path: string, out
     what: `${who.who} ${method} ${path}`, who: who.who, path, status: rc.status, problem: problems.length ? problems.join('; ') : null, block,
     reads: { base: sb.filter((x) => READ.test(x)).length, cand: sc.filter((x) => READ.test(x)).length }, todo: sc.filter((x) => TODO.test(x)).length,
     cache: rc.headers.get('cache-control') ?? '', body: bb, candBody: cb, res: rb,
+    // The crawl follows main's own links (R1a: the learner home is one token in the compared body).
+    links: linksOf(bodyB),
+    // LMS redesign R1a: a learner home with no subject card (no latest-announcement read), and a home with its due strip.
+    emptyHome: /<main class="[^"]*\bhome\b/.test(bodyC) && !/<ul id="my-list"/.test(bodyC),
+    strip: Boolean(stripOf(bodyC)?.ids.length),
   };
   out.push(r);
   return r;
@@ -294,8 +302,7 @@ async function crawlBoth(p: Pair, who: Who, out: Result[], opts: { block?: boole
       continue;
     }
     if (!(r.res.headers.get('content-type') ?? '').startsWith('text/html')) continue;
-    for (const m of r.body.matchAll(/(?:href|src)="(\/[^"#]*)/g)) {
-      const next = m[1].replace(/&amp;/g, '&');
+    for (const next of r.links) {
       if (!seen.has(next) && keep(next)) queue.push(next);
     }
   }
@@ -347,7 +354,10 @@ function readsProblems(rs: Result[], activityOn: boolean): string {
     // LMS wave 7 (W7-3, contract v3 addendum on PIL-285, G9.2 and G9.5): a 200 linked learner's page also reads the
     // learner's quiz scores once, whatever the activity setting.
     const scores = r.status === 200 && r.what.includes(' GET ') && LINKED.test(r.path) ? 1 : 0;
-    return r.reads.cand !== r.reads.base + (linked ? 1 : 0) + quiz + scores || (LINKED.test(r.path) && r.todo !== (linked ? 1 : 0));
+    // LMS redesign R1a (PIL-325, UX-55 row): wave 5's home block read is now the cards' latest-announcement read, which a
+    // learner home with no subject card (nothing assigned) does not make: one fewer there.
+    const noCards = r.status === 200 && r.what.includes(' GET ') && /^\/s\/[^/?#]+$/.test(r.path) && r.emptyHome ? 1 : 0;
+    return r.reads.cand !== r.reads.base + (linked ? 1 : 0) + quiz + scores - noCards || (LINKED.test(r.path) && r.todo !== (linked ? 1 : 0));
   });
   return off.slice(0, 5).map((r) => `${r.what}: W6-1b-main ${r.reads.base}, candidate ${r.reads.cand}, to-do statements ${r.todo}`).join('\n');
 }
@@ -395,7 +405,9 @@ describe('W6 AT-7.4 with due dates: the same crawl with W6-a and W6-b present; e
     assert.ok(rs.length >= 300, `a full crawl (${rs.length})`);
     assert.equal(report(rs), '', 'every page as W6-1b-main, but the guardian block and the dueCardHelp text');
     for (const who of ['Mona', 'Laila Test', 'Rania Test', 'Tamer Test', 'Huda Test']) assert.ok(blocks.some((r) => r.who === who), `${who}: the block on a linked learner's page`);
-    assert.ok(rs.some((r) => todoOf(r.body)), 'the learner\'s own block was compared');
+    // LMS redesign R1a (UX-34/UX-54/UX-62 and UX-62/UX-63 rows): the learner's own block is on her to-do page, which
+    // W6-1b-main does not have (W6 AT-6.x and AT-R1a.3b read it there); her home shows its due strip, seen here.
+    assert.ok(rs.some((r) => r.strip), 'the learner\'s own due strip was on her home');
     assert.ok(rs.some((r) => annBlock(r.body)), 'wave 5\'s announcement blocks were compared');
     assert.equal(readsProblems(rs, true), '', 'reads as AT-6.4 with due dates');
   });
@@ -442,17 +454,20 @@ describe('W6 AT-6.5, AT-6.6 and AT-7.1 against W6-1b-main with due dates', { con
     const salma = p.people.find((x) => x.who === 'Salma')!;
     const cw = { ...p.w, p: { ...p.w.p, sql: p.cand.sql } } as Wave1World;
     const last = utcDatePlusDays(7);
-    const own = todoOf(await (await rania.cand.get(`/s/${s.id}`)).text());
+    // LMS redesign R1a (UX-62/UX-63 row): a learner's own block is on her to-do page.
+    const own = todoOf(await (await rania.cand.get(todoPath(s))).text());
     assert.ok(own, 'Rania Test\'s learner home has her own block');
     const ownIds = [...listed(own)];
     assert.ok(!ownIds.includes(p.a.L.L1), 'her home: L1 is absent (she marked it done)');
     assert.deepEqual(ownIds.filter((id) => id !== p.a.G1).sort(), [...(await expectedItems(cw, s.id, s.math, p.w.ids[RANIA6.username], last))].sort(), 'her home: her own v2 list');
-    const salmaHome = todoOf(await (await salma.cand.get(`/s/${s.id}`)).text());
+    const salmaHome = todoOf(await (await salma.cand.get(todoPath(s))).text());
     const page = guardianTodoOf(await (await rania.cand.get(linkedPath(s, p.w.ids[SALMA.username]))).text());
     assert.ok(page && salmaHome, 'Salma\'s page opened by Rania Test has the block');
-    assert.deepEqual(sequenceOf(page), sequenceOf(salmaHome), 'Salma\'s page equals Salma\'s home block at that instant');
+    // LMS redesign R1a (UX-62/UX-63 row): the learner's row ends with the S6 tag, the guardian's keeps wave 6's line, so the
+    // lists are compared without their lines (groups, headings, titles, order, folds); W6 AT-6.x check each guardian line.
+    assert.deepEqual(sequenceOf(page, false), sequenceOf(salmaHome, false), 'Salma\'s page equals Salma\'s to-do block at that instant');
     assert.ok(page.groups.find((g) => g.key === 'overdue')?.items.some((i) => i.title === 'Practice L1'), 'Salma\'s page: L1 in todoOverdue');
-    assert.notDeepEqual(sequenceOf(page), sequenceOf(own), 'the two lists are not the same list');
+    assert.notDeepEqual(sequenceOf(page, false), sequenceOf(own, false), 'the two lists are not the same list');
     assert.ok(!(own.groups.find((g) => g.key === 'overdue')?.items ?? []).some((i) => i.title === 'Practice L1'), 'Salma\'s L1 never reaches Rania Test\'s own home');
     assert.ok(!sequenceOf(page)!.some((x) => x.includes('Practice L3')), 'Salma marked L3: it is not on her page even though Rania Test has not');
     assert.ok(listed(own).has(p.a.L.L3), 'Rania Test has L3 on her own list (her own marks)');
@@ -578,7 +593,8 @@ describe('W6 AT-6.4 reads (hard gate): the linked learner\'s page W6-1b-main\'s 
     const huda = by('Huda Test');
     const mb = await measure(p.base, huda.base, path);
     const mc = await measure(p.cand, huda.cand, path);
-    const own = await measure(p.cand, by('Load learner').cand, `/s/${p.load.id}`);
+    // LMS redesign R1a (UX-62/UX-63 row): the learner's own block is on the to-do page.
+    const own = await measure(p.cand, by('Load learner').cand, todoPath(p.load));
     const ownBlock = todoOf(own.body);
     assert.ok(ownBlock && guardianTodoOf(mc.body), 'W6-e: the learner\'s own block and the guardian block');
     // LMS wave 7 (W7-3, contract v3 addendum on PIL-285, G9.2): plus wave 7's quiz score statement.
@@ -587,14 +603,19 @@ describe('W6 AT-6.4 reads (hard gate): the linked learner\'s page W6-1b-main\'s 
     const rows = p.cand.worker.sqlite.prepare(mc.todo!.sql).all(...(mc.todo!.params as (string | number | null)[])).length;
     const d1 = await onLocalD1(p.cand.worker.sqlite, mc.todo!);
     const blockBytes = Buffer.byteLength(ownBlock.block);
-    const bound = mb.bytes + blockBytes + 2048;
-    const figures = `rows returned ${rows} (at most 30); rows read ${d1.meta.rows_read} (at most 5,000); largest bound-parameter count ${mc.maxParams} (at most 20); page ${mc.bytes} B, bound ${bound} B = W6-1b-main's page ${mb.bytes} B + the learner's own block ${blockBytes} B + 2,048 B; reads ${mc.reads} (W6-1b-main ${mb.reads})`;
+    // LMS redesign R1a (PIL-325, UX-1 look row): R1a replaces the shared style (its own budget is AT-R1a.6a, 48 KB), so
+    // both pages are measured without it.
+    const noStyle = (b: string) => Buffer.byteLength(b.replace(HEAD_STYLE, '$1$3'));
+    const mbBytes = noStyle(mb.body);
+    const mcBytes = noStyle(mc.body);
+    const bound = mbBytes + blockBytes + 2048;
+    const figures = `rows returned ${rows} (at most 30); rows read ${d1.meta.rows_read} (at most 5,000); largest bound-parameter count ${mc.maxParams} (at most 20); page without the shared style ${mcBytes} B, bound ${bound} B = W6-1b-main's page without it ${mbBytes} B + the learner's own block ${blockBytes} B + 2,048 B; reads ${mc.reads} (W6-1b-main ${mb.reads})`;
     t.diagnostic(`AT-6.4 W6-e figures: ${figures}`);
     assert.ok(typeof d1.meta.rows_read === 'number', `local D1 reports rows_read (meta: ${JSON.stringify(d1.meta)})`);
     assert.equal(d1.rows.length, rows, 'local D1 returns the same rows as the product\'s database');
     assert.ok(rows <= 30, `W6-e: at most 30 rows returned (${rows})`);
     assert.ok(Number(d1.meta.rows_read) <= 5000, `W6-e: at most 5,000 rows read (${d1.meta.rows_read})`);
     assert.ok(mc.maxParams <= 20, `W6-e: no statement has more than 20 bound parameters (${mc.maxParams})`);
-    assert.ok(mc.bytes <= bound, `W6-e: the page at most ${bound} B (${mc.bytes})`);
+    assert.ok(mcBytes <= bound, `W6-e: the page without the shared style at most ${bound} B (${mcBytes})`);
   });
 });

@@ -9,7 +9,7 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { AT8, ID, OMAR, SALMA, textOf, w8World, words8, type W8World } from './world.ts';
-import { S, cardOf, continueOf, donePath, got, lessonLinks, lessonPath, marksOf, outlineOf, subjectPath } from './learner.ts';
+import { S, cardOf, continueOf, donePath, got, lessonLinks, lessonPath, marksOf, outlineOf, shown, subjectPath } from './learner.ts';
 
 const EN = words8('school', 'en');
 const CH2_LESSONS = [ID.l21, ID.l22];
@@ -20,7 +20,7 @@ const orderLine = (title: string, left: number) => textOf(EN('lockedReason', {
   title,
   count: left === 1 ? EN('lockedCountOne', { lesson: EN('lesson').toLocaleLowerCase('en') }) : EN('lockedCount', { n: String(left) }),
 }));
-const dateLine = (date: string) => EN('openedOn', { date });
+const dateLine = (date: string) => EN('openedOn', { date: shown(date) });
 
 /** W8-a in order at 2026-12-09 noon, Salma with Ch1 done (marked before the day). */
 async function inOrderWorld(atMs = AT8.d9): Promise<W8World> {
@@ -89,9 +89,9 @@ describe('W8 AT-3.3 the card shows "Next: … Fractions, opens on 2026-12-10"', 
     t.diagnostic(`instant ${at(AT8.d9)}`);
     const home = (await got(await w.as(SALMA, 'en'), S)).html;
     const card = cardOf(home);
-    const expected = EN('openNext', { title: 'Fractions', date: '2026-12-10' });
+    const expected = EN('openNext', { title: 'Fractions', date: shown('2026-12-10') });
     assert.equal(card.next, expected, 'the card\'s line');
-    assert.match(expected, /Fractions, opens on 2026-12-10\.$/);
+    assert.match(expected, /Fractions, opens on Dec 10\.$/);
     assert.deepEqual(card.links.filter((id) => CH2_LESSONS.includes(id)), [], 'no link into Ch2 on the card');
     assert.ok(continueOf(home).text.includes(expected), 'Continue shows the same line');
   });

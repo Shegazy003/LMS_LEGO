@@ -112,7 +112,8 @@ export function resultCards(html: string): ResultCard[] {
   return [...html.matchAll(/<li class="card result"[^>]*>([\s\S]*?)<\/li>/g)].map((m) => ({
     exam: text(m[1].match(/<bdi class="exam">([\s\S]*?)<\/bdi>/)?.[1] ?? ''),
     subject: text(m[1].match(/<bdi class="subject">([\s\S]*?)<\/bdi>/)?.[1] ?? ''),
-    date: pick(m[1], 'muted date'),
+    // LMS redesign R1a (UX-16a row): the date shows as S4; its ISO day stays in <time datetime>, read here.
+    date: m[1].match(/<span class="muted date"[^>]*><time datetime="([^"]+)">/)?.[1] ?? pick(m[1], 'muted date'),
     score: pick(m[1], 'score'),
     corrected: pick(m[1], 'corrected'),
   }));

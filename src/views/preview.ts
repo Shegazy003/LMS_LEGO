@@ -23,7 +23,7 @@ const CSS = `
 .preview-banner p{margin:0 0 4px}
 .preview-tag{display:inline-block;margin-inline-end:6px;padding:0 8px;border:2px solid #1b1f24;border-radius:6px;font-weight:700}
 .preview-banner .preview-head{font-weight:600}
-a.button.preview-back{display:inline-flex;align-items:center;justify-content:center;min-height:44px;min-width:44px;margin-top:4px;background:#0b3d91;color:#fff}
+a.button.preview-back{display:inline-flex;align-items:center;justify-content:center;min-height:44px;min-width:44px;margin-top:4px;background:var(--brand-strong);color:#fff}
 .preview-end{max-width:640px;margin:8px auto 24px;padding:12px 16px;border:2px dashed #3d444d;background:#fff;color:#1b1f24}
 .preview-end p{margin:0 0 8px}
 [aria-disabled=true]{cursor:not-allowed;text-decoration:none;outline:1px dashed #57606a;outline-offset:2px}

@@ -10,9 +10,11 @@ import {
   AT, D, HADEER, KARIM5, OMAR, RANA5, SALMA, YARA6, as, clockAt, closeWave6, dPlus, home, lessonPath, press, subjectPath, wave6World, withW5a, withW6b, words,
   type W6a, type W6b, type Wave1World,
 } from './world.ts';
-import { dueLinesOf, expectedItems, idsIn, listed, sameItems, shape, todoOf, type TodoView } from './todo.ts';
+import { dueLinesOf, expectedItems, idsIn, listed, rowLine, sameItems, shape, todoOf, todoPath, type TodoView } from './todo.ts';
 import * as w8 from '../wave8/world.ts';
-import { chapterLocks, shownChapters } from '../../src/learning.ts';
+import { chapterLocks, previewTodo, shownChapters } from '../../src/learning.ts';
+import { TODO_MAX_PER_GROUP, todoGroups, todoWindow } from '../../src/due.ts';
+import { showDate } from '../../src/format.ts';
 
 type Lang = 'ar' | 'en';
 const W = (lang: Lang, kit: 'school' | 'company' | 'university' = 'school') => words(kit, lang);
@@ -25,13 +27,30 @@ async function homeHtml(c: { get(p: string): Promise<Response> }, s: { id: strin
   return res.text();
 }
 
-/** The subjects of the home's cards (data-subject of #my-list). */
-const cardSubjects = (html: string) => new Set([...html.matchAll(/<li class="card" data-subject="([^"]+)">/g)].map((m) => m[1]));
+/** The learner's to-do page, as HTML (expects 200). LMS redesign R1a (UX-34/UX-54/UX-62 rows): wave 6's block moved here from the home. */
+async function todoHtml(c: { get(p: string): Promise<Response> }, s: { id: string }): Promise<string> {
+  const res = await c.get(todoPath(s));
+  assert.equal(res.status, 200, 'the to-do page answers 200');
+  return res.text();
+}
 
-/** The to-do block's subjects are a subset of the same request's cards (AT-2.5). */
-function subsetOfCards(html: string, what: string): void {
-  const cards = cardSubjects(html);
-  for (const g of todoOf(html)?.groups ?? []) for (const i of g.items) assert.ok(cards.has(i.subject), `${what}: ${i.id}'s subject is on a card of the same page`);
+/** The subjects of the home's cards (data-subject of #my-list). */
+const cardSubjects = (html: string) => new Set([...html.matchAll(/<li class="card subj" data-subject="([^"]+)"/g)].map((m) => m[1]));
+
+/** The to-do block's subjects are a subset of the cards (AT-2.5); R1a: the cards of the home, the block of the to-do page. */
+function subsetOfCards(homeDoc: string, todoDoc: string, what: string): void {
+  const cards = cardSubjects(homeDoc);
+  for (const g of todoOf(todoDoc)?.groups ?? []) for (const i of g.items) assert.ok(cards.has(i.subject), `${what}: ${i.id}'s subject is on a card of the home`);
+  // The home's due strip lists only items of those subjects too.
+  for (const m of homeDoc.matchAll(/<li class="strip-row"[^>]*data-subject="([^"]+)"/g)) assert.ok(cards.has(m[1]), `${what}: the strip's ${m[1]} is on a card of the same page`);
+}
+
+/** Where the home's due strip (#todo) sits: after Continue, before the cards (UX-34 row). */
+function stripPlace(doc: string, what: string): void {
+  const at = doc.indexOf('<section id="todo" class="strip"');
+  assert.ok(at > 0, `${what}: the home has the due strip`);
+  assert.ok(doc.indexOf('id="continue"') >= 0 && doc.indexOf('id="continue"') < at, `${what}: after Continue where you stopped`);
+  assert.ok(at < doc.indexOf('id="my-list"'), `${what}: before the subject cards`);
 }
 
 /** The heading of a group as ui.ts gives it. */
@@ -54,11 +73,9 @@ describe('W6 AT-2.1 groups: the to-do block after Continue and before the cards,
     for (const lang of ['ar', 'en'] as const) {
       const tt = W(lang);
       const c = await as(w, SALMA, lang);
-      const doc = await homeHtml(c, s);
-      const v = todoOf(doc);
+      stripPlace(await homeHtml(c, s), lang);
+      const v = todoOf(await todoHtml(c, s));
       assert.ok(v, `${lang}: the to-do block`);
-      assert.ok(doc.indexOf('id="continue"') >= 0 && doc.indexOf('id="continue"') < v.at, `${lang}: after Continue where you stopped`);
-      assert.ok(v.at < doc.indexOf('id="my-list"'), `${lang}: before the subject cards`);
       assert.equal(v.heading, tt('todoTitle'), `${lang}: todoTitle`);
       assert.deepEqual(v.groups.map((g) => g.key), ['overdue', 'today', 'next'], `${lang}: the groups in order`);
       // Today also holds G1 (Arabic grammar, due D): W6-a's own item of a subject Salma reads; Arabic grammar comes before Mathematics by title.
@@ -80,8 +97,12 @@ describe('W6 AT-2.1 groups: the to-do block after Continue and before the cards,
         for (const i of g.items) {
           const subjectTitle = i.id === a.G1 ? 'Arabic grammar' : 'Mathematics';
           assert.equal(i.title, titles[i.id], `${lang} ${i.id}: the title`);
-          assert.equal(i.line, tt('todoItemLine', { kind: tt(i.kind), subjectTitle, date: String(a.dates[Object.entries({ ...a.L, C2: a.C2, C3: a.C3, G1: a.G1 }).find(([, id]) => id === i.id)![0]]) }), `${lang} ${i.id}: todoItemLine`);
-          assert.match(i.raw, /<p class="todo-line">[\s\S]*<bdi dir="ltr" class="due-date"><time datetime="\d{4}-\d{2}-\d{2}">\d{4}-\d{2}-\d{2}<\/time><\/bdi>/, `${lang} ${i.id}: the date in Latin digits inside dir="ltr"`);
+          // LMS redesign R1a (UX-62/UX-63 rows, UX-16a row): the line ends with the group's S6 tag, its day S4's, in a <time> with the ISO day.
+          const due = String(a.dates[Object.entries({ ...a.L, C2: a.C2, C3: a.C3, G1: a.G1 }).find(([, id]) => id === i.id)![0]]);
+          assert.equal(i.line, rowLine(tt, lang, i.kind, subjectTitle, g.key, due, D), `${lang} ${i.id}: the line and its tag`);
+          assert.match(i.raw, new RegExp(`<span class="tag ${{ overdue: 'late', today: 'today', next: 'due' }[g.key]}">`), `${lang} ${i.id}: the ${g.key} tag`);
+          if (g.key !== 'today') assert.ok(i.raw.includes(`<time datetime="${due}">`), `${lang} ${i.id}: the ISO day in <time>`);
+          assert.doesNotMatch(i.raw, /[٠-٩۰-۹]/, `${lang} ${i.id}: Western digits only`);
           if (i.kind === 'lesson') {
             assert.equal(i.href, lessonPath(s, i.id), `${lang} ${i.id}: links to its lesson page`);
             assert.equal(i.progress, null, `${lang} ${i.id}: a lesson has no done count`);
@@ -113,7 +134,7 @@ describe('W6 AT-2.2 done empties it: marked items leave, a chapter leaves when a
     const s = w.school;
     const salma = await as(w, SALMA, 'en');
     const tt = W('en');
-    const now = async () => todoOf(await homeHtml(salma, s));
+    const now = async () => todoOf(await todoHtml(salma, s));
     const mark = async (id: string, state: 'done' | 'not-done') => assert.equal((await press(salma, s, id, state)).status, 303, `${state} ${id}`);
     await mark(a.L.L1, 'done');
     await mark(a.L.L2, 'done');
@@ -144,11 +165,19 @@ describe('W6 AT-2.2 done empties it: marked items leave, a chapter leaves when a
     for (const id of [a.L.L1, a.L.L3, a.L.L8, a.L.L9, a.L.L4]) await mark(id, 'done');
     const added = String((await w.p.sql(`SELECT id FROM lesson WHERE chapter_id = '${a.C2}' AND title = 'Fractions in a recipe'`))[0].id);
     await mark(added, 'done');
+    // LMS redesign R1a (UX-34/UX-62 rows, UX-98, UX-102): the to-do page keeps its heading and says «لا شيء مطلوب الآن»; the
+    // home's due strip keeps its heading and says it too; no group, no fold, no row anywhere.
     for (const lang of ['en', 'ar'] as const) {
-      const doc = await homeHtml(await as(w, SALMA, lang), s);
-      assert.equal(todoOf(doc), null, `${lang}: every group empty: no block`);
-      for (const key of ['todoTitle', 'todoMore'] as const) assert.ok(!doc.includes(W(lang)(key, { n: '0' })), `${lang}: no ${key} on the home`);
-      assert.doesNotMatch(doc.replace(/<style>[\s\S]*?<\/style>/g, ''), /todo-/, `${lang}: no to-do markup at all (outside the inlined style)`);
+      const c = await as(w, SALMA, lang);
+      const doc = await todoHtml(c, s);
+      assert.equal(todoOf(doc), null, `${lang}: every group empty: no group`);
+      assert.ok(doc.includes(`<p id="todo-none" class="strip-none">${W(lang)('nothingDue')}</p>`), `${lang}: the to-do page says nothingDue`);
+      const home = await homeHtml(c, s);
+      assert.ok(home.includes(`<p id="todo-none" class="strip-none">${W(lang)('nothingDue')}</p>`), `${lang}: the home's strip says nothingDue`);
+      for (const page of [doc, home]) {
+        assert.ok(!page.includes(W(lang)('todoMore', { n: '0' })), `${lang}: no todoMore`);
+        assert.doesNotMatch(page.replace(/<style>[\s\S]*?<\/style>/g, ''), /todo-(item|group|more|link|line)/, `${lang}: no to-do row, group or fold (outside the inlined style)`);
+      }
     }
   });
 });
@@ -165,7 +194,7 @@ describe('W6 AT-2.3 day boundaries: UTC days at the four W6-c instants, one inst
     const salma = await as(w, SALMA, 'en');
     const at = async (ms: number) => {
       t.diagnostic(`instant ${await clockAt(w, ms)}`);
-      return todoOf(await homeHtml(salma, s));
+      return todoOf(await todoHtml(salma, s));
     };
     const noon = await at(AT.noon);
     const late = await at(AT.lastSecond);
@@ -207,16 +236,16 @@ describe('W6 AT-2.4 changes by the teacher: a moved, a cleared and a new date ta
     const page = `/s/${s.id}/publish/edit/${s.math}/due`;
     const save = async (id: string, value: string) => assert.equal((await hadeer.post(`${page}/lesson/${id}`, { due_on: value })).status, 303, `save ${id} = ${JSON.stringify(value)}`);
     await save(a.L.L3, dPlus(9));
-    let v = todoOf(await homeHtml(salma, s));
+    let v = todoOf(await todoHtml(salma, s));
     assert.ok(!listed(v).has(a.L.L3), 'L3 moved to D+9: leaves the list');
     await save(a.L.L4, '');
-    v = todoOf(await homeHtml(salma, s));
+    v = todoOf(await todoHtml(salma, s));
     assert.ok(!listed(v).has(a.L.L4), 'L4 cleared: leaves the list');
     await save(a.L.L6, D);
-    v = todoOf(await homeHtml(salma, s));
+    v = todoOf(await todoHtml(salma, s));
     assert.ok(idsIn(v, 'today').includes(a.L.L6), 'L6 set to D: in todoToday');
     t.diagnostic(`instant ${await clockAt(w, AT.nextDay)}`);
-    v = todoOf(await homeHtml(salma, s));
+    v = todoOf(await todoHtml(salma, s));
     assert.ok(idsIn(v, 'overdue').includes(a.L.L6), '00:00:00 UTC on D+1: L6 in todoOverdue');
   });
 });
@@ -235,8 +264,9 @@ describe('W6 AT-2.5 removal and access: removed items leave and return with Rest
     let salma = await as(w, SALMA, 'en');
     const look = async (what: string) => {
       const doc = await homeHtml(salma, s);
-      subsetOfCards(doc, what);
-      return { doc, v: todoOf(doc) };
+      const todo = await todoHtml(salma, s);
+      subsetOfCards(doc, todo, what);
+      return { doc, v: todoOf(todo) };
     };
     const mathIds = async () => new Set([...(await expectedItems(w, s.id, s.math, salmaId, LAST))]);
     const mathListed = (v: TodoView | null) => [...listed(v)].filter((id) => id !== a.G1);
@@ -270,7 +300,7 @@ describe('W6 AT-2.5 removal and access: removed items leave and return with Rest
     }
     // Her access ends: today's answer on the home, no to-do anywhere she reaches.
     await w.p.sql(`UPDATE membership SET ended_on = '${dPlus(-1)}' WHERE user_id = '${salmaId}' AND space_id = '${s.id}'`);
-    for (const path of [home(s), home(s)]) {
+    for (const path of [home(s), todoPath(s)]) { // R1a: the home and the to-do page
       const res = await salma.get(path);
       const body = await res.text();
       assert.notEqual(res.status, 200, `ended: ${path} is refused (${res.status})`);
@@ -302,12 +332,12 @@ describe('W6 AT-2.6 everyone in the subject with their own marks; locked chapter
     const omar = await as(w, OMAR, 'en');
     assert.equal((await press(omar, s, a.L.L8, 'done')).status, 303, 'Omar marks L8');
     for (const [who, person] of [['Omar C', OMAR], ['Rana Test', RANA5]] as const) {
-      const v = todoOf(await homeHtml(await as(w, person, 'en'), s));
+      const v = todoOf(await todoHtml(await as(w, person, 'en'), s));
       sameItems(v, await expectedItems(w, s.id, s.math, w.ids[person.username], LAST), `${who}: exactly the Mathematics items by their own marks`);
     }
-    assert.ok(listed(todoOf(await homeHtml(omar, s))).has(a.L.L1), 'Salma\'s mark on L1 changes nothing for Omar');
-    assert.ok(!listed(todoOf(await homeHtml(omar, s))).has(a.L.L8), 'Omar\'s own mark on L8 takes it off his list');
-    const karim = todoOf(await homeHtml(await as(w, KARIM5, 'en'), s));
+    assert.ok(listed(todoOf(await todoHtml(omar, s))).has(a.L.L1), 'Salma\'s mark on L1 changes nothing for Omar');
+    assert.ok(!listed(todoOf(await todoHtml(omar, s))).has(a.L.L8), 'Omar\'s own mark on L8 takes it off his list');
+    const karim = todoOf(await todoHtml(await as(w, KARIM5, 'en'), s));
     assert.deepEqual([...listed(karim)], [a.G1], 'Karim Test: only G1');
   });
 
@@ -317,7 +347,7 @@ describe('W6 AT-2.6 everyone in the subject with their own marks; locked chapter
     const yaraId = w.ids[YARA6.username];
     const nile = { id: b.id };
     const check = async (what: string) => {
-      const v = todoOf(await homeHtml(yara, nile));
+      const v = todoOf(await todoHtml(yara, nile));
       sameItems(v, await expectedItems(w, b.id, b.subject, yaraId, LAST), `${what}: listed ⇔ not done and its chapter not locked (chapterLocks)`);
       return v;
     };
@@ -355,14 +385,15 @@ describe('W6 AT-2.7 outline: each dated lesson or chapter shows dueOn, for every
       const doc = await (await (await as(w, SALMA, lang)).get(subjectPath(s, s.math, 'all'))).text();
       const lines = dueLinesOf(doc);
       assert.deepEqual([...lines.keys()].sort(), dated.map(([id]) => id).sort(), `${lang}: a due line on every dated item (also D+8, the past L1 and C3) and on nothing else`);
-      for (const [id, date] of dated) assert.equal(lines.get(id), tt('dueOn', { date }), `${lang} ${id}: dueOn with its date`);
+      for (const [id, date] of dated) assert.equal(lines.get(id), tt('dueOn', { date: showDate(date, lang, D) }), // R1a (UX-16a row): S4 days
+        `${lang} ${id}: dueOn with its date`);
       for (const word of ['todoOverdue', 'todoToday', 'todoNext7'] as const) assert.ok(!doc.includes(tt(word, { n: '1', days: '7' }).replace(/ ?\(1\)$/, '')), `${lang}: no late or group word (${word}) in the outline`);
       assert.doesNotMatch(doc, /id="todo"/, `${lang}: no to-do block on the subject page`);
       // Locked chapter K2 of W6-b: its date shows as any other.
       const nile = await (await (await as(w, YARA6, lang)).get(`/s/${b.id}/learn/${b.subject}?open=all`)).text();
       assert.match(nile, new RegExp(`id="chapter-${b.K2}"[^>]*data-locked`), `${lang}: K2 is locked for Yara`);
-      assert.equal(dueLinesOf(nile).get(b.K2), tt('dueOn', { date: D }), `${lang}: the locked K2 shows its date`);
-      assert.equal(dueLinesOf(nile).get(b.N3), tt('dueOn', { date: D }), `${lang}: N3 inside the locked chapter shows its date`);
+      assert.equal(dueLinesOf(nile).get(b.K2), tt('dueOn', { date: showDate(D, lang, D) }), `${lang}: the locked K2 shows its date`);
+      assert.equal(dueLinesOf(nile).get(b.N3), tt('dueOn', { date: showDate(D, lang, D) }), `${lang}: N3 inside the locked chapter shows its date`);
     }
   });
 
@@ -393,22 +424,25 @@ describe('W6 AT-2.8 kits and languages: the item lines use the kit\'s words; Ara
       await w.p.sql(`UPDATE chapter SET due_on = '${dPlus(2)}' WHERE id = '${chapter}'`);
       for (const lang of ['ar', 'en'] as const) {
         const tt = W(lang, kit);
-        const doc = await homeHtml(await as(w, SALMA, lang), sp);
+        const doc = await todoHtml(await as(w, SALMA, lang), sp);
         const v = todoOf(doc)!;
         assert.ok(v, `${kit} ${lang}: the block`);
         assert.equal(v.heading, tt('todoTitle'));
         const items = v.groups.flatMap((g) => g.items);
         const l = items.find((i) => i.id === lesson)!;
         const c = items.find((i) => i.id === chapter)!;
-        assert.equal(l.line, tt('todoItemLine', { kind: tt('lesson'), subjectTitle: 'Mathematics', date: D }), `${kit} ${lang}: the lesson line with the kit's word`);
-        assert.equal(c.line, tt('todoItemLine', { kind: tt('chapter'), subjectTitle: 'Mathematics', date: dPlus(2) }), `${kit} ${lang}: the chapter line with the kit's word`);
+        // LMS redesign R1a (UX-62/UX-63 rows): "<kind> · <subject>" then the S6 tag (the kit's words are unchanged).
+        assert.equal(l.line, rowLine(tt, lang, 'lesson', 'Mathematics', 'today', D, D), `${kit} ${lang}: the lesson line with the kit's word`);
+        assert.equal(c.line, rowLine(tt, lang, 'chapter', 'Mathematics', 'next', dPlus(2), D), `${kit} ${lang}: the chapter line with the kit's word`);
         if (lang === 'en') {
           const [lw, cw] = kit === 'company' ? ['Session', 'Module'] : ['Lecture', 'Unit'];
           assert.ok(l.line.startsWith(`${lw} · `) && c.line.startsWith(`${cw} · `), `${kit}: "${lw}" and "${cw}"`);
         }
         assert.equal(v.groups.find((g) => g.key === 'today')!.heading, tt('todoToday', { n: '1' }), `${kit} ${lang}: todoToday`);
         assert.match(doc, new RegExp(`<html lang="${lang}" dir="${lang === 'ar' ? 'rtl' : 'ltr'}"`), `${kit} ${lang}: lang and dir`);
-        for (const i of items) assert.match(i.raw, /<bdi dir="ltr" class="due-date"><time datetime="(\d{4}-\d{2}-\d{2})">\1<\/time><\/bdi>/, `${kit} ${lang} ${i.id}: a Latin-digit YYYY-MM-DD in dir="ltr"`);
+        // R1a (UX-16a row, UX-104): S4 days in Western digits; the ISO day stays in <time datetime>.
+        for (const i of items) assert.doesNotMatch(i.raw, /[٠-٩۰-۹]/, `${kit} ${lang} ${i.id}: Western digits only`);
+        assert.ok(c.raw.includes(`<time datetime="${dPlus(2)}">`), `${kit} ${lang}: the chapter's ISO day in <time>`);
       }
     }
   });
@@ -458,10 +492,19 @@ describe('W8 AT-3.7 learnerTodo and both previewTodo variants agree with chapter
             };
             const listedOn = async (who: w8.Person, path: string) => Object.values(w8TodoIds(await (await (await w.as(who, 'en')).get(path)).text())).flat().sort();
             const what = `rotation ${rot} (${ids.map((_, i) => W8_STATES[(i + rot) % W8_STATES.length]).join(', ')}), Salma ${marks.length ? 'with Ch1 and one Ch2 mark' : 'with no marks'}`;
-            assert.deepEqual(await listedOn(w8.SALMA, `/s/${w8.ID.space}`), expect(new Set(marks)), `learnerTodo, ${what}`);
+            // LMS redesign R1a (UX-34/UX-62 rows): the learner's full list is on the to-do page.
+            assert.deepEqual(await listedOn(w8.SALMA, `/s/${w8.ID.space}/todo`), expect(new Set(marks)), `learnerTodo, ${what}`);
             if (!marks.length) {
-              assert.deepEqual(await listedOn(w8.HADEER, `/s/${w8.ID.space}/preview`), expect(new Set()), `previewTodo (admin), ${what}`);
-              assert.deepEqual(await listedOn(w8.AMAL, `/s/${w8.ID.space}/preview`), expect(new Set()), `previewTodo (publisher), ${what}`);
+              // R1a: the preview home shows only the due strip (the to-do page is not previewable, S9), so both previewTodo
+              // variants are read directly on the same database, and the strip must be their first items, in order.
+              const day = todoWindow(w8.AT8.d9);
+              const db = { all: async (q: string, ...p: (string | number | null)[]) => w.sql(q, ...p) } as unknown as Parameters<typeof previewTodo>[0];
+              for (const [label, who, previewer] of [['admin', w8.HADEER, { kind: 'admin', userId: w8.HADEER.id }], ['publisher', w8.AMAL, { kind: 'publisher', userId: w8.AMAL.id }]] as const) {
+                const rows = await previewTodo(db, w8.ID.space, previewer, day.today, day.last, TODO_MAX_PER_GROUP);
+                assert.deepEqual(rows.map((r) => r.id).sort(), expect(new Set()), `previewTodo (${label}), ${what}`);
+                const strip = [...(await (await (await w.as(who, 'en')).get(`/s/${w8.ID.space}/preview`)).text()).matchAll(/<li class="strip-row"[^>]*data-item="([^"]+)"/g)].map((m) => m[1]);
+                assert.deepEqual(strip, todoGroups(rows).flatMap((g) => g.items.map((i) => i.id)).slice(0, 3), `the ${label}'s preview strip: the first items of previewTodo, ${what}`);
+              }
             }
             checked++;
           }
@@ -492,6 +535,9 @@ function w8OutlineFromDb(w: w8.W8World): W8Chapter[] {
 /** The ids listed in a home's to-do block, by group (data-item). */
 function w8TodoIds(page: string): Record<string, string[]> {
   const out: Record<string, string[]> = {};
-  for (const g of page.matchAll(/<div class="todo-group" data-group="([^"]+)">([\s\S]*?)<\/div>/g)) out[g[1]] = [...g[2].matchAll(/data-item="([^"]+)"/g)].map((m) => m[1]);
+  // LMS redesign R1a: a row now holds a <div> of its own, so each group runs to the next group (or the block's end).
+  const block = page.slice(Math.max(0, page.indexOf('<section id="todo"')));
+  const parts = block.split(/(?=<div class="todo-group" data-group=")/).slice(1);
+  for (const part of parts) out[/data-group="([^"]+)"/.exec(part)![1]] = [...part.matchAll(/<li class="todo-item"[^>]*data-item="([^"]+)"/g)].map((m) => m[1]);
   return out;
 }

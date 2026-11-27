@@ -14,7 +14,12 @@ import {
   AT, D, HADEER, withKitGuardians, HUDA6, LAILA6, LOAD_ADMIN, LOAD_LEARNER, MONA, OMAR, SALMA, TAMER6, YARA6, activity, as, clockAt, closeWave6, dPlus, home, linkedPath, press, wave6World,
   withHuda, withTamer, withW5d, withW6b, withW6f, words, type W6a, type W6b, type Wave1World,
 } from './world.ts';
-import { guardianTodoOf, sequenceOf, todoOf, withW6d, withW6e, type GuardianTodoView, type TodoView } from './todo.ts';
+import { guardianTodoOf, sequenceOf, todoOf, todoPath, withW6d, withW6e, type GuardianTodoView, type TodoView } from './todo.ts';
+import { showDate } from '../../src/format.ts';
+
+/** LMS redesign R1a (UX-16a row): a guardian line's date is S4's (day, month name, year only when not this UTC year), in <bdi>. */
+const S4_DATE = /<bdi dir="(?:rtl|ltr)" class="due-date">(?![^<]*\d{4}-\d{2}-\d{2})[^<]*\b\d{1,2}\b[^<]*<\/bdi>/;
+const todayAt = (instant: number) => new Date(instant).toISOString().slice(0, 10);
 
 type Lang = 'ar' | 'en';
 type Get = { get(p: string): Promise<Response> };
@@ -28,10 +33,11 @@ async function html(c: Get, path: string): Promise<string> {
 
 /** The learner's home block and the guardian's block at one instant; asserts AT-6.2's equality and returns both. */
 async function equalAt(learner: Get, guardian: Get, space: { id: string }, learnerId: string, what: string): Promise<{ l: TodoView | null; g: GuardianTodoView | null }> {
-  const l = todoOf(await html(learner, home(space)));
+  // LMS redesign R1a (UX-62/UX-63 rows): the learner's full list is the to-do page; its row lines end with the S6 tag, so lines are left out here.
+  const l = todoOf(await html(learner, todoPath(space)));
   const g = guardianTodoOf(await html(guardian, linkedPath(space, learnerId)));
   assert.equal(g === null, l === null, `${what}: the guardian block is absent exactly when the learner's is (learner ${l ? 'has' : 'has no'} block)`);
-  assert.deepEqual(sequenceOf(g), sequenceOf(l), `${what}: the guardian block's sequence equals the learner's`);
+  assert.deepEqual(sequenceOf(g, false), sequenceOf(l, false), `${what}: the guardian block's sequence equals the learner's`);
   return { l, g };
 }
 
@@ -78,9 +84,9 @@ describe('W6 AT-6.1 place and content: Mona on Salma\'s page with W6-a, no marks
           const id = expected[g.key][g.items.indexOf(i)];
           const kind = id === a.C2 ? 'chapter' : 'lesson';
           const name = Object.entries({ ...a.L, C2: a.C2, G1: a.G1 }).find(([, x]) => x === id)![0];
-          assert.equal(i.line, tt('todoItemLine', { kind: tt(kind), subjectTitle: id === a.G1 ? 'Arabic grammar' : 'Mathematics', date: String(a.dates[name]) }), `${lang} ${name}: todoItemLine`);
+          assert.equal(i.line, tt('todoItemLine', { kind: tt(kind), subjectTitle: id === a.G1 ? 'Arabic grammar' : 'Mathematics', date: showDate(String(a.dates[name]), lang, todayAt(AT.noon)) }), `${lang} ${name}: todoItemLine`);
           assert.match(i.raw, /<span class="due-title"><bdi>[^<]+<\/bdi><\/span>/, `${lang} ${name}: the title as plain text in <bdi>`);
-          assert.match(i.raw, /<bdi dir="ltr" class="due-date">\d{4}-\d{2}-\d{2}<\/bdi>/, `${lang} ${name}: the date in Latin digits, dir="ltr"`);
+          assert.match(i.raw, S4_DATE, `${lang} ${name}: the date as S4 shows it, Latin digits (R1a, UX-16a row)`);
         }
       }
       for (const tag of ['a', 'form', 'input', 'button']) assert.doesNotMatch(v.block, new RegExp(`<${tag}\\b`), `${lang}: no <${tag}> in the block`);
@@ -234,11 +240,11 @@ describe('W6 AT-6.5 kits and languages: in the Company and University kits the i
         assert.deepEqual(g.groups.map((x) => [x.key, x.heading]), [['today', tt('todoToday', { n: '1' })]], `${space.kit} ${lang}: todoToday (1)`);
         const item = g.groups[0].items[0];
         assert.equal(item.title, 'Adding fractions');
-        assert.equal(item.line, tt('todoItemLine', { kind: tt('lesson'), subjectTitle: 'Mathematics', date: D }), `${space.kit} ${lang}: todoItemLine with the kit's word "${tt('lesson')}"`);
-        assert.match(item.raw, new RegExp(`<bdi dir="ltr" class="due-date">${D}</bdi>`), `${space.kit} ${lang}: the date in Latin digits, dir="ltr"`);
+        assert.equal(item.line, tt('todoItemLine', { kind: tt('lesson'), subjectTitle: 'Mathematics', date: showDate(D, lang, todayAt(AT.noon)) }), `${space.kit} ${lang}: todoItemLine with the kit's word "${tt('lesson')}"`);
+        assert.match(item.raw, S4_DATE, `${space.kit} ${lang}: the date as S4 shows it, Latin digits (R1a, UX-16a row)`);
         assert.match(doc, new RegExp(`<html lang="${lang}" dir="${lang === 'ar' ? 'rtl' : 'ltr'}"`), `${space.kit} ${lang}: the page's language and direction`);
-        const own = todoOf(await html(await as(w, SALMA, lang), home(space)));
-        assert.deepEqual(sequenceOf(g), sequenceOf(own), `${space.kit} ${lang}: equal to Salma's own block there`);
+        const own = todoOf(await html(await as(w, SALMA, lang), todoPath(space)));
+        assert.deepEqual(sequenceOf(g, false), sequenceOf(own, false), `${space.kit} ${lang}: equal to Salma's own block there`);
         t.diagnostic(`AT-6.5 ${space.kit} ${lang}: ${item.line}`);
       }
     }
@@ -269,7 +275,7 @@ describe('W6 AT-6.3 cap: Huda Test at W6-e: the overdue heading shows the full c
       const tt = W(lang);
       const learner = await as(w, LOAD_LEARNER, lang);
       const huda = await as(w, HUDA6, lang);
-      const l = todoOf(await html(learner, home(space)))!;
+      const l = todoOf(await html(learner, todoPath(space)))!;
       const g = guardianTodoOf(await html(huda, linkedPath(space, learnerId)))!;
       assert.ok(l && g, `${lang}: both blocks`);
       const lo = l.groups.find((x) => x.key === 'overdue')!;
@@ -282,7 +288,7 @@ describe('W6 AT-6.3 cap: Huda Test at W6-e: the overdue heading shows the full c
       assert.equal(go.capped, tt('guardianTodoCapped', { n: String(n - 10) }), `${lang}: guardianTodoCapped with the number not drawn`);
       assert.match(g.block, /<p class="todo-capped">[^<]*<\/p>\n<\/details>/, `${lang}: the capped line ends the fold`);
       assert.ok(lo.capped && lo.capped !== go.capped, `${lang}: the learner's own block ends with todoCapped instead`);
-      assert.deepEqual(sequenceOf(g), sequenceOf(l), `${lang}: equal to the learner's block apart from that last line`);
+      assert.deepEqual(sequenceOf(g, false), sequenceOf(l, false), `${lang}: equal to the learner's block apart from that last line`);
       t.diagnostic(`AT-6.3 ${lang}: overdue ${n}, drawn 10, not drawn ${n - 10}`);
     }
   });

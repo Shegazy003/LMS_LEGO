@@ -418,6 +418,26 @@ On the admin's people page (`/s/<space>/admin/people`, every kit), the form **Ap
 
 **Rollback:** redeploying the earlier version brings back the preselected role and the plain return to the list. No data to undo.
 
+### The new look and the learner home (LMS redesign, wave R1a)
+
+The approved prototype's look (`docs/visual/prototype-v1.html`), in each school's own colour. No stored-data change, no new table or column.
+
+- **Colours** (`src/look.ts`): the header is in the space's colour with text that always reads (4.5 : 1, checked over 4,096 colours); buttons, links, focus rings and the current nav item use a darker "strong" shade; each subject gets an automatic colour from a 12-colour palette (by its id, so it never changes with order). No fixed blue is left on learner or guardian pages.
+- **Font:** IBM Plex Sans Arabic 400/600/700 (SIL OFL 1.1), served from the product's own address (`/assets/fonts/…`, cached one year). `tools/build-assets.mjs` copies the files from the exact-pinned npm package `@fontsource/ibm-plex-sans-arabic` into `dist/static` (not in the repository); `wrangler dev` and `wrangler deploy` run it (`wrangler.jsonc` `build` and `assets`). By hand: `npm run build:assets`.
+- **Dates** (`src/format.ts`): learner and guardian pages show «12 ديسمبر» / "Dec 12", with the year only when it is not this year; tags may say اليوم / غدًا / أمس. Western digits everywhere.
+- **Navigation:** one `nav#top-nav`, icon + word per item (Home, My subjects or the guardian home, To do, My results, My account). On learner and guardian pages it is a bottom bar below 960 px and the header nav from 960 px; staff pages keep it in the header.
+- **Learner home** (`/s/<space>`): greeting, activity notice, the "continue" hero on the subject's colour, the due-soon strip (3 items, "see all"), then the subject cards (colour band, icon, ring and progress text, one action, the latest announcement line). The announcements block left the home; each card shows its subject's newest visible announcement (one batched query).
+- **New pages:** `/s/<space>/subjects` (My subjects: the same cards) and `/s/<space>/todo` (the full to-do list that used to be on the home, each row with its status tag). Both refuse exactly as the home does.
+- **Still old inside the new header:** subject, lesson, quiz, results, account, guardian and sign-in pages (later waves).
+
+**Look at it locally with realistic data:** delete `.wrangler/state`, then `node tools/seed-demo.ts` (or `npm run seed:demo`; add `--env test` for `npm run dev:test`), then `npm run dev` and sign in as `salma.r1a` / `salma-r1a-pass-2026`. The tool writes only Wrangler's local database and file store and refuses one that already has people. The data is dated around 27 Nov 2026.
+
+**Tests:** `test/redesign/` (CI job `redesign-r1a`); `baseline.json` was recorded on d1a5ae3 in the same seeded world.
+
+**Known limits:** one palette (A); no cover pictures, no nav badge. The prototype copy needs `npm run build:assets` to show its font (its second font, Tajawal, falls back). Screenshots are evidence only.
+
+**Rollback:** redeploy the earlier version: the old look and home come back; nothing stored changed. The font files are static assets of the version and go with it.
+
 ### Reset links (AT-2, contract section 8)
 
 1. The appointer (the admin for publishers and learners, the owner for admins) opens the person's page and presses **Send reset link by WhatsApp**.

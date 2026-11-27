@@ -35,6 +35,7 @@ import {
 } from './world.ts';
 import { OPENING_CARD } from '../wave8/world.ts';
 import { d9People } from '../d9/base.ts';
+import { linksOf, r1aNormal } from '../redesign/base.ts';
 
 const repo = fileURLToPath(new URL('../..', import.meta.url));
 /** The pinned base: W7-2-main c1a9d14 (PR #56 merged, 13 of 13 checks), the contract's "today's". */
@@ -138,7 +139,8 @@ function firstDifference(a: string, b: string): string {
 /** Wave 5's closed list of normalisations: each product's own address; the owner's "usage today" block (live counters). */
 function normalised(body: string, url: string): string {
   // LMS-D9 (PIL-320): the appoint form's help line and role choices (test/d9/base.ts).
-  return d9People(body.split(url).join('[product]').replace(/<div id="usage"[\s\S]*?(?=<h2|<\/main>)/g, '[usage today]'));
+  // LMS redesign R1a (PIL-325): the new shell, learner home and S4 dates, on both sides (test/redesign/base.ts).
+  return r1aNormal(d9People(body.split(url).join('[product]').replace(/<div id="usage"[\s\S]*?(?=<h2|<\/main>)/g, '[usage today]')));
 }
 
 /** The quiz card's help line of a teacher page (AT-8.3 / 8.4 (b): the only allowed difference there). */
@@ -158,10 +160,11 @@ function styleProblem(base: string, cand: string): string | null {
 }
 
 /** One address on both products, each under the statement spy; the candidate's body cut only by the allowed differences. */
-async function same(p: Pair, who: Who, path: string, out: Result[], allowBlock: boolean): Promise<{ res: Response; body: string }> {
+async function same(p: Pair, who: Who, path: string, out: Result[], allowBlock: boolean): Promise<{ res: Response; body: string; links: string[] }> {
   const stopB = spyOn(p.base);
   const rb = await who.base.get(path);
-  const bb = normalised(await rb.text(), p.base.url);
+  const rawB = await rb.text();
+  const bb = normalised(rawB, p.base.url);
   await p.base.worker.settle();
   const sb = stopB().filter((x) => READ.test(x)).length;
   const stopC = spyOn(p.cand);
@@ -215,7 +218,8 @@ async function same(p: Pair, who: Who, path: string, out: Result[], allowBlock: 
   if (cb !== bb) problems.push(`another body ${firstDifference(bb, cb)}`);
   if (cb.includes('id="quiz-guardian"')) problems.push('#quiz-guardian outside a linked learner\'s page');
   out.push({ who: who.who, what: `${who.who} GET ${path}`, path, status: rc.status, problem: problems.length ? problems.join('; ') : null, block, cut, reads: { base: sb, cand: sc }, score: logC.filter((x) => SCORE.test(x)).length, cache: rc.headers.get('cache-control'), body: raw });
-  return { res: rb, body: bb };
+  // The crawl follows main's own links (R1a: the learner home is one token in the compared body).
+  return { res: rb, body: bb, links: linksOf(rawB) };
 }
 
 const keep = (path: string) => !path.startsWith('/__test') && !/\/signout\b/.test(path) && !ADMIN_SCORES.test(path);
@@ -227,15 +231,14 @@ async function crawlBoth(p: Pair, who: Who, out: Result[], allowBlock: boolean, 
     const path = queue.shift()!;
     if (seen.has(path)) continue;
     seen.add(path);
-    const { res, body } = await same(p, who, path, out, allowBlock);
+    const { res, links } = await same(p, who, path, out, allowBlock);
     if (res.status >= 300 && res.status < 400) {
       const to = (res.headers.get('location') ?? '').replace(p.base.url, '');
       if (to.startsWith('/') && keep(to)) queue.push(to);
       continue;
     }
     if (!(res.headers.get('content-type') ?? '').startsWith('text/html')) continue;
-    for (const m of body.matchAll(/(?:href|src)="(\/[^"#]*)/g)) {
-      const next = m[1].replace(/&amp;/g, '&');
+    for (const next of links) {
       if (!seen.has(next) && keep(next)) queue.push(next);
     }
   }
@@ -274,7 +277,10 @@ const report = (rs: Result[]) => rs.filter((r) => r.problem).slice(0, 5).map((r)
 function readProblems(rs: Result[]): string {
   return rs.filter((r) => {
     const plus = r.status === 200 && LINKED_PAGE.test(r.path) ? 1 : 0;
-    return r.reads.cand !== r.reads.base + plus || r.score !== plus;
+    // LMS redesign R1a (PIL-325, UX-55 row): wave 5's home block read is now the cards' latest-announcement read, which a
+    // learner home with no subject card (nothing assigned) does not make: one fewer there.
+    const noCards = r.status === 200 && /^\/s\/[^/?#]+$/.test(r.path) && /<main class="[^"]*\bhome\b/.test(r.body) && !/<ul id="my-list"/.test(r.body) ? 1 : 0;
+    return r.reads.cand !== r.reads.base + plus - noCards || r.score !== plus;
   }).slice(0, 5).map((r) => `${r.what}: W7-2-main ${r.reads.base}, candidate ${r.reads.cand}, score statements ${r.score}`).join('\n');
 }
 

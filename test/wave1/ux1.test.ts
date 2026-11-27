@@ -41,14 +41,17 @@ describe('UX-1 learner home cards', { concurrency: false }, () => {
       }
       const starts = await tab.page.locator('#my-list a.start').evaluateAll((els) => els.map((e) => {
         const cs = getComputedStyle(e);
-        return { h: e.getBoundingClientRect().height, bg: cs.backgroundColor, bdi: e.querySelectorAll('bdi').length, display: cs.display, text: (e as HTMLElement).innerText };
+        return { h: e.getBoundingClientRect().height, bg: cs.backgroundColor, bdi: e.querySelectorAll('bdi').length, display: cs.display, word: (e as HTMLElement).innerText.trim(), label: e.getAttribute('aria-label'), text: e.getAttribute('aria-label') ?? (e as HTMLElement).innerText };
       }));
       for (const s of starts) {
         // The rendered text keeps the space after the colon (a flex button once dropped it: "Start:Adding fractions").
         assert.match(s.text, /^\S[^:]*: \S/, `Start reads "<word>: <title>" with its space (${s.text})`);
         assert.ok(s.h >= 44, `Start is at least 44 px tall (${s.h})`);
         assert.ok(s.bg !== 'rgba(0, 0, 0, 0)' && s.bg !== 'transparent', 'Start has a button style (a filled background)');
-        assert.equal(s.bdi, 1, 'the lesson title in Start is in <bdi>');
+        // LMS redesign R1a (UX-1 row, look only; UX-99): the button shows the word, and its accessible name is
+        // "<word>: <title>", starting with the visible word; with no accessible name the title is in <bdi>, as before.
+        if (s.label) assert.ok(s.label.startsWith(s.word), `the accessible name starts with the visible word (${s.word})`);
+        else assert.equal(s.bdi, 1, 'the lesson title in Start is in <bdi>');
       }
       assert.equal(await tab.page.locator('#my-list h2 a bdi').count(), cards.length, 'each subject title is in <bdi>');
       const lefts = await tab.page.locator('#my-list > li').evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().left)));
@@ -63,7 +66,8 @@ describe('UX-1 learner home cards', { concurrency: false }, () => {
       }
       if (width === 'desktop') {
         const main = await tab.page.evaluate(() => document.querySelector('main')!.getBoundingClientRect().width);
-        assert.ok(main <= 1100, `desktop: the content width is capped (${main})`);
+        // LMS redesign R1a (UX-105): from 960 px the content runs up to 1120 px (was 1100).
+        assert.ok(main <= 1120, `desktop: the content width is capped (${main})`);
       }
       await uxShot(tab.page, `UX-1-${width}-${lang}${kit === 'school' ? '' : `-${kit}`}`);
       await tab.ctx.close();

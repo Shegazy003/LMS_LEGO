@@ -12,9 +12,7 @@ export const ANN_MAX = 500;
 /** The subject page shows the newest 3 in full, the next 7 folded (section 5.2). */
 export const ANN_SHOWN = 3;
 export const ANN_FOLDED = 7;
-/** The learner home shows the newest 3 of the last 30 days, each cut at 100 code points (section 5.3). */
-export const ANN_HOME = 3;
-export const ANN_HOME_DAYS = 30;
+/** A card's announcement line is cut at 100 code points (LMS redesign R1a, UX-55 row; once the wave 5 home block's cut). */
 export const ANN_CUT = 100;
 /** A post equal to the newest one of the same role and subject within this time stores nothing (section 4.2, A10). */
 export const ANN_DOUBLE_TAP_MS = 10_000;
@@ -74,8 +72,6 @@ export const COUNT_RULES_JS = `function annLen(s){s=s.replace(/\\r\\n|\\r|\\u202
 // --------------------------------------------------------------- reading ----
 /** An announcement as a learner reads it (section 5): never a removed one. */
 export type ShownRow = Pick<AnnouncementRow, 'id' | 'body' | 'author_role' | 'created_at' | 'edited_at'>;
-/** One item of the learner home (section 5.3): with its subject. */
-export type HomeRow = ShownRow & { subject_id: string; subject_title: string };
 
 /** How many a subject page reads: the newest 3 in full and the next 7 folded (section 5.2). */
 export const ANN_SUBJECT_ROWS = ANN_SHOWN + ANN_FOLDED;
@@ -90,8 +86,21 @@ export function subjectRows(db: Db, spaceId: string, subjectId: string): Promise
   );
 }
 
-/** The earliest posting time the learner home shows (section 5.3): 30 days before now. */
-export const homeSince = (nowMs: number): string => new Date(nowMs - ANN_HOME_DAYS * 86_400_000).toISOString();
+/** LMS redesign wave R1a (product-contract v2 on PIL-322, UX-55 row, S13): for each of these subjects, the
+ * first item its subject page shows (subjectRows' rule and order: not removed, newest first), in ONE statement
+ * with a fixed number of bound parameters (the ids travel as one JSON array), never one read per subject. */
+export async function latestRows(db: Db, spaceId: string, subjectIds: string[]): Promise<Map<string, { id: string; body: string }>> {
+  if (!subjectIds.length) return new Map();
+  const rows = await db.all<{ id: string; subject_id: string; body: string }>(
+    `SELECT id, subject_id, body FROM (
+       SELECT n.id, n.subject_id, n.body, ROW_NUMBER() OVER (PARTITION BY n.subject_id ORDER BY n.created_at DESC, n.id DESC) AS rn
+         FROM announcement n
+        WHERE n.space_id = ? AND n.removed_at IS NULL AND n.subject_id IN (SELECT value FROM json_each(?))
+     ) WHERE rn = 1`,
+    spaceId, JSON.stringify(subjectIds),
+  );
+  return new Map(rows.map((r) => [r.subject_id, { id: r.id, body: r.body }]));
+}
 
 const BLANK_ONLY = new RegExp(`^[${BLANK}]+$`, 'u');
 const segmenter = new Intl.Segmenter('und', { granularity: 'grapheme' });

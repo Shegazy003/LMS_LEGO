@@ -71,14 +71,17 @@ describe('UX-16b Arabic and mixed text on guardian, editor and sign-in pages', {
           if (p.name === 'guardian home') {
             const line = await tab.page.evaluate(() => {
               const l = document.querySelector('.latest-result');
-              return { score: (l?.querySelector('.score') as HTMLElement | null)?.innerText.trim() ?? '', date: (l?.querySelector('.date') as HTMLElement | null)?.innerText.trim() ?? '', exam: (l?.querySelector('.exam') as HTMLElement | null)?.innerText.trim() ?? '' };
+              return { score: (l?.querySelector('.score') as HTMLElement | null)?.innerText.trim() ?? '', date: (l?.querySelector('.date') as HTMLElement | null)?.innerText.trim() ?? '', day: l?.querySelector('.date time')?.getAttribute('datetime') ?? '', exam: (l?.querySelector('.exam') as HTMLElement | null)?.innerText.trim() ?? '' };
             });
             assert.match(line.score, /^\d{1,4}(\.\d)? \/ \d{1,4}$/, 'the mark in Western digits, as today');
-            assert.match(line.date, /^\d{4}-\d{2}-\d{2}$/, 'the date as today');
+            // R1a (UX-16a row, contract S4): the date shown as day + month name (the year only when not this UTC
+            // year); the stored day in <time datetime>.
+            assert.match(line.date, lang === 'ar' ? /^\d{1,2} [؀-ۿ]+( \d{4})?$/ : /^[A-Z][a-z]{2} \d{1,2}(, \d{4})?$/, 'the date as S4 shows it');
+            assert.match(line.day, /^\d{4}-\d{2}-\d{2}$/, 'the stored day');
             assert.equal(line.exam, MIXED_TITLE, 'the Arabic exam title with Latin words, whole');
             await go(tab.page, s.w, learnerPage(s.w.school, s.w.ids[SALMA.username]));
             const row = await firstResultRow(tab.page);
-            assert.deepEqual([line.score, line.date], [row?.score, row?.date], 'exactly as the learner page shows them');
+            assert.deepEqual([line.score, line.day], [row?.score, row?.date], 'exactly as the learner page shows them');
           }
         }
         await tab.close();

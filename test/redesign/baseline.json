@@ -1,0 +1,16 @@
+{
+  "commit": "d1a5ae33b67c0de818e06f53900d4cbf848181d8",
+  "world": "test/redesign/world.ts as سلمى, clock 2026-11-27",
+  "home": {
+    "queries": 7,
+    "htmlBytes": 30989
+  },
+  "subject": {
+    "queries": 8,
+    "htmlBytes": 26157
+  },
+  "lesson": {
+    "queries": 10,
+    "htmlBytes": 25244
+  }
+}

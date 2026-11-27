@@ -68,17 +68,18 @@ const ACTIVITY = { en: { lessonActivity: 'Lesson activity', lessons: 'lessons' }
 
 export const SEED_KIT_WORDS: Record<string, Record<'ar' | 'en', Record<KitWord, string>>> = {
   // LMS wave 2: lessonPlural, the plural of each kit lesson word (progress lines, AT-1.6).
+  // LMS redesign wave R1a (S10): mySubjects, the navigation's label of the learner's subjects.
   school: {
-    en: { guardian: 'Parent', exam: 'Exam', ...ACTIVITY.en, yourGuardian: 'Your parent', child: 'child', lessonPlural: 'lessons' },
-    ar: { guardian: 'ولي أمر', exam: 'امتحان', ...ACTIVITY.ar, yourGuardian: 'ولي أمرك', child: 'الطفل', lessonPlural: 'الدروس' },
+    en: { guardian: 'Parent', exam: 'Exam', ...ACTIVITY.en, yourGuardian: 'Your parent', child: 'child', lessonPlural: 'lessons', mySubjects: 'My subjects' },
+    ar: { guardian: 'ولي أمر', exam: 'امتحان', ...ACTIVITY.ar, yourGuardian: 'ولي أمرك', child: 'الطفل', lessonPlural: 'الدروس', mySubjects: 'موادّي' },
   },
   company: {
-    en: { guardian: 'Supervisor', exam: 'Assessment', ...ACTIVITY.en, yourGuardian: 'Your supervisor', child: 'employee', lessonPlural: 'sessions' },
-    ar: { guardian: 'مشرف', exam: 'تقييم', ...ACTIVITY.ar, yourGuardian: 'مشرفك', child: 'الموظّف', lessonPlural: 'الجلسات' },
+    en: { guardian: 'Supervisor', exam: 'Assessment', ...ACTIVITY.en, yourGuardian: 'Your supervisor', child: 'employee', lessonPlural: 'sessions', mySubjects: 'My courses' },
+    ar: { guardian: 'مشرف', exam: 'تقييم', ...ACTIVITY.ar, yourGuardian: 'مشرفك', child: 'الموظّف', lessonPlural: 'الجلسات', mySubjects: 'دوراتي' },
   },
   university: {
-    en: { guardian: 'Guardian', exam: 'Exam', ...ACTIVITY.en, yourGuardian: 'Your guardian', child: 'student', lessonPlural: 'lectures' },
-    ar: { guardian: 'ولي أمر', exam: 'امتحان', ...ACTIVITY.ar, yourGuardian: 'ولي أمرك', child: 'الطالب', lessonPlural: 'المحاضرات' },
+    en: { guardian: 'Guardian', exam: 'Exam', ...ACTIVITY.en, yourGuardian: 'Your guardian', child: 'student', lessonPlural: 'lectures', mySubjects: 'My modules' },
+    ar: { guardian: 'ولي أمر', exam: 'امتحان', ...ACTIVITY.ar, yourGuardian: 'ولي أمرك', child: 'الطالب', lessonPlural: 'المحاضرات', mySubjects: 'مقرّراتي' },
   },
 };
 

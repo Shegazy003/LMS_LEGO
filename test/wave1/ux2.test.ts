@@ -28,7 +28,8 @@ describe('UX-2 learner home empty states', { concurrency: false }, () => {
     const t = words('school', 'ar');
     const tab = await browserAs(browser, w, YOUSSEF, { lang: 'ar' });
     await go(tab.page, w, home(w.school));
-    assert.equal((await tab.page.locator('#nothing-yet').innerText()).trim(), t('nothingAssigned'));
+    // LMS redesign R1a (UX-103): the existing nothingAssigned text is the heading of the empty home, then one sentence.
+    assert.equal((await tab.page.locator('#nothing-yet h2').innerText()).trim(), t('nothingAssigned'));
     assert.equal(await tab.page.locator('#my-list, #my-list > li, .card a.start').count(), 0, 'no empty card');
     await uxShot(tab.page, 'UX-2-phone-ar');
     await tab.ctx.close();
@@ -43,13 +44,18 @@ describe('UX-2 learner home empty states', { concurrency: false }, () => {
     assert.equal(await science.locator('a.start, button').count(), 0, 'no action');
     const reading = tab.page.locator('#my-list > li', { has: tab.page.locator('h2', { hasText: 'Reading club' }) });
     assert.equal(await reading.locator('.teacher').count(), 0, 'no teacher line');
-    // No gap: the count sits right under the title, as close as on a card with a teacher line the line sits under the title.
-    const gap = async (card: typeof reading, below: string) => card.evaluate((li, sel) => {
-      const h = li.querySelector('h2')!.getBoundingClientRect();
-      return li.querySelector(sel)!.getBoundingClientRect().top - h.bottom;
-    }, below);
+    // No gap. LMS redesign R1a (UX-1 row, look only; UX-99): the count now sits in the card's side column, so "no
+    // gap" is read in the title block: with no teacher line the title is centred on the icon tile, no space kept
+    // for the line; on a card with a teacher line, the line sits right under the title.
     const math = tab.page.locator('#my-list > li', { has: tab.page.locator('h2', { hasText: 'Mathematics' }) });
-    assert.ok(Math.abs((await gap(reading, '.count')) - (await gap(math, '.teacher'))) <= 2, 'the count takes the teacher line\'s place: no empty gap');
+    const offset = await reading.evaluate((li) => {
+      const h = li.querySelector('h2')!.getBoundingClientRect();
+      const i = li.querySelector('.sicon')!.getBoundingClientRect();
+      return Math.abs((h.top + h.bottom) / 2 - (i.top + i.bottom) / 2);
+    });
+    assert.ok(offset <= 2, `no empty gap: the title is centred on the icon tile (${offset} px off)`);
+    const under = await math.evaluate((li) => li.querySelector('.teacher')!.getBoundingClientRect().top - li.querySelector('h2')!.getBoundingClientRect().bottom);
+    assert.ok(under >= 0 && under <= 4, `the teacher line right under the title (${under} px)`);
     await science.scrollIntoViewIfNeeded();
     await science.screenshot({ path: `${(await import('./world.ts')).UX_EVIDENCE}UX-2-phone-ar-subject.png` });
     await tab.ctx.close();

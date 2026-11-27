@@ -105,7 +105,7 @@ describe('AT-13d the running product: language and direction, and no-store, on e
           if (!p.path.startsWith(`/s/${w.spaceId}`) || !p.contentType.startsWith('text/html')) continue;
           checked++;
           assert.equal(p.cacheControl, 'no-store', `${person.username} ${lang} ${p.path} (${p.status})`);
-          const html = p.body.match(/<html lang="(\w+)" dir="(\w+)">/);
+          const html = p.body.match(/<html lang="(\w+)" dir="(\w+)"[^>]*>/); // R1a (S2): school colour variables may follow
           assert.deepEqual(html?.slice(1), [lang, lang === 'ar' ? 'rtl' : 'ltr'], `${person.username} ${lang} ${p.path}: language and direction`);
         }
       }
@@ -118,7 +118,7 @@ describe('AT-13d the running product: language and direction, and no-store, on e
     const check = (who: string, lang: 'ar' | 'en', p: { path: string; status: number; cacheControl: string | null; body: string }) => {
       checked++;
       assert.equal(p.cacheControl, 'no-store', `${who} ${lang} ${p.path} (${p.status})`);
-      const html = p.body.match(/<html lang="(\w+)" dir="(\w+)">/);
+      const html = p.body.match(/<html lang="(\w+)" dir="(\w+)"[^>]*>/); // R1a (S2)
       assert.deepEqual(html?.slice(1), [lang, lang === 'ar' ? 'rtl' : 'ltr'], `${who} ${lang} ${p.path}: language and direction`);
     };
     for (const person of [A, B]) {
@@ -148,7 +148,7 @@ describe('AT-13d the running product: language and direction, and no-store, on e
     const check = (who: string, lang: 'ar' | 'en', path: string, res: { status: number; cacheControl: string | null; body: string }) => {
       checked++;
       assert.equal(res.cacheControl, 'no-store', `${who} ${lang} ${path} (${res.status})`);
-      const html = res.body.match(/<html lang="(\w+)" dir="(\w+)">/);
+      const html = res.body.match(/<html lang="(\w+)" dir="(\w+)"[^>]*>/); // R1a (S2)
       assert.deepEqual(html?.slice(1), [lang, lang === 'ar' ? 'rtl' : 'ltr'], `${who} ${lang} ${path}: language and direction`);
     };
     const get = async (c: Awaited<ReturnType<typeof as>>, path: string) => {

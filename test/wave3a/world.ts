@@ -145,6 +145,8 @@ export const CONTROLS = [
   { kind: 'my-account', open: byId('nav-account') },
   { kind: 'got-it', open: byId('notice-fold') },
   { kind: 'done', open: byId('done-control') },
+  // LMS redesign R1a (S9, UX-98): the due strip's "see all" leads to the to-do page, which a preview does not have.
+  { kind: 'see-all', open: byId('todo-all') },
 ] as const;
 
 /** UX-19 / N4: in the preview, a control has aria-disabled, the reason as description, no address and no form action, and stays focusable. */
@@ -223,6 +225,12 @@ export function normaliseLearner(doc: string, n: Normalise): string {
     d = cut(d, byId('notice-card'));
     d = cut(d, byId('notice-line'));
   }
+  // LMS redesign R1a (S9, UX-96): My subjects and To do are not previewable, so the preview's navigation keeps
+  // wave 3a's items; the learner's two new items leave the comparison (the rest of the nav is compared as is).
+  d = cut(d, byId('nav-subjects'));
+  d = cut(d, byId('nav-todo'));
+  // LMS redesign R1a (UX-99, as UX-31): no ring or progress in a preview; the learner's decorative ring leaves the comparison.
+  d = d.replace(/<span class="ring" aria-hidden="true">[\s\S]*?<\/span>/g, '');
   return d;
 }
 

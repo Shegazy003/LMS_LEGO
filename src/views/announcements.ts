@@ -8,12 +8,11 @@
 import { html, raw } from 'hono/html';
 import type { Label, Lang } from '../labels.ts';
 import {
-  ANN_FOLDED, ANN_HOME, ANN_HOME_DAYS, ANN_MAX, ANN_SHOWN, COUNT_RULES_JS, cutText, mayEdit, mayRemove,
+  ANN_FOLDED, ANN_MAX, ANN_SHOWN, COUNT_RULES_JS, cutText, mayEdit, mayRemove,
   type AnnouncementRow, type AuthorRole, type ShownRow,
 } from '../announcements.ts';
 import { utcDate } from '../access.ts';
-import type { HomeAnnouncement } from '../learning.ts';
-import type { Html } from './layout.ts';
+import { dateText, type Html } from './layout.ts';
 import { spacePage } from './learn.ts';
 import { learnerUrl, type SpaceView } from './space.ts';
 
@@ -37,12 +36,15 @@ function filled(t: Label, key: 'annByLine' | 'annEdited', values: Record<string,
   return t(key, markers).split(/\u0001(\d+)\u0002/).map((part, i) => (i % 2 === 1 ? values[names[Number(part)]] : part));
 }
 
-const day = (iso: string) => html`<bdi dir="ltr"><time datetime="${iso}">${utcDate(Date.parse(iso))}</time></bdi>`;
+// LMS redesign R1a (S4, UX-104): on a learner page (`lang` given) the day as learner pages show dates; on staff pages as before.
+const day = (iso: string, lang?: Lang) => (lang
+  ? html`<bdi dir="${pageDir(lang)}">${dateText(iso, lang)}</bdi>`
+  : html`<bdi dir="ltr"><time datetime="${iso}">${utcDate(Date.parse(iso))}</time></bdi>`);
 
 /** The role and date line, and when edited the edited line (ux-plan UX-54, UX-56). */
-export function byLine(t: Label, row: Pick<AnnouncementRow, 'author_role' | 'created_at' | 'edited_at'>): Html {
-  const by = filled(t, 'annByLine', { role: html`<bdi>${t(row.author_role)}</bdi>`, date: day(row.created_at) });
-  const edited = row.edited_at ? html` · <span class="ann-edited">${filled(t, 'annEdited', { date: day(row.edited_at) })}</span>` : '';
+export function byLine(t: Label, row: Pick<AnnouncementRow, 'author_role' | 'created_at' | 'edited_at'>, lang?: Lang): Html {
+  const by = filled(t, 'annByLine', { role: html`<bdi>${t(row.author_role)}</bdi>`, date: day(row.created_at, lang) });
+  const edited = row.edited_at ? html` · <span class="ann-edited">${filled(t, 'annEdited', { date: day(row.edited_at, lang) })}</span>` : '';
   return html`<p class="ann-by">${by}${edited}</p>`;
 }
 
@@ -95,7 +97,7 @@ export function announcementCard(
   const subject = t('subject').toLocaleLowerCase(lang);
   const learner = t('learner').toLocaleLowerCase(lang);
   const help = t('annHelp', {
-    max: String(ANN_MAX), shown: String(ANN_SHOWN), folded: String(ANN_FOLDED), home: String(ANN_HOME), days: String(ANN_HOME_DAYS), subject, learner,
+    max: String(ANN_MAX), shown: String(ANN_SHOWN), folded: String(ANN_FOLDED), subject, learner,
   });
   const shown = v.rows.filter((r) => r.removed_at === null);
   const status = v.status
@@ -125,7 +127,7 @@ const pageDir = (lang: Lang) => (lang === 'ar' ? 'rtl' : 'ltr');
 
 /** One item of the subject page: the text as stored (line breaks kept), then the role and date line. */
 function shownItem(t: Label, lang: Lang, row: ShownRow): Html {
-  return html`<li class="ann-item" dir="auto"><p class="ann-text" dir="auto">${row.body}</p><div class="ann-meta" dir="${pageDir(lang)}">${byLine(t, row)}</div></li>`;
+  return html`<li class="ann-item" dir="auto"><p class="ann-text" dir="auto">${row.body}</p><div class="ann-meta" dir="${pageDir(lang)}">${byLine(t, row, lang)}</div></li>`;
 }
 
 /** The subject page block (section 5.2, UX-54): the newest 3 in full, then up to 7 in a closed fold; none: no block. */
@@ -141,25 +143,6 @@ export function subjectBlock(t: Label, lang: Lang, rows: ShownRow[]): Html | str
 <section id="announcements" class="card ann-block" aria-labelledby="ann-heading"><h2 id="ann-heading">${t('annTitle')}</h2>
 <ul class="ann-list">${shown.map((r) => shownItem(t, lang, r))}</ul>${fold}
 </section>`;
-}
-
-/** One item of the home (section 5.3, UX-55): the subject title as a link to its block, the role and date line, then the text, cut at 100 with the inline link to the whole. */
-function homeItem(t: Label, lang: Lang, space: SpaceView, row: HomeAnnouncement): Html {
-  const href = `${learnerUrl(space, `/learn/${row.subject_id}`)}#announcements`;
-  const { text, cut } = cutText(row.body);
-  const full = cut
-    ? html`… <a class="ann-full" href="${href}" aria-label="${t('annFullFor', { subject: row.subject_title })}">${t('annFull')}</a>`
-    : '';
-  return html`<li class="ann-item" dir="auto" data-subject="${row.subject_id}"><p class="ann-where" dir="${pageDir(lang)}"><a class="ann-where-link" href="${href}"><bdi>${row.subject_title}</bdi></a></p><div class="ann-meta" dir="${pageDir(lang)}">${byLine(t, row)}</div><p class="ann-text" dir="auto">${text}${full}</p></li>`;
-}
-
-/** The home block (section 5.3, UX-55): the newest 3 of the last 30 days across the subjects on the cards; none: no block. */
-export function homeBlock(t: Label, lang: Lang, space: SpaceView, rows: HomeAnnouncement[]): Html | string {
-  if (rows.length === 0) return '';
-  return html`<section id="announcements" class="card ann-block ann-home" aria-labelledby="ann-heading"><h2 id="ann-heading">${t('annHomeTitle')}</h2>
-<ul class="ann-list">${rows.map((r) => homeItem(t, lang, space, r))}</ul>
-</section>
-`;
 }
 
 /** The page around an edit or remove step: the subject's title, then the step in the card's place. */

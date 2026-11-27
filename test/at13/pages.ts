@@ -54,10 +54,13 @@ export function resultsSection(html: string): { rest: string; strays: string[] }
   // line of each own linked learner is that learner page's first result row, held to the same allowed forms.
   const rest = html.replace(/<section id="results"[^>]*>([\s\S]*?)<\/section>|<a class="latest-result[^"]*"[^>]*>([\s\S]*?)<\/a>/g, (_, inPage: string | undefined, onHome: string | undefined) => {
     const section = inPage ?? onHome ?? '';
+    // LMS redesign R1a (UX-16a row, contract S4): the exam date is `<time datetime="YYYY-MM-DD">` shown as an S4 date
+    // («12 نوفمبر», "12 Nov", year only when not the current one), and "Corrected on" carries an S4 date.
+    const s4 = String.raw`(?:\d{1,2} [^\s<\d]+(?: \d{4})?|[A-Z][a-z]{2} \d{1,2}(?:, \d{4})?)`;
     const left = section
-      .replace(/<span class="muted date" dir="ltr">\d{4}-\d{2}-\d{2}<\/span>/g, ' ')
+      .replace(new RegExp(String.raw`<span class="muted date" dir="(?:ltr|rtl)"><time datetime="\d{4}-\d{2}-\d{2}">${s4}<\/time><\/span>`, 'g'), ' ')
       .replace(/<span class="score" dir="auto">(\d{1,4}(\.\d)? \/ \d{1,4}(\.\d)?|[^<\d]*)<\/span>/g, ' ')
-      .replace(/<span class="corrected">[^<\d]*\d{4}-\d{2}-\d{2}[^<\d]*<\/span>/g, ' ')
+      .replace(new RegExp(String.raw`<span class="corrected">[^<\d]*${s4}[^<\d]*<\/span>`, 'g'), ' ')
       .replace(/<[^>]+>/g, ' ');
     for (const m of left.matchAll(/[^\s]*[0-9٠-٩][^\s]*/g)) strays.push(m[0]);
     return ' ';
@@ -328,7 +331,8 @@ export function lockHits(body: string, words = lockWords()): string[] {
 // lists for guardian pages, and pass with announcements present.
 
 /** The ui.ts keys of the learner blocks that a page shows as words (annByLine is only a role and a date; annFullFor is annFull's name). */
-export const W5_KEYS = ['annTitle', 'annHomeTitle', 'annOlder', 'annFull', 'annEdited'] as const;
+// LMS redesign R1a (UX-55 row): the home block and its keys (annHomeTitle, annFull, annFullFor) are gone; a card's line is the text itself.
+export const W5_KEYS = ['annTitle', 'annOlder', 'annEdited'] as const;
 /** Made-up announcement texts, on A's Arabic (assigned to A alone) and on Mathematics. */
 export const ANN_TEXTS = ['Nahw quiz moved to Sunday (wave 5 scan).', 'اختبار النحو يوم الأحد (فحص الموجة 5).', 'Mathematics workbook due Monday (wave 5 scan).'];
 
@@ -398,7 +402,9 @@ export function todoWords(): Map<string, string> {
 
 /** Every to-do or due word on a page, in the text a person reads, and the block and due-line markers anywhere. */
 export function todoHits(body: string, words = todoWords()): string[] {
-  const text = visible(body);
+  // LMS redesign R1a (S9): the shared navigation of a person who is also a learner names their own to-do page («To-do»); it is
+  // a link of the page's chrome, not anyone's to-do state, so the word scan reads the page without nav#top-nav.
+  const text = visible(body.replace(/<nav id="top-nav"[\s\S]*?<\/nav>/, ''));
   const hits = [...words].filter(([, value]) => text.includes(value)).map(([name]) => name);
   if (/\bid="todo"/.test(body)) hits.push('the to-do block id="todo"');
   if (/\bclass="due-(line|date)"/.test(body)) hits.push('a due line or date');

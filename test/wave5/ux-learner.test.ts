@@ -13,13 +13,15 @@ import { UI, type UiKey } from '../../src/i18n/ui.ts';
 import type { Lang } from '../../src/labels.ts';
 import { measure, overflow, tab } from '../wave1/ux.ts';
 import { signedIn } from '../support/seed.ts';
+import { cutText } from '../../src/announcements.ts';
 import {
-  ADMIN, COMPANY_ADMIN, KARIM5, SALMA, UNIVERSITY_ADMIN, adminAnn, as, browserAs, go, home, learnerBlockOf, post, setOrder, storedAt, subjectPath,
+  ADMIN, COMPANY_ADMIN, KARIM5, SALMA, UNIVERSITY_ADMIN, adminAnn, as, browserAs, cardLines, go, home, learnerBlockOf, post, setOrder, storedAt, subjectPath,
   topicPath, uxShot, wave4World, withW5a, words, WIDTHS, type Wave1World, type Width,
 } from './world.ts';
 
 /** The wave 5 keys a learner reads (ux-plan UX-56). */
-const LEARNER_KEYS = ['annTitle', 'annHomeTitle', 'annOlder', 'annEdited', 'annFull', 'annFullFor'] as const satisfies readonly UiKey[];
+// LMS redesign R1a (UX-55 row): annHomeTitle, annFull and annFullFor went with the home block.
+const LEARNER_KEYS = ['annTitle', 'annOlder', 'annEdited'] as const satisfies readonly UiKey[];
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
 
@@ -142,6 +144,9 @@ async function homeWorld(w: Wave1World): Promise<void> {
   await storedAt(w, { space: s.id, subject: s.math, body: long[0], role: 'publisher', at: Date.now() - HOUR });
 }
 
+// LMS redesign R1a (product-contract v2 on PIL-322, UX-55 row; ux-plan UX-99): the home's block is gone; each subject
+// card shows one line, the newest announcement its subject page shows, cut at 100 code points, one line with an
+// ellipsis, linking to the subject page's block. The first-screen clause is kept: Continue ends within 844 px.
 describe('UX-55 learner home block', { concurrency: false }, () => {
   let w: Wave1World;
   let browser: Browser;
@@ -163,33 +168,31 @@ describe('UX-55 learner home block', { concurrency: false }, () => {
     for (const [lang, width] of [['ar', 'phone'], ['en', 'desktop']] as const) {
       const k = await open(browser, w, SALMA, home(s), { lang, width });
       const page = k.page;
-      assert.equal(await inDomOrder(page, ['#activity-notice', '#continue', '#announcements', '#my-list']), 'ok', `${lang}: after the activity notice and Continue (form (2)), before the cards`);
-      assert.equal(await page.textContent('#announcements > h2'), UI[lang].annHomeTitle);
-      const items = await page.$$eval('#announcements .ann-item', (lis) => lis.map((li) => {
-        const parts = [...li.querySelectorAll('.ann-where-link, .ann-by, .ann-text')].map((e) => e.className.split(' ')[0]);
-        const link = li.querySelector('a.ann-where-link') as HTMLAnchorElement;
-        const text = li.querySelector('.ann-text') as HTMLElement;
-        const full = text.querySelector('a.ann-full') as HTMLAnchorElement | null;
+      assert.equal(await page.$$eval('#announcements', (e) => e.length), 0, `${lang}: no announcements block on the home (UX-55 row)`);
+      const lines = await page.$$eval('#my-list > li[data-subject] .ann', (ps) => ps.map((p) => {
+        const links = p.querySelectorAll('a');
+        const a = links[0] as HTMLAnchorElement;
+        const card = p.closest('li')!.getBoundingClientRect();
+        const box = p.getBoundingClientRect();
+        const cs = getComputedStyle(a);
         return {
-          parts, href: link.getAttribute('href'), title: link.textContent, bdi: Boolean(link.querySelector('bdi')),
-          full: full ? { href: full.getAttribute('href'), name: full.getAttribute('aria-label'), text: full.textContent, inP: full.parentElement === text } : null,
-          shown: full ? text.textContent!.slice(0, text.textContent!.length - full.textContent!.length) : text.textContent,
+          subject: (p.closest('li') as HTMLElement).dataset.subject, links: links.length, href: a.getAttribute('href'), text: a.textContent ?? '', dir: a.getAttribute('dir'),
+          bell: Boolean(p.querySelector('svg[aria-hidden="true"]')), oneLine: cs.whiteSpace === 'nowrap' && cs.textOverflow === 'ellipsis',
+          inside: box.left >= card.left - 1 && box.right <= card.right + 1,
         };
       }));
-      assert.equal(items.length, 3, 'at most 3 items (three here)');
-      for (const it of items) {
-        assert.deepEqual(it.parts, ['ann-where-link', 'ann-by', 'ann-text'], 'subject link, role and date line, text');
-        assert.match(it.href ?? '', new RegExp(`^/s/${s.id}/learn/[^/#]+#announcements$`), 'the subject link goes to its block');
-        assert.ok(it.bdi, 'the subject title in <bdi>');
-        assert.ok(it.full, 'each of the three is over 100 code points, so cut');
-        assert.equal(it.full!.inP, true, 'the inline link is in the same paragraph');
-        assert.equal(it.full!.href, it.href, 'the inline link goes to the same address');
-        assert.equal(it.full!.text, UI[lang].annFull);
-        assert.equal(it.full!.name, words('school', lang)('annFullFor', { subject: it.title! }), 'its name includes the subject title');
-        assert.ok(it.shown!.trimEnd().endsWith('…'), `the cut ends with "…" (${it.shown!.slice(-12)})`);
-        assert.ok([...it.shown!.replace(/ …\s*$/, '').replace(/…\s*$/, '')].length <= 100, 'at most 100 code points shown');
+      assert.deepEqual(lines.map((l) => l.subject).sort(), [s.math, s.arabic].sort(), `${lang}: a line on the Mathematics and Arabic grammar cards`);
+      for (const l of lines) {
+        assert.equal(l.links, 1, 'one link');
+        assert.equal(l.href, `/s/${s.id}/learn/${l.subject}#announcements`, 'to its subject page\'s block');
+        assert.ok(l.bell, 'the bell icon, hidden from screen readers');
+        assert.equal(l.dir, 'auto', 'dir="auto"');
+        assert.ok(l.oneLine, 'one line, ending in an ellipsis when longer');
+        assert.ok(l.inside, 'inside its card');
+        assert.ok(l.text.endsWith('…'), `each is over 100 code points, so cut with "…" (${l.text.slice(-12)})`);
+        assert.ok([...l.text.replace(/…$/, '')].length <= 100, 'at most 100 code points shown');
       }
-      for (const m of await measure(page, '#announcements a.ann-where-link')) assert.ok(m.height >= 44 && m.width >= 44, `${lang}: the subject link is a 44 px target (${m.width}x${m.height})`);
+      for (const m of await measure(page, '#my-list .ann a')) assert.ok(m.height >= 44, `${lang}: the line is a 44 px tall target (${m.width}x${m.height})`);
       if (lang === 'ar') {
         await page.screenshot({ path: 'evidence/ux/UX-55-phone-ar.png', fullPage: false });
       } else {
@@ -201,17 +204,15 @@ describe('UX-55 learner home block', { concurrency: false }, () => {
         const o = await overflow(page);
         assert.ok(o.sideways <= 0, `${lang} ${size.width}: no sideways scroll (${o.sideways})`);
         assert.deepEqual(o.clipped.filter((c) => !/sr-only/.test(c)), [], `${lang} ${size.width}: no clipped text`);
-        const right = await page.$$eval('#announcements .ann-text', (ps) => ps.map((p) => [p.getBoundingClientRect().left, p.getBoundingClientRect().right, p.closest('.ann-item')!.getBoundingClientRect().right, p.closest('.ann-item')!.getBoundingClientRect().left]));
-        for (const [l, r, ir, il] of right) assert.ok(r <= ir + 1 && l >= il - 1, `${lang} ${size.width}: the text wraps inside its item`);
       }
       await k.ctx.close();
     }
-    // Nothing from the last 30 days: no block.
-    await w.p.sql(`UPDATE announcement SET created_at = '${new Date(Date.now() - 31 * DAY).toISOString()}'`);
+    // Every announcement removed: the subject pages show none, so no card has a line.
+    await w.p.sql(`UPDATE announcement SET removed_at = '${new Date().toISOString()}', body = ''`);
     for (const lang of ['ar', 'en'] as const) {
       const page = await (await (await as(w, SALMA, lang)).get(home(s))).text();
-      assert.equal(learnerBlockOf(page), null, `${lang}: no block with nothing recent`);
-      assert.ok(!page.includes(UI[lang].annHomeTitle), `${lang}: no heading`);
+      assert.ok(!page.includes('class="ann"'), `${lang}: no line when the subject pages show none`);
+      assert.ok(!page.includes('id="announcements"'), `${lang}: no block`);
     }
   });
 
@@ -228,15 +229,13 @@ describe('UX-55 learner home block', { concurrency: false }, () => {
         return {
           notice: Boolean(notice),
           folded: Boolean(document.querySelector('#notice-line')),
-          items: document.querySelectorAll('#announcements .ann-item').length,
-          cut: document.querySelectorAll('#announcements a.ann-full').length,
+          lines: document.querySelectorAll('#my-list .ann').length,
           bottom: link ? link.getBoundingClientRect().bottom + window.scrollY : null,
         };
       });
-      t.diagnostic(`UX-55 first phone screen: the bottom of "Continue where you stopped" is at ${m.bottom === null ? 'none' : m.bottom.toFixed(1)} px of 844 (activity notice ${m.folded ? 'folded' : 'in full'}, ${m.items} items, ${m.cut} cut); form used: (2), the newest 3 just after Continue (form (1) alone, the newest 2 before Continue, measured 1080 px in the Builder's local run)`);
+      t.diagnostic(`UX-55 first phone screen: the bottom of "Continue where you stopped" is at ${m.bottom === null ? 'none' : m.bottom.toFixed(1)} px of 844 (activity notice ${m.folded ? 'folded' : 'in full'}, ${m.lines} card lines; R1a: no home block)`);
       assert.ok(m.notice, 'the activity notice is on');
-      assert.equal(m.items, 3, 'three items');
-      assert.equal(m.cut, 3, 'all three cut');
+      assert.equal(m.lines, 2, 'the two cards\' lines');
       assert.ok(m.bottom !== null, 'the Continue link is there');
       assert.ok(m.bottom! <= 844, `the Continue link ends within the first phone screen (${m.bottom})`);
     } finally {
@@ -266,8 +265,16 @@ describe('UX-56 Arabic, mixed text and kit words for the learner blocks (three k
             const k = await open(browser, w, SALMA, path, { lang });
             const page = k.page;
             assert.deepEqual(await page.evaluate(() => ({ lang: document.documentElement.lang, dir: document.documentElement.dir })), { lang, dir: lang === 'ar' ? 'rtl' : 'ltr' });
+            if (where === 'home') {
+              // LMS redesign R1a (UX-55 row): the card's line, dir="auto", with no role line and no other-language words.
+              assert.ok(await page.$$eval('#my-list .ann a', (as_) => as_.length > 0 && as_.every((a) => a.getAttribute('dir') === 'auto')), `${sp.s.kit} ${lang} home: each card line dir="auto"`);
+              assert.ok(await page.$$eval('#my-list h2 a', (as_) => as_.every((a) => a.firstElementChild?.tagName === 'BDI')), 'subject titles in <bdi>');
+              const text = (await page.innerText('#my-list')).replace(/[^\n]*(Quiz|موعد)[^\n]*/g, ' ');
+              for (const [key, value] of longest(lang === 'ar' ? 'en' : 'ar')) assert.ok(!text.includes(value), `${sp.s.kit} ${lang} home: no ${lang === 'ar' ? 'English' : 'Arabic'} ${key} ("${value}")`);
+              await k.ctx.close();
+              continue;
+            }
             assert.ok(await page.$$eval('#announcements .ann-item', (lis) => lis.length > 0 && lis.every((li) => li.getAttribute('dir') === 'auto' && li.querySelector('.ann-text')!.getAttribute('dir') === 'auto')), `${sp.s.kit} ${lang} ${where}: each item dir="auto"`);
-            if (where === 'home') assert.ok(await page.$$eval('#announcements a.ann-where-link', (as_) => as_.every((a) => a.firstElementChild?.tagName === 'BDI')), 'subject titles in <bdi>');
             const roles = await page.$$eval('#announcements .ann-by bdi:first-child', (b) => b.map((x) => x.textContent));
             assert.ok(roles.includes(words(sp.s.kit, lang)('admin')), `${sp.s.kit} ${lang} ${where}: the kit's admin word (${roles.join(', ')})`);
             const text = (await page.innerText('#announcements')).replace(/[^\n]*(Quiz|موعد)[^\n]*/g, ' ');
@@ -296,9 +303,11 @@ describe('UX-57 states table for the learner screens', { concurrency: false }, (
       const amal = await as(w, ADMIN, 'en');
       const previewHome = `/s/${s.id}/preview?from=home`;
       const previewMath = `/s/${s.id}/preview/learn/${s.math}?from=home`;
-      // Empty: no block on the subject page, the home and both previews.
+      // Empty: no block on the subject page, the home and both previews (R1a, UX-55 row: and no card line).
       for (const [c, path] of [[salma, subjectPath(s, s.math)], [salma, home(s)], [amal, previewHome], [amal, previewMath]] as const) {
-        assert.equal(learnerBlockOf(await (await c.get(path)).text()), null, `empty: no block on ${path}`);
+        const body = await (await c.get(path)).text();
+        assert.equal(learnerBlockOf(body), null, `empty: no block on ${path}`);
+        assert.equal(cardLines(body).size, 0, `empty: no card line on ${path}`);
       }
       // Error: an unreadable subject answers today's 403 (Karim Test is not assigned Mathematics), before and after posting.
       const before403 = await karim.get(subjectPath(s, s.math));
@@ -313,12 +322,13 @@ describe('UX-57 states table for the learner screens', { concurrency: false }, (
       const subject = learnerBlockOf(await (await salma.get(subjectPath(s, s.math))).text())!;
       assert.equal(subject.items.length, 3, 'subject page: 3 in full');
       assert.equal(subject.fold?.items.length, 7, 'subject page: 7 in the fold');
-      const homeBlock = learnerBlockOf(await (await salma.get(home(s))).text())!;
-      assert.equal(homeBlock.items.length, 3, 'home: up to 3 items');
+      // LMS redesign R1a (UX-55 row): the home shows the subject page's first item as the card's line.
+      const homeLines = cardLines(await (await salma.get(home(s))).text());
+      assert.equal(homeLines.get(s.math)?.text, cutText(subject.items[0].text).cut ? `${cutText(subject.items[0].text).text}…` : subject.items[0].text, 'home: the Mathematics card\'s line is the subject page\'s first item');
       const pSubject = learnerBlockOf(await (await amal.get(previewMath)).text())!;
       assert.deepEqual(pSubject.items.map((i) => i.text), subject.items.map((i) => i.text), 'preview subject page: the learner\'s block');
-      const pHome = learnerBlockOf(await (await amal.get(previewHome)).text())!;
-      assert.deepEqual(pHome.items.map((i) => i.text), homeBlock.items.map((i) => i.text), 'preview home: the learner\'s block');
+      const pHome = cardLines(await (await amal.get(previewHome)).text());
+      assert.equal(pHome.get(s.math)?.text, homeLines.get(s.math)?.text, 'preview home: the learner\'s line');
       // Unpublished subject: the preview shows the block a learner would see after publishing (contract AT-3.4c); a learner gets today's answer.
       await storedAt(w, { space: s.id, subject: s.physics, body: 'Physics lab on Tuesday.', role: 'admin', at: Date.now() - HOUR });
       const pPhysics = learnerBlockOf(await (await amal.get(`/s/${s.id}/preview/learn/${s.physics}?from=home`)).text());
@@ -360,14 +370,15 @@ describe('UX-58 widths, targets, contrast and keyboard for the learner blocks', 
           }
           await page.setViewportSize(WIDTHS.phone);
           await page.reload();
-          for (const m of await measure(page, '#announcements summary, #announcements a.ann-where-link')) {
+          // LMS redesign R1a (UX-55 row): on the home, the cards' announcement lines (#my-list .ann a) in place of the block.
+          for (const m of await measure(page, '#announcements summary, #announcements a.ann-where-link, #my-list .ann a')) {
             assert.ok(m.width >= 44 && m.height >= 44, `${name} ${lang}: ${m.selector} ${m.width}x${m.height}`);
           }
-          for (const m of await measure(page, '#announcements h2, #announcements .ann-by, #announcements .ann-text, #announcements summary, #announcements a.ann-where-link, #announcements a.ann-full')) {
+          for (const m of await measure(page, '#announcements h2, #announcements .ann-by, #announcements .ann-text, #announcements summary, #announcements a.ann-where-link, #announcements a.ann-full, #my-list .ann a')) {
             if (!m.text.trim()) continue;
             assert.ok(m.contrast >= 4.5, `${name} ${lang}: ${m.selector} "${m.text.slice(0, 30)}" ${m.contrast.toFixed(2)}:1`);
           }
-          for (const sel of ['#announcements summary', '#announcements a.ann-where-link', '#announcements a.ann-full']) {
+          for (const sel of ['#announcements summary', '#announcements a.ann-where-link', '#announcements a.ann-full', '#my-list .ann a']) {
             if (!(await page.$(sel))) continue;
             await page.focus(sel);
             await page.keyboard.press('Shift+Tab');
@@ -387,7 +398,7 @@ describe('UX-58 widths, targets, contrast and keyboard for the learner blocks', 
         }
         return false;
       };
-      assert.ok(await reach('#announcements a.ann-where-link'), 'J3: the first subject link is reached by Tab');
+      assert.ok(await reach('#my-list .ann a'), 'J3: the first card\'s announcement line is reached by Tab (R1a, UX-55 row)');
       await Promise.all([k.page.waitForURL(/\/learn\/[^/]+#announcements$/), k.page.keyboard.press('Enter')]);
       assert.ok(await reach('#announcements summary'), 'J3/J4: the fold is reached by Tab');
       assert.deepEqual(await foldByKeyboard(k.page), [true, false, true], 'the fold opens with Enter and Space');

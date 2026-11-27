@@ -13,7 +13,7 @@ import { UI, type UiKey } from '../../src/i18n/ui.ts';
 import { SEED_KIT_WORDS } from '../../src/kits/seed.ts';
 import { overflow } from '../wave1/ux.ts';
 import { AT8, ID, OMAR, SALMA, textOf, w8World, words8, type Kit, type Person, type W8World } from './world.ts';
-import { S, cardOf, got, lessonLinks, outlineOf } from './learner.ts';
+import { S, cardOf, got, lessonLinks, outlineOf, shown } from './learner.ts';
 
 type Lang = 'ar' | 'en';
 const WIDTHS = { phone: { width: 390, height: 844 }, tablet: { width: 768, height: 1024 }, desktop: { width: 1280, height: 800 } } as const;
@@ -85,7 +85,7 @@ describe('UX-88 outline date lock, both reasons, hidden absent, counter', { conc
     const ch5 = chapters.find((c) => c.id === ID.ch5)!;
     assert.ok(ch5.tag, 'Ch5 (empty): the tag');
     assert.deepEqual(ch5.reasons.map((r) => r.kind), ['date'], 'Ch5 (empty): the date line only');
-    assert.equal(ch5.reasons[0].text, t('openedOn', { date: '2026-12-10' }));
+    assert.equal(ch5.reasons[0].text, t('openedOn', { date: shown('2026-12-10') }));
     assert.ok(!html.includes(ID.ch3), 'nothing of Ch3: no id, no gap element');
     assert.equal((html.match(/<details class="card fold/g) ?? []).length, 4, 'exactly four chapter blocks');
     const lesson = (await got(omar, `${S}/read/${ID.l11}`)).html;
@@ -129,7 +129,7 @@ describe('UX-89 date-locked lesson page', { concurrency: false }, () => {
       });
       assert.equal(v.title, 'Halves and quarters', `${lang}: the title`);
       assert.ok(v.tag.includes(t('lockedTag')), `${lang}: the Locked tag`);
-      assert.equal(v.reason, t('openedOn', { date: '2026-12-10' }), `${lang}: the reason`);
+      assert.equal(v.reason, t('openedOn', { date: shown('2026-12-10', lang) }), `${lang}: the reason`);
       assert.equal(v.firstAfter, 'back-to-subject', `${lang}: Back to <subject> is the first focusable item after the heading`);
       assert.equal(v.back, t('quizBackToSubject', { subjectTitle: 'Mathematics' }), `${lang}: "Back to Mathematics"`);
       assert.equal(v.material, 0, `${lang}: no material, file link or done form in the markup`);
@@ -175,8 +175,8 @@ describe('UX-90 no link into a not-open chapter', { concurrency: false }, () => 
     x.w.run('UPDATE subject SET chapters_in_order = 1 WHERE id = ?', ID.math);
     const home = (await got(await x.w.as(SALMA, 'en'), S)).html;
     const card = cardOf(home);
-    assert.equal(card.next, words8('school', 'en')('openNext', { title: 'Fractions', date: '2026-12-10' }), 'the card: openNext');
-    const line = /<p class="open-next">([\s\S]*?)<\/p>/.exec(card.html);
+    assert.equal(card.next, words8('school', 'en')('openNext', { title: 'Fractions', date: shown('2026-12-10') }), 'the card: openNext');
+    const line = /<p class="open-next[^"]*">([\s\S]*?)<\/p>/.exec(card.html); // R1a UX-99: `open-next wait`
     assert.ok(line, 'a plain paragraph');
     assert.doesNotMatch(line[1], /<a\b/, 'openNext holds no link');
     assert.equal(card.links.length, 0, 'the card has no lesson link at all');
@@ -206,11 +206,13 @@ describe('UX-91 rtl, bdi and no horizontal overflow at 390/768/1280 (learner scr
           for (const e of news) {
             const times = e.querySelectorAll('time');
             if (!times.length) out.push(`no <time> in ${e.className}`);
-            for (const t of times) if (!(t.parentElement?.tagName === 'BDI' && t.parentElement.getAttribute('dir') === 'ltr')) out.push(`a date not isolated: ${t.textContent}`);
+            // R1a UX-16a row (S4): the date reads «10 ديسمبر» / "Dec 10", so it is isolated in the page's own direction, as dueOn now is.
+            const pageDir = document.documentElement.getAttribute('dir');
+            for (const t of times) if (!(t.parentElement?.tagName === 'BDI' && t.parentElement.getAttribute('dir') === pageDir)) out.push(`a date not isolated: ${t.textContent}`);
           }
           for (const e of document.querySelectorAll('.open-next')) if (!e.querySelector('bdi:not([dir])')) out.push('the chapter title of openNext not in <bdi>');
-          // A date is never broken across lines.
-          for (const e of document.querySelectorAll('.open-next .due-date, [data-reason=date] .due-date')) if (e.getClientRects().length !== 1) out.push(`a date broken across lines: ${e.textContent}`);
+          // A date is never broken across lines (R1a: a day-and-month date has two direction runs, so two boxes on one line).
+          for (const e of document.querySelectorAll('.open-next .due-date, [data-reason=date] .due-date')) if (new Set([...e.getClientRects()].map((r) => Math.round(r.top))).size !== 1) out.push(`a date broken across lines: ${e.textContent}`);
           for (const e of document.querySelectorAll('details.fold .head')) if (!e.querySelector('bdi.title')) out.push('a chapter title not in <bdi>');
           return { out, count: news.length };
         });
@@ -266,7 +268,7 @@ describe('UX-93 wording in 3 kits x 2 languages (learner keys openedOn and openN
           const c = await w.as(SALMA, lang);
           const pages = [(await got(c, outlinePath)).html, (await got(c, `${S}/read/${ID.l21}`)).html, (await got(c, S)).html];
           const text = textOf(pages.join('\n'));
-          for (const [key, vars] of [['openedOn', { date: '2026-12-10' }], ['openNext', { title: 'Fractions', date: '2026-12-10' }]] as const) {
+          for (const [key, vars] of [['openedOn', { date: shown('2026-12-10', lang) }], ['openNext', { title: 'Fractions', date: shown('2026-12-10', lang) }]] as const) {
             assert.ok(text.includes(t(key, vars)), `${kit} ${lang}: ${key} renders: ${t(key, vars)}`);
           }
           assert.ok(!/\{[a-zA-Z]+\}/.test(text), `${kit} ${lang}: no {placeholder} left`);

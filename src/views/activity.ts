@@ -16,7 +16,7 @@ import type { ActivityLesson, ActivitySubject } from '../activity.ts';
 import type { NoticeForm } from '../notice.ts';
 import type { LinkedLearner } from '../guardians.ts';
 import type { Label, Lang } from '../labels.ts';
-import { errorBox, sentence, type Html } from './layout.ts';
+import { datedSentence, errorBox, sentence, type Html } from './layout.ts';
 import { spacePage } from './learn.ts';
 import type { SpaceView } from './space.ts';
 
@@ -142,25 +142,25 @@ function learnerButton(space: SpaceView, l: LinkedLearner, current: boolean): Ht
 }
 
 /** One lesson title with its date, or "No open recorded". */
-function activityRow(t: Label, row: ActivityLesson): Html {
+function activityRow(t: Label, lang: Lang, row: ActivityLesson): Html {
   const shown = row.lastOpenedOn
-    ? html`<span class="opened">${sentence(t, 'lastOpenedOn', { date: row.lastOpenedOn })}</span>`
+    ? html`<span class="opened">${datedSentence(t, 'lastOpenedOn', { date: row.lastOpenedOn }, ['date'], lang)}</span>`
     : html`<span class="muted none">${t('noOpenRecorded')}</span>`;
   return html`<li class="row"><bdi class="title">${row.title}</bdi> ${shown}</li>`;
 }
 
 /** One assigned subject with its lesson titles in order. */
-function activityBlock(t: Label, block: ActivitySubject): Html {
-  const list = block.rows.length ? html`<ul class="list">${block.rows.map((row) => activityRow(t, row))}</ul>` : html`<p class="muted">${t('nothingHere')}</p>`;
+function activityBlock(t: Label, lang: Lang, block: ActivitySubject): Html {
+  const list = block.rows.length ? html`<ul class="list">${block.rows.map((row) => activityRow(t, lang, row))}</ul>` : html`<p class="muted">${t('nothingHere')}</p>`;
   return html`<section class="card">
   <h2><bdi class="title">${block.title}</bdi></h2>
   ${list}
 </section>`;
 }
 
-function activityOn(t: Label, on: { since: string; blocks: ActivitySubject[] }): Html {
-  const blocks = on.blocks.length ? on.blocks.map((block) => activityBlock(t, block)) : html`<p class="card muted">${t('nothingAssigned')}</p>`;
-  return html`<p id="recording-since" class="message">${sentence(t, 'recordingSince', { date: on.since })}</p>
+function activityOn(t: Label, lang: Lang, on: { since: string; blocks: ActivitySubject[] }): Html {
+  const blocks = on.blocks.length ? on.blocks.map((block) => activityBlock(t, lang, block)) : html`<p class="card muted">${t('nothingAssigned')}</p>`;
+  return html`<p id="recording-since" class="message">${datedSentence(t, 'recordingSince', { date: on.since }, ['date'], lang)}</p>
 <div id="activity">${blocks}</div>
 <p id="activity-explain" class="muted">${t('activityExplain')}</p>`;
 }
@@ -176,6 +176,6 @@ export function guardianActivityPage(t: Label, lang: Lang, space: SpaceView, v: 
 <h1 id="activity-title">${t('lessonActivity')}</h1>
 <nav id="activity-learners" class="share" aria-label="${t('activityWhose')}">${buttons}</nav>
 <h2 id="activity-learner"><bdi>${v.learner.display_name}</bdi></h2>
-${v.on ? activityOn(t, v.on) : activityOff(t, space)}`;
-  return spacePage(t, lang, space, t('lessonActivity'), body);
+${v.on ? activityOn(t, lang, v.on) : activityOff(t, space)}`;
+  return spacePage(t, lang, space, t('lessonActivity'), body, { bar: true });
 }

@@ -77,6 +77,8 @@ export interface ShownActivity {
 }
 
 const text = (s: string) => s.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+/** LMS redesign R1a (UX-16a row): a date is shown as S4 («12 نوفمبر» / "Nov 12"); the stored UTC day is read from its `<time datetime>`. */
+const dayOf = (s: string): string | undefined => s.match(/<time datetime="(\d{4}-\d{2}-\d{2})">/)?.[1];
 
 /** Reads the guardian's lesson-activity page the way a person reads it. */
 export function shownActivity(html: string): ShownActivity {
@@ -85,7 +87,7 @@ export function shownActivity(html: string): ShownActivity {
   for (const m of html.matchAll(/<section class="card">\s*<h2><bdi class="title">([^<]*)<\/bdi><\/h2>([\s\S]*?)<\/section>/g)) {
     const lessons: Record<string, string | null> = {};
     for (const l of m[2].matchAll(/<li class="row"><bdi class="title">([^<]*)<\/bdi> (<span class="opened">[\s\S]*?<\/span>|<span class="muted none">[^<]*<\/span>)<\/li>/g)) {
-      lessons[l[1]] = l[2].startsWith('<span class="opened">') ? (text(l[2]).match(/\d{4}-\d{2}-\d{2}/)?.[0] ?? `unreadable: ${text(l[2])}`) : null;
+      lessons[l[1]] = l[2].startsWith('<span class="opened">') ? (dayOf(l[2]) ?? `unreadable: ${text(l[2])}`) : null;
     }
     subjects[m[1]] = lessons;
   }
@@ -93,7 +95,7 @@ export function shownActivity(html: string): ShownActivity {
   const switcher = [...nav.matchAll(/<a class="[^"]*"( aria-current="page")? href="([^"]*)">([\s\S]*?)<\/a>/g)].map((a) => ({ name: text(a[3]), current: Boolean(a[1]), href: a[2] }));
   return {
     off: /id="activity-off"/.test(html),
-    since: since ? (text(since).match(/\d{4}-\d{2}-\d{2}/)?.[0] ?? null) : null,
+    since: since ? (dayOf(since) ?? null) : null,
     subjects,
     switcher,
   };

@@ -2283,6 +2283,176 @@ jobs:
         with:
           name: evidence-wave-8
           path: evidence/
+  # LMS redesign wave R1a (product-contract v2 and ux-plan on PIL-322): the
+  # shared look and the learner home in the seeded world (test/redesign). Each
+  # acceptance sub-test and each UX item is its own step; the screenshots under
+  # evidence/ux/ (and the prototype reference under evidence/ux/ref/) are
+  # evidence only, not the gate.
+  redesign-r1a:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      WRANGLER_SEND_METRICS: "false"
+      LMS_TEST_RUNTIME: in-process
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install (lockfile only, when present)
+        run: if [ -f package-lock.json ]; then npm ci; fi
+      - name: Read the Playwright version
+        id: playwright
+        run: |
+          echo "version=$(node -p "require('playwright/package.json').version")" >> "$GITHUB_OUTPUT"
+          echo "image=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
+      - name: Cache Chromium for the browser test
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.image }}-${{ steps.playwright.outputs.version }}-chromium
+      - name: Install Chromium for the browser test
+        timeout-minutes: 10
+        run: |
+          npx playwright install-deps chromium
+          for attempt in 1 2 3; do
+            timeout 180 npx playwright install chromium && exit 0
+            echo "::warning::Chromium install attempt $attempt did not finish; retrying"
+            sleep 10
+          done
+          exit 1
+      - name: Build the static assets (fonts and licence)
+        run: npm run build:assets
+      - name: AT-R1a.1a UX-94 readable text on any school colour
+        if: success() || failure()
+        run: npm run test:redesign -- --test-name-pattern='^AT-R1a.1a ' test/redesign/look.test.ts
+      - name: AT-R1a.1b UX-94 twelve subject colours
+        if: success() || failure()
+        run: npm run test:redesign -- --test-name-pattern='^AT-R1a.1b ' test/redesign/look.test.ts
+      - name: AT-R1a.1c fnv1a32 vectors and automatic colours in any order
+        if: success() || failure()
+        run: npm run test:redesign -- --test-name-pattern='^AT-R1a.1c ' test/redesign/look.test.ts
+      - name: AT-R1a.1d UX-94 measured contrast in the seeded world
+        if: success() || failure()
+        run: npm run test:redesign -- --test-name-pattern='^AT-R1a.1d ' test/redesign/ux.test.ts
+      - name: AT-R1a.1e no hard-coded blue on learner and guardian pages
+        if: success() || failure()
+        run: npm run test:redesign -- --test-name-pattern='^AT-R1a.1e ' test/redesign/pages.test.ts
+      - name: AT-R1a.2a home DOM order, no announcements block
+        if: success() || failure()
+        run: npm run test:redesign -- --test-name-pattern='^AT-R1a.2a ' test/redesign/home.test.ts
+      - name: AT-R1a.2b continue hero link and its four states
+        if: success() || failure()
+        run: npm run test:redesign -- --test-name-pattern='^AT-R1a.2b ' test/redesign/home.test.ts
+      - name: AT-R1a.2c due strip at most three, ordered, tagged, see all
+        if: success() || failure()
+        run: npm run test:redesign -- --test-name-pattern='^AT-R1a.2c ' test/redesign/home.test.ts
+      - name: AT-R1a.2d subject cards, links, progress, colour and icon
+        if: success() || failure()
+        run: npm run test:redesign -- --test-name-pattern='^AT-R1a.2d ' test/redesign/home.test.ts
+      - name: AT-R1a.2e card announcement line equals the subject page
+        if: success() || failure()
+        run: npm run test:redesign -- --test-name-pattern='^AT-R1a.2e ' test/redesign/home.test.ts
+      - name: AT-R1a.2f navigation items, current item, bar and header
+        if: success() || failure()
+        run: npm run test:redesign -- --test-name-pattern='^AT-R1a.2f ' test/redesign/ux.test.ts
+      - name: AT-R1a.2g cards per row and no horizontal overflow
+        if: success() || failure()
+        run: npm run test:redesign -- --test-name-pattern='^AT-R1a.2g ' test/redesign/ux.test.ts
+      - name: AT-R1a.2h hero link on the first screen
+        if: success() || failure()
+        run: npm run test:redesign -- --test-name-pattern='^AT-R1a.2h ' test/redesign/ux.test.ts
+      - name: AT-R1a.2i empty home
+        if: success() || failure()
+        run: npm run test:redesign -- --test-name-pattern='^AT-R1a.2i ' test/redesign/home.test.ts
+      - name: AT-R1a.3a My subjects page shows the home cards
+        if: success() || failure()
+        run: npm run test:redesign -- --test-name-pattern='^AT-R1a.3a ' test/redesign/home.test.ts
+      - name: AT-R1a.3b to-do page equals learnerTodo with tags
+        if: success() || failure()
+        run: npm run test:redesign -- --test-name-pattern='^AT-R1a.3b ' test/redesign/home.test.ts
+      - name: AT-R1a.3c My subjects and to-do refuse exactly as the home
+        if: success() || failure()
+        run: npm run test:redesign -- --test-name-pattern='^AT-R1a.3c ' test/redesign/home.test.ts
+      - name: AT-R1a.4a no request to another host on learner pages
+        if: success() || failure()
+        run: npm run test:redesign -- --test-name-pattern='^AT-R1a.4a ' test/redesign/ux.test.ts
+      - name: AT-R1a.4b font files, cache and licence from the real Worker
+        if: success() || failure()
+        run: LMS_TEST_RUNTIME= npm run test:redesign -- --test-name-pattern='^AT-R1a.4b ' test/redesign/assets.test.ts
+      - name: AT-R1a.4c the greeting in the chosen typeface
+        if: success() || failure()
+        run: npm run test:redesign -- --test-name-pattern='^AT-R1a.4c ' test/redesign/ux.test.ts
+      - name: AT-R1a.4d no Arabic-Indic digit in ui.ts or on a page
+        if: success() || failure()
+        run: npm run test:redesign -- --test-name-pattern='^AT-R1a.4d ' test/redesign/pages.test.ts
+      - name: AT-R1a.4e no ISO date on a page; the formatter
+        if: success() || failure()
+        run: npm run test:redesign -- --test-name-pattern='^AT-R1a.4e ' test/redesign/pages.test.ts test/redesign/format.test.ts
+      - name: AT-R1a.6a home queries, HTML and CSS against the d1a5ae3 baseline
+        if: success() || failure()
+        run: npm run test:redesign -- --test-name-pattern='^AT-R1a.6a ' test/redesign/budget.test.ts
+      - name: AT-R1a.6b Worker bundle size and no font inside
+        if: success() || failure()
+        run: npm run test:redesign -- --test-name-pattern='^AT-R1a.6b ' test/redesign/budget.test.ts
+      - name: AT-R1a.6c staff pages no overflow and no other origin
+        if: success() || failure()
+        run: npm run test:redesign -- --test-name-pattern='^AT-R1a.6c ' test/redesign/ux.test.ts
+      - name: UX-94 readable text on any school colour
+        if: success() || failure()
+        run: npm run test:redesign -- --test-name-pattern='^AT-R1a.1a ' test/redesign/look.test.ts
+      - name: UX-94 twelve subject colours
+        if: success() || failure()
+        run: npm run test:redesign -- --test-name-pattern='^AT-R1a.1b ' test/redesign/look.test.ts
+      - name: UX-94 measured contrast in the seeded world
+        if: success() || failure()
+        run: npm run test:redesign -- --test-name-pattern='^AT-R1a.1d ' test/redesign/ux.test.ts
+      - name: UX-95 no third-party request and fonts served
+        if: success() || failure()
+        run: npm run test:redesign -- --test-name-pattern='^UX-95 ' test/redesign/ux.test.ts
+      - name: UX-96 navigation bar and header nav
+        if: success() || failure()
+        run: npm run test:redesign -- --test-name-pattern='^UX-96 ' test/redesign/ux.test.ts
+      - name: UX-97 continue hero states and first screen
+        if: success() || failure()
+        run: npm run test:redesign -- --test-name-pattern='^(AT-R1a.2b|UX-97) ' test/redesign/home.test.ts test/redesign/ux.test.ts
+      - name: UX-98 due strip order, tags and see all
+        if: success() || failure()
+        run: npm run test:redesign -- --test-name-pattern='^(AT-R1a.2c|UX-98) ' test/redesign/home.test.ts test/redesign/ux.test.ts
+      - name: UX-99 subject card parts, announcement line and grid
+        if: success() || failure()
+        run: npm run test:redesign -- --test-name-pattern='^(AT-R1a.2d|AT-R1a.2e|UX-99) ' test/redesign/home.test.ts test/redesign/ux.test.ts
+      - name: UX-100 status tags words icon contrast
+        if: success() || failure()
+        run: npm run test:redesign -- --test-name-pattern='^UX-100 ' test/redesign/look.test.ts test/redesign/ux.test.ts
+      - name: UX-102 subjects and todo pages, content and access
+        if: success() || failure()
+        run: npm run test:redesign -- --test-name-pattern='^(AT-R1a.3|UX-102)' test/redesign/home.test.ts test/redesign/ux.test.ts
+      - name: UX-103 empty home
+        if: success() || failure()
+        run: npm run test:redesign -- --test-name-pattern='^(AT-R1a.2i|UX-103) ' test/redesign/home.test.ts test/redesign/ux.test.ts
+      - name: UX-104 western digits and date display
+        if: success() || failure()
+        run: npm run test:redesign -- --test-name-pattern='^(UX-104|AT-R1a.4d|AT-R1a.4e) ' test/redesign/format.test.ts test/redesign/pages.test.ts
+      - name: UX-105 computer layout columns and DOM order
+        if: success() || failure()
+        run: npm run test:redesign -- --test-name-pattern='^(AT-R1a.2a|UX-105) ' test/redesign/home.test.ts test/redesign/ux.test.ts
+      - name: UX-106 reduced motion
+        if: success() || failure()
+        run: npm run test:redesign -- --test-name-pattern='^UX-106 ' test/redesign/ux.test.ts
+      - name: UX-126 focus not obscured by the bar
+        if: success() || failure()
+        run: npm run test:redesign -- --test-name-pattern='^UX-126 ' test/redesign/ux.test.ts
+      - name: Reference screens of the approved prototype (evidence only)
+        if: success() || failure()
+        continue-on-error: true
+        run: npm run test:redesign -- test/redesign/reference.test.ts
+      - name: Upload evidence (redesign R1a screenshots)
+        if: always() && hashFiles('evidence/**') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-redesign-r1a
+          path: evidence/
   # AT-14a: rollback holds. The code live before release 2 (main at f3b1fa7,
   # the H-1 version 528786a4, the rollback target) is checked out beside this
   # commit and given this commit's migrations, so the old code runs on a

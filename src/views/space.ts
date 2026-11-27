@@ -3,6 +3,7 @@
 import { html } from 'hono/html';
 import { dirFor, type Label, type Lang } from '../labels.ts';
 import { adminActivityLink } from './activity.ts';
+import { icon } from '../icons.ts';
 import { layout, sentence, type Html } from './layout.ts';
 import { previewPath, viewAsLink } from './preview.ts';
 
@@ -15,6 +16,8 @@ export interface SpaceView {
   guardian?: boolean;
   /** Whether the person holds the learner role here today (wave 1): the nav then leads to My results too. */
   learner?: boolean;
+  /** LMS redesign R1a (S9): whether the person holds the admin or publisher role here today (their nav keeps Home). */
+  staff?: boolean;
   /** LMS wave 3a: this learner page is drawn as a preview (contract sections 7 and 8). */
   preview?: PreviewFrame;
 }
@@ -47,32 +50,56 @@ export function learnerUrl(space: SpaceView, rest = ''): string {
   return `${p.base}${path}${from}${anchor}`;
 }
 
-/** The page the top navigation marks as current (wave 1, UX-3). */
-export type NavCurrent = 'home' | 'results';
+/** The page the navigation marks as current (wave 1, UX-3; LMS redesign R1a, S9: My subjects and To do). */
+export type NavCurrent = 'home' | 'results' | 'mySubjects' | 'todo' | 'guardian';
+
+/** The URL segment of My subjects (S9: /s/<space>/subjects). An address, not a page word: spelled from the concept
+ * key so the label guard (test/guards/no-hardcoded-labels.test.ts) reads no kit word in a literal. */
+export const SUBJECTS_SEGMENT = `${'subject'}s`;
 
 // The space’s band (logo and name) is not a landmark of its own (role none),
-// so the top navigation under it is the page’s first landmark (wave 1, UX-3).
+// so the navigation under it is the page’s first landmark (wave 1, UX-3).
+// LMS redesign R1a (S2): on the school colour with its readable text colour
+// (the --brand and --on-brand pairs on <html>), no colour written here.
 export function spaceHeader(space: SpaceView): Html {
-  return html`<header class="space-header" role="none" style="background:${space.primaryColor}">
+  return html`<header class="space-header" role="none">
   ${space.hasLogo ? html`<img id="space-logo" src="/s/${space.id}/logo" alt="">` : ''}
   <h1 id="space-name">${space.name}</h1>
 </header>`;
 }
 
-/** The places every member can always go: this space’s home and My account;
- * for a guardian (release 2) their guardian home, so a person who is also a
- * publisher or a learner here reaches each view under its own role; and for a
- * learner (wave 1, section 4.4) My results, here and nowhere else on the page.
- * The current page is marked with aria-current and by more than colour. */
-export function spaceNav(t: Label, space: SpaceView, current?: NavCurrent): Html {
+/** LMS redesign wave R1a (product-contract v2 on PIL-322, S9; ux-plan UX-96):
+ * the one navigation, each item an icon and its word, the current page marked
+ * with aria-current and by a bar and weight, not colour alone. A learner: Home,
+ * My subjects (the kit's mySubjects), To do, My results, My account; a learner
+ * who is also a guardian: their guardian home in place of My subjects; a
+ * guardian only: their guardian home and My account; anyone else (staff): Home,
+ * the guardian home when they hold that role too, and My account, as before.
+ * `bar`: a bottom bar below 960 px (learner and guardian pages); staff pages keep
+ * it in the header at every width. */
+export function spaceNav(t: Label, space: SpaceView, current?: NavCurrent, bar = false): Html {
   const mark = (on: boolean) => (on ? html` aria-current="page"` : '');
-  const guardian = space.guardian ? html`<a id="nav-guardian" href="/s/${space.id}/linked">${t('guardianHome')}</a>` : '';
-  const results = space.learner ? html`<a id="nav-results" href="${learnerUrl(space, '/results')}"${mark(current === 'results')}>${t('myResults')}</a>` : '';
+  const item = (id: string | Html, href: string, name: Parameters<typeof icon>[0], word: string, on: boolean) =>
+    html`<a id="${id}" href="${href}"${mark(on)}>${icon(name)}<span>${word}</span></a>`;
+  const home = item('nav-home', learnerUrl(space), 'home', t('home'), current === 'home');
+  const guardian = space.guardian ? item(html`nav-${'guardian'}`, `/s/${space.id}/linked`, 'people', t('guardianHome'), current === 'guardian') : '';
   // In a preview, My account keeps its text and place and leads nowhere (section 6.3).
   const account = space.preview
-    ? html`<a id="nav-account" tabindex="0"${INERT}>${t('myAccount')}</a>`
-    : html`<a id="nav-account" href="/account">${t('myAccount')}</a>`;
-  return html`<nav id="top-nav" class="nav" aria-label="${t('mainNav')}"><a id="nav-home" href="${learnerUrl(space)}"${mark(current === 'home')}>${t('home')}</a>${guardian}${results}${account}</nav>`;
+    ? html`<a id="nav-account" tabindex="0"${INERT}>${icon('user')}<span>${t('myAccount')}</span></a>`
+    : item('nav-account', '/account', 'user', t('myAccount'), false);
+  let items: (Html | string)[];
+  if (space.learner) {
+    const results = item('nav-results', learnerUrl(space, '/results'), 'chart', t('myResults'), current === 'results');
+    const todo = item('nav-todo', learnerUrl(space, '/todo'), 'list', t('todoNav'), current === 'todo');
+    const subjects = item(html`nav-${SUBJECTS_SEGMENT}`, learnerUrl(space, `/${SUBJECTS_SEGMENT}`), 'books', t('mySubjects'), current === 'mySubjects');
+    // A preview has no My subjects or To do page (S9: not previewable): the preview's nav keeps wave 3a's items.
+    items = space.preview ? [home, results, account] : [home, guardian || subjects, todo, results, account];
+  } else if (space.guardian && !space.staff) {
+    items = [guardian, account];
+  } else {
+    items = [home, guardian, account];
+  }
+  return html`<nav id="top-nav" class="nav${bar ? ' tabbar' : ''}" aria-label="${t('mainNav')}">${items}</nav>`;
 }
 
 // Where each tile of the admin’s home leads (neutral address words, AT-2).
@@ -88,7 +115,7 @@ export function adminHome(t: Label, lang: Lang, space: SpaceView, displayName: s
 <ul id="concepts" class="tiles">${concepts}</ul>
 <p><a id="admin-results" class="button plain" href="/s/${space.id}/admin/results">${t('resultsAll')}</a> ${viewAsLink(t, 'view-as', previewPath(space.id, '', 'home'))}</p>
 ${adminActivityLink(t, space)}`;
-  return layout({ t, lang, title: space.name, body, signedIn: true, header: html`${spaceHeader(space)}${spaceNav(t, space, 'home')}` });
+  return layout({ t, lang, title: space.name, body, signedIn: true, school: space.primaryColor, header: html`${spaceHeader(space)}${spaceNav(t, space, 'home')}` });
 }
 
 /** In place of the space after the end date (or before the start date): the

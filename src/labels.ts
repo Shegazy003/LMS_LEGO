@@ -23,7 +23,10 @@ export type Concept = (typeof CONCEPTS)[number];
  * LMS wave 2 (product-contract v2 on PIL-225, AT-1.6 and UX-32): lessonPlural,
  * the plural of the kit lesson word in a progress line ("Done: 3 of 5
  * <lessonPlural>"). The R2-d word "lessons" stays as it is. */
-export const KIT_WORDS = ['guardian', 'exam', 'lessonActivity', 'lessons', 'yourGuardian', 'child', 'lessonPlural'] as const;
+// LMS redesign wave R1a (product-contract v2 on PIL-322, S10): mySubjects, the
+// navigation's label of the learner's subjects (School «موادّي», Company «دوراتي»,
+// University «مقرّراتي»), read with the seed's value when a space's kit lacks it.
+export const KIT_WORDS = ['guardian', 'exam', 'lessonActivity', 'lessons', 'yourGuardian', 'child', 'lessonPlural', 'mySubjects'] as const;
 export type KitWord = (typeof KIT_WORDS)[number];
 
 export interface KitJson {

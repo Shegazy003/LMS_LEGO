@@ -14,7 +14,7 @@ export interface ResetSpace {
 
 function frame(t: Label, lang: Lang, space: ResetSpace | null, title: string, body: Html): Html {
   const header = space ? spaceHeader({ id: '', name: space.name, primaryColor: space.primaryColor, hasLogo: false }) : undefined;
-  return layout({ t, lang, title, body, header });
+  return layout({ t, lang, title, body, header, school: space?.primaryColor });
 }
 
 export function resetPage(t: Label, lang: Lang, space: ResetSpace, v: { action: string; error?: string; username?: string }): Html {
