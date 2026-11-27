@@ -185,11 +185,11 @@ function choicesWithRole(db: Db, spaceId: string, role: Appointable): Promise<Ch
 export const learnersOf = (db: Db, spaceId: string) => choicesWithRole(db, spaceId, 'learner');
 export const publishersOf = (db: Db, spaceId: string) => choicesWithRole(db, spaceId, 'publisher');
 
-/** Creates the person's account and their place in this space, in one transaction. */
+/** Creates the person's account and their place in this space, in one transaction; returns their user id. */
 export async function appoint(
   db: Db,
   v: { spaceId: string; grantedBy: string; username: string; passwordHash: string; displayName: string; mobile: string; role: Appointable; validFrom: string; validUntil: string; now: number },
-): Promise<void> {
+): Promise<string> {
   const userId = crypto.randomUUID();
   await db.batch([
     [
@@ -201,6 +201,7 @@ export async function appoint(
       crypto.randomUUID(), v.spaceId, userId, v.role, v.validFrom, v.validUntil, v.grantedBy,
     ],
   ]);
+  return userId;
 }
 
 /** Sets a person's password and ends every sign-in of theirs. */

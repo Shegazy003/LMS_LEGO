@@ -39,6 +39,7 @@ import {
 } from './world.ts';
 import { QUIZ_CARD, cutWave7Style } from '../wave7/world.ts';
 import { OPENING_CARD } from '../wave8/world.ts';
+import { d9People } from '../d9/base.ts';
 import { expectedItems, guardianTodoOf, listed, onLocalD1, sequenceOf, todoOf, withW6d, withW6e, withoutGuardianTodo } from './todo.ts';
 
 const repo = fileURLToPath(new URL('../..', import.meta.url));
@@ -192,7 +193,8 @@ function helpProblem(bb: string, cb: string): string | null {
 }
 
 function normalised(body: string, url: string): string {
-  return body.split(url).join('[product]').replace(/<div id="usage"[\s\S]*?(?=<h2|<\/main>)/g, '[usage today]');
+  // LMS-D9 (PIL-320): the appoint form's help line and role choices (test/d9/base.ts).
+  return d9People(body.split(url).join('[product]').replace(/<div id="usage"[\s\S]*?(?=<h2|<\/main>)/g, '[usage today]'));
 }
 
 function firstDifference(a: string, b: string): string {

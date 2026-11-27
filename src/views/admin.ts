@@ -60,29 +60,48 @@ export type ListedPerson = PersonRow & { ended: boolean; no_password?: boolean }
 // LMS wave 3b (ux-plan UX-39): "No password yet" is a text tag with a border, never colour alone.
 const NO_PASSWORD_TAG = 'display:inline-block;padding:0 8px;border:1px solid #57606a;border-radius:999px;font-size:.875rem;font-weight:600;color:#1b1f24;background:#fff';
 
+/** A membership's role in the space's kit words. */
+const roleWord = (t: Label, role: string) => t(role === 'publisher' ? 'publisher' : role === 'guardian' ? 'guardian' : 'learner');
+
 function personRow(t: Label, space: SpaceView, p: ListedPerson): Html {
   const when = p.ended
     ? sentence(t, 'endedOn', { date: endedDate(p.valid_until, p.ended_on) })
     : sentence(t, 'validUntil', { date: p.valid_until });
   const tag = p.no_password ? html` <span class="tag" data-tag="no-password" style="${NO_PASSWORD_TAG}">${t('noPasswordTag')}</span>` : '';
   return html`<li data-user="${p.id}"><a class="person" href="${base(space)}/people/${p.id}"><bdi>${p.display_name}</bdi></a>${tag}
-  <div class="muted">${t(p.role === 'publisher' ? 'publisher' : p.role === 'guardian' ? 'guardian' : 'learner')} · ${when} · ${sentence(t, 'mobileEnding', { digits: lastDigits(p.mobile) })}</div></li>`;
+  <div class="muted">${roleWord(t, p.role)} · ${when} · ${sentence(t, 'mobileEnding', { digits: lastDigits(p.mobile) })}</div></li>`;
 }
+
+const ROLES = ['publisher', 'learner', 'guardian'] as const;
 
 /** The people of the space (publishers and learners), found by the search box
  * when something was typed: those with access first, then the ended ones in a
- * collapsed "Ended" part; and the form to appoint one. */
+ * collapsed "Ended" part; and the form to appoint one.
+ * LMS-D9 (owner decision D9): the role field starts on an empty, disabled
+ * "Choose a role" (no role is preselected); a refused role is said next to the
+ * field, which points at it; after Appoint the page names the person and the
+ * role given (`added`); one line says how to fix a wrong role. */
 export function peoplePage(
   t: Label,
   lang: Lang,
   space: SpaceView,
-  v: { people: ListedPerson[]; search: string; today: string; ownEnd: string; values: AppointForm; error?: string },
+  v: {
+    people: ListedPerson[]; search: string; today: string; ownEnd: string; values: AppointForm; error?: string;
+    /** The error belongs to the role field. */ roleError?: boolean;
+    /** The person just appointed. */ added?: ListedPerson;
+  },
 ): Html {
   const current = v.people.filter((p) => !p.ended).map((p) => personRow(t, space, p));
   const ended = v.people.filter((p) => p.ended).map((p) => personRow(t, space, p));
-  const role = v.values.role ?? 'publisher';
+  const role = (ROLES as readonly string[]).includes(v.values.role ?? '') ? v.values.role : '';
+  const roleError = v.roleError && v.error ? v.error : undefined;
   const none = v.search ? html`<p id="search-none" class="card muted">${sentence(t, 'searchNone', { q: v.search })}</p>` : html`<p id="people" class="card muted">${t('noneAppointed')}</p>`;
-  const body = html`<h1>${t('people')}</h1>
+  // The line break is part of the confirmation, so without one the page is main's byte for byte up to the form.
+  const added = v.added
+    ? html`
+<p id="done" class="done" role="status" tabindex="-1">${sentence(t, 'appointedAs', { name: v.added.display_name, role: roleWord(t, v.added.role) })}</p>`
+    : '';
+  const body = html`<h1>${t('people')}</h1>${added}
 <form id="search" class="inline-add card" method="get" action="${base(space)}/people" role="search">
   <label>${t('searchLabel')}<input name="q" type="search" maxlength="${SEARCH_MAX}" value="${v.search}" dir="auto" autocomplete="off"></label>
   <button type="submit">${t('searchButton')}</button>
@@ -94,16 +113,16 @@ ${ended.length
   : ''}
 <h2>${t('appointPerson')}</h2>
 <p><a id="upload-entry" class="button plain" style="display:inline-flex;align-items:center;min-height:44px" href="${base(space)}/upload">${t('uploadEntry')}</a></p>
-${errorBox(v.error)}
+${roleError ? '' : errorBox(v.error)}
 <form id="appoint" class="stack card" method="post" action="${base(space)}/people">
+  <p id="role-help" class="muted">${t('wrongRoleHelp', { correct: t('correctTitle') })}</p>
   <label>${t('displayName')}<input name="display_name" required maxlength="${DISPLAY_NAME_MAX}" value="${v.values.display_name ?? ''}"></label>
   <label>${t('username')}<input name="username" required maxlength="${USERNAME_MAX}" autocomplete="off" dir="ltr" value="${v.values.username ?? ''}"><span class="hint">${t('usernameHint')}</span></label>
   <label>${t('firstPassword')}<input name="password" type="password" required minlength="8" autocomplete="new-password"><span class="hint">${t('passwordHint')}</span></label>
-  <label>${t('roleField')}<select name="role">
-    <option value="publisher" ${role === 'publisher' ? 'selected' : ''}>${t('publisher')}</option>
-    <option value="learner" ${role === 'learner' ? 'selected' : ''}>${t('learner')}</option>
-    <option value="guardian" ${role === 'guardian' ? 'selected' : ''}>${t('guardian')}</option>
-  </select></label>
+  <label>${t('roleField')}<select name="role" required${roleError ? raw(' aria-describedby="error" aria-invalid="true"') : ''}>
+    <option value="" disabled ${role ? '' : 'selected'}>${t('roleChoose')}</option>
+    ${ROLES.map((r) => html`<option value="${r}" ${role === r ? 'selected' : ''}>${t(r)}</option>`)}
+  </select>${roleError ? html`<span id="error" class="error" role="alert">${roleError}</span>` : ''}</label>
   <label>${t('mobile')}<input name="mobile" type="tel" required dir="ltr" value="${v.values.mobile ?? ''}"><span class="hint">${t('mobileParentHint')}</span></label>
   <label>${t('endDate')}<input name="valid_until" type="date" required min="${v.today}" max="${v.ownEnd}" value="${v.values.valid_until ?? ''}"><span class="hint">${sentence(t, 'endDateOwnHint', { date: v.ownEnd })}</span></label>
   <button type="submit">${t('appoint')}</button>

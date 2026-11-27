@@ -406,6 +406,18 @@ Same contract and ux-plan, sections 3.3 to 3.6 and 7 (AT-2 to AT-5). `src/learni
 
 **Rollback:** with W8-1a's code (`1f762dd`), every chapter is open to learners again and the dates stay stored; they apply again when W8-1b is redeployed. No data changes.
 
+### The role is chosen on purpose (owner decision D9, task LMS-D9)
+
+On the admin's people page (`/s/<space>/admin/people`, every kit), the form **Appoint a person** («تعيين شخص») no longer preselects a role. `src/views/admin.ts`, `src/app.ts`, `src/admin.ts` (`appoint` returns the new id), `src/i18n/ui.ts` (`roleChoose`, `roleRequired`, `appointedAs`, `wrongRoleHelp`). No new table, column or address.
+
+1. **Choose a role:** the role field starts on an empty, disabled «اختر الدور» / "Choose a role", and the browser asks for a role. Sent without one, the server refuses it (400) with "Choose the role: <publisher>, <learner> or <guardian>." in the kit's words, said inside the role field's own label (the field points at it with `aria-describedby` and is marked invalid); what was typed stays, but the password is typed again (as on every form); nobody is saved. A role outside the three is still refused, now also next to the field.
+2. **Confirmation:** after **Appoint** the page opens at "Appointed <name>, role: <role>." («تم تعيين <الاسم>، الدور: <الدور>.»), with the kit's role word (`?added=<id>`; only a person of this space is named, and the address writes nothing).
+3. **A wrong role:** a role is not changed in place. One line above the form says the route: open the person, set an end date under **Correct the details** («تصحيح البيانات»), then appoint them again with the right role and a **new username** (a username is never reused).
+
+**Known limits:** the help line names «تصحيح البيانات» (the real control), not «تعديل». The old person keeps their place until the end date passes; **End access now** ends it at once.
+
+**Rollback:** redeploying the earlier version brings back the preselected role and the plain return to the list. No data to undo.
+
 ### Reset links (AT-2, contract section 8)
 
 1. The appointer (the admin for publishers and learners, the owner for admins) opens the person's page and presses **Send reset link by WhatsApp**.
