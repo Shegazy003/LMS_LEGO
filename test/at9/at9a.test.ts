@@ -34,7 +34,8 @@ describe('AT-9a the admin appoints a guardian; an end date past the admin\'s own
     await signIn(w.p.url, ph.page, ADMIN.username, ADMIN.password);
     await ph.page.goto(w.p.url + `/s/${w.spaceId}/admin/people`);
     await assertPage(ph.page, 'people page (Arabic)', 'ar');
-    const options = await ph.page.locator('form#appoint select[name=role] option').evaluateAll((els) => els.map((e) => [e.getAttribute('value'), e.textContent?.trim()]));
+    // LMS-D9: the disabled "Choose a role" placeholder is not a role choice.
+    const options = await ph.page.locator('form#appoint select[name=role] option:not([disabled])').evaluateAll((els) => els.map((e) => [e.getAttribute('value'), e.textContent?.trim()]));
     assert.deepEqual(options, [['publisher', 'معلّم'], ['learner', 'طالب'], ['guardian', 'ولي أمر']], 'the role choice offers the kit\'s guardian word');
     const end = utcDatePlusDays(30);
     await ph.page.fill('form#appoint input[name=display_name]', G1.display_name);

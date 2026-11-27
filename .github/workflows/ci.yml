@@ -2257,6 +2257,26 @@ jobs:
       - name: UX-93 wording in 3 kits x 2 languages (learner keys)
         if: success() || failure()
         run: npm run test:wave3b -- --test-name-pattern='^UX-93 ' test/wave8/ux-learn.test.ts
+      # LMS-D9 (owner decision D9, PIL-320): the role is chosen on purpose when an admin appoints a person.
+      # Screenshots (empty, refused, confirmed; Arabic; 390, 768 and 1280 px) go to evidence/d9/.
+      - name: D9 R-1.1 the role field starts on an empty, disabled Choose a role and no role is preselected
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^D9 R-1\.1 ' test/d9/role.test.ts
+      - name: D9 R-1.2 appointing without a role is refused next to the field, typed values kept, nobody saved
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^D9 R-1\.2 ' test/d9/role.test.ts
+      - name: D9 R-1.3 the refusal is announced on the role field in Arabic RTL at phone, tablet and desktop widths
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^D9 R-1\.3 ' test/d9/role.test.ts
+      - name: D9 R-2.1 after Appoint the page names the person and the role given, in the kit words, Arabic and English
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^D9 R-2\.1 ' test/d9/role.test.ts
+      - name: D9 R-3.1 one help line gives the wrong-role route, the route works, no address changes a role
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^D9 R-3\.1 ' test/d9/role.test.ts
+      - name: D9 R-4.1 the server still accepts only the three roles and saves nothing otherwise
+        if: success() || failure()
+        run: npm run test:wave3b -- --test-name-pattern='^D9 R-4\.1 ' test/d9/role.test.ts
       - name: Upload evidence (wave 8 screenshots)
         if: always() && hashFiles('evidence/**') != ''
         uses: actions/upload-artifact@v4

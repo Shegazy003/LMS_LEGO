@@ -389,7 +389,8 @@ describe('AT-5 the kit changes every word, and no code changes', { concurrency: 
     await wordsOn(a, `/s/${mesk}`, 'admin home', [AFTER_AR.publisher, AFTER_AR.learner, AFTER_AR.group, AFTER_AR.subject]);
     await shot(a, '09-after-admin-home-coach');
     await wordsOn(a, `/s/${mesk}/admin/people`, 'people page', [AFTER_AR.publisher, AFTER_AR.learner]);
-    const roles = await a.locator('form#appoint select[name=role] option').allInnerTexts();
+    // LMS-D9: the disabled "Choose a role" placeholder is not a role choice.
+    const roles = await a.locator('form#appoint select[name=role] option:not([disabled])').allInnerTexts();
     assert.deepEqual(roles.map((r) => r.trim()), [AFTER_AR.publisher, AFTER_AR.learner, AFTER_AR.guardian], 'the role choices');
     await shot(a, '10-after-admin-people');
     await wordsOn(a, `/s/${mesk}/admin/people/${ids[HADEER.username]}`, 'Hadeer\'s page', [AFTER_AR.publisher]);

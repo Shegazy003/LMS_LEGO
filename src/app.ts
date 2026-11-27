@@ -1374,12 +1374,15 @@ const hasEnded = (p: PersonRow) => membershipStatus(p.valid_from, p.valid_until,
 // The people list (release 1.1): a search box that the server answers (part
 // of a name or a username, in this space only), and the people whose access
 // has ended in a collapsed "Ended" part below the others.
-async function renderPeople(c: C, extra: { values?: AppointForm; error?: string } = {}, status: 200 | 400 = 200) {
+async function renderPeople(c: C, extra: { values?: AppointForm; error?: string; roleError?: boolean } = {}, status: 200 | 400 = 200) {
   const { t, lang, view } = spaceLabel(c);
   const search = c.req.method === 'GET' ? searchText(c.req.query('q') ?? '') : '';
   const people = (await peopleOf(c.get('db'), view.id, search)).map((p) => ({ ...p, ended: hasEnded(p) }));
+  // LMS-D9: after Appoint, the person just added (found only among this space's people, by id).
+  const addedId = c.req.method === 'GET' ? c.req.query('added') ?? '' : '';
+  const added = addedId ? people.find((p) => p.id === addedId && !p.ended) : undefined;
   const body = peoplePage(t, lang, view, {
-    people, search, today: utcDate(now()), ownEnd: c.get('space').validUntil, values: extra.values ?? {}, error: extra.error,
+    people, search, today: utcDate(now()), ownEnd: c.get('space').validUntil, values: extra.values ?? {}, error: extra.error, roleError: extra.roleError, added,
   });
   return page(c, body, status);
 }
@@ -1411,22 +1414,27 @@ app.post('/s/:spaceId/admin/people', async (c) => {
     !displayName ? t('displayNameInvalid')
       : !isUsername(values.username ?? '') ? t('usernameInvalid')
         : password.length < MIN_PASSWORD ? t('passwordTooShort')
-          : !isAppointable(role) ? t('roleInvalid')
-            : !mobile ? t('mobileInvalid')
-              : !isIsoDate(end) || end < today ? t('endDateInvalid')
-                : end > space.validUntil ? t('endDateBeyondOwn', { date: space.validUntil })
-                  : (await db.first('SELECT 1 AS one FROM user WHERE username = ?', values.username!)) ? t('usernameTaken')
-                    : undefined;
-  if (error || !mobile || !displayName || !isAppointable(role)) return renderPeople(c, { values, error }, 400);
+          // LMS-D9: no role is preselected, so none chosen is its own plain refusal.
+          : role === '' ? t('roleRequired')
+            : !isAppointable(role) ? t('roleInvalid')
+              : !mobile ? t('mobileInvalid')
+                : !isIsoDate(end) || end < today ? t('endDateInvalid')
+                  : end > space.validUntil ? t('endDateBeyondOwn', { date: space.validUntil })
+                    : (await db.first('SELECT 1 AS one FROM user WHERE username = ?', values.username!)) ? t('usernameTaken')
+                      : undefined;
+  if (error || !mobile || !displayName || !isAppointable(role)) {
+    return renderPeople(c, { values, error, roleError: error !== undefined && (error === t('roleRequired') || error === t('roleInvalid')) }, 400);
+  }
+  let added: string;
   try {
-    await appoint(db, {
+    added = await appoint(db, {
       spaceId: space.id, grantedBy: c.get('user')!.id, username: values.username!, passwordHash: await hashPassword(password, c.get('iterations')),
       displayName, mobile, role, validFrom: today, validUntil: end, now: now(),
     });
   } catch {
     return renderPeople(c, { values, error: t('usernameTaken') }, 400); // taken in the same instant
   }
-  return c.redirect(`/s/${space.id}/admin/people#people`, 303);
+  return c.redirect(`/s/${space.id}/admin/people?added=${added}#done`, 303);
 });
 
 // LMS wave 3b, W3b-1 (product-contract v2 on PIL-232, sections 4 to 7): add a

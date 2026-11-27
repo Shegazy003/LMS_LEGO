@@ -304,6 +304,11 @@ const W8_CHANGED_TESTS: Record<string, string> = {
   // W8-1b (C6, AT-3.8): the learner reads use the opening-date columns, so the base comparisons' database copies gain
   // migration 0017 (no date stored) in the shared harness, keeping test/wave4/ untouched.
   'test/support/in-process.ts': 'W8 C6 and AT-3.8: a database copy filled by an earlier build gains migration 0017 (no date stored) before this checkout runs on it',
+  // LMS-D9 (PIL-320): the role field starts on a disabled "Choose a role" placeholder, which AT-2.1b leaves out of the
+  // roles that can be chosen; H-1 makes the W3b AT-5.5 sign-in timing stable (test/rollback/old-code.test.ts, named above).
+  'test/at2/at2.test.ts': 'D9 R-1: AT-2.1b lists the roles that can be chosen without the disabled placeholder',
+  'test/at5/at5.test.ts': 'D9 R-1: AT-5.6 reads the role choices without the disabled placeholder',
+  'test/at9/at9a.test.ts': 'D9 R-1: AT-9a reads the role choices without the disabled placeholder',
 };
 /** W7-1's additions to the workflow: the job wave-7 (W7 11.6) and the rollback job's AT-6.3 step (W7 11.6); W8-1a's job wave-8. */
 const W7_JOBS = ['wave-7', 'wave-8'];

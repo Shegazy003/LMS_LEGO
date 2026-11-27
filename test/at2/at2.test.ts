@@ -234,7 +234,8 @@ describe('AT-2 the admin staffs the space and assigns a subject', { concurrency:
   });
 
   it('AT-2.1b the admin cannot appoint another admin, and cannot set an end date later than their own', async () => {
-    const roles = await admin.locator('form#appoint select[name=role] option').evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value));
+    // LMS-D9: the first option is the disabled "Choose a role" placeholder, which cannot be chosen.
+    const roles = await admin.locator('form#appoint select[name=role] option').evaluateAll((os) => os.filter((o) => !(o as HTMLOptionElement).disabled).map((o) => (o as HTMLOptionElement).value));
     assert.deepEqual(roles, ['publisher', 'learner', 'guardian'], 'only a publisher, a learner or (release 2) a guardian can be chosen');
 
     // Even a page altered to offer "admin" is refused.

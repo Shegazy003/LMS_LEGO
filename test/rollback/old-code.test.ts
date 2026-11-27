@@ -223,15 +223,43 @@ describe('AT-14a old code on a release 2 database shows a guardian nothing, expo
       const ms = performance.now() - started;
       return { status: res.status, body: (await res.text()).split(username).join('<user>'), ms };
     };
+    // LMS-D9 H-1 (PIL-320): the timing is measured so that neighbour noise in the
+    // whole-file run cannot fail it, and it proves the same thing. Eight rounds,
+    // each a wrong password then a no-password attempt, back to back (so a slow
+    // spell of the machine falls on both kinds alike), after one warm-up pair.
+    // Each kind is judged by its FASTEST try: noise only ever adds time, so the
+    // fastest try is the closest to the work the code really does. A refusal that
+    // skipped the hash would make every no-password try fast, its fastest too, and
+    // fail the same window as before (0.4 to 2.5). The sign-in limit (5 failures
+    // a username) is cleared before, every 4 rounds and after, so every try is a
+    // real attempt (a limited one skips the hash) and later steps can sign in.
+    const clearLimits = () => worker.sql('DELETE FROM attempt_limit');
     const median = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
-    const wrong = [await attempt(HADEER.username, 'not-her-password'), await attempt(HADEER.username, 'password123')];
-    const none = [await attempt(NO_PASSWORD.username, ''), await attempt(NO_PASSWORD.username, 'password123'), await attempt(NO_PASSWORD.username, NO_PASSWORD.display_name)];
-    for (const n of none) {
-      assert.equal(n.status, wrong[1].status, 'the same status as a wrong password');
-      assert.equal(n.body, wrong[1].body, 'the same page as a wrong password');
+    await clearLimits();
+    const reference = await attempt(HADEER.username, 'password123');
+    const empty = await attempt(NO_PASSWORD.username, '');
+    const wrongMs: number[] = [];
+    const noneMs: number[] = [];
+    const tried = [empty];
+    for (let round = 0; round < 8; round++) {
+      if (round % 4 === 0) await clearLimits();
+      const wrong = await attempt(HADEER.username, round % 2 ? 'password123' : 'not-her-password');
+      const none = await attempt(NO_PASSWORD.username, round % 2 ? 'password123' : NO_PASSWORD.display_name);
+      assert.equal(wrong.status, reference.status, 'a wrong password answers as before');
+      assert.equal(wrong.body, reference.body, 'the same wrong-password page every time');
+      wrongMs.push(wrong.ms);
+      noneMs.push(none.ms);
+      tried.push(none);
     }
-    const ratio = median(none.slice(1).map((n) => n.ms)) / median(wrong.map((x) => x.ms));
-    assert.ok(ratio > 0.4 && ratio < 2.5, `the refusal takes as long as a wrong password (the full hash runs): ratio ${ratio.toFixed(2)}`);
+    await clearLimits();
+    for (const n of tried) {
+      assert.equal(n.status, reference.status, 'the same status as a wrong password');
+      assert.equal(n.body, reference.body, 'the same page as a wrong password');
+    }
+    const ratio = Math.min(...noneMs) / Math.min(...wrongMs);
+    const ms = (xs: number[]) => xs.map((x) => x.toFixed(0)).join('/');
+    assert.ok(ratio > 0.4 && ratio < 2.5,
+      `the refusal takes as long as a wrong password (the full hash runs): fastest-try ratio ${ratio.toFixed(2)}; median ratio ${(median(noneMs) / median(wrongMs)).toFixed(2)}; no password ${ms(noneMs)} ms, wrong ${ms(wrongMs)} ms`);
     // The old code's reset link (the admin's person page) still sets a password, and the person then signs in.
     const issued = await admin.post(`/s/${spaceId}/admin/people/nopass-1/link`, {});
     assert.equal(issued.status, 200, 'the admin issues a reset link for the no-password person');
