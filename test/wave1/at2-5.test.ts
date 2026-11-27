@@ -15,8 +15,11 @@ async function onlyDecimalsOpen(page: Page, where: string): Promise<void> {
   assert.deepEqual(chapters.filter((c) => c.open).map((c) => c.title), ['Decimals'], `${where}: only Decimals is open`);
   const box = await page.evaluate(() => {
     const nav = document.querySelector('nav#top-nav')!.getBoundingClientRect();
+    // LMS redesign R1a (UX-3 row, S9, UX-96): below 960 px the navigation is a bottom bar; then in view means
+    // inside the viewport and above the bar (its top), and nothing is below a top navigation.
+    const bar = nav.top > window.innerHeight / 2;
     const open = document.querySelector('#outline details[open]')!.getBoundingClientRect();
-    return { navBottom: nav.bottom, top: open.top, height: window.innerHeight };
+    return { navBottom: bar ? 0 : nav.bottom, top: open.top, height: bar ? nav.top : window.innerHeight };
   });
   assert.ok(box.top >= box.navBottom - 0.5, `${where}: the top of Decimals (${box.top}) is at or below the top navigation (${box.navBottom})`);
   assert.ok(box.top >= 0 && box.top < box.height, `${where}: and inside the viewport (${box.top} of ${box.height})`);

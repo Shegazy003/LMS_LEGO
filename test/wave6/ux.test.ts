@@ -90,7 +90,9 @@ describe('UX-59 due card place, order and labels', { concurrency: false }, () =>
       const [link] = await measure(page, '#due-dates a.due-link');
       assert.ok(link.width >= 44 && link.height >= 44, `the link is a 44 px target (${link.width}x${link.height})`);
       const style = await page.$eval('#due-dates a.due-link', (a) => ({ bg: getComputedStyle(a).backgroundColor, color: getComputedStyle(a).color }));
-      assert.deepEqual(style, { bg: 'rgb(255, 255, 255)', color: 'rgb(11, 61, 145)' }, 'the secondary style (white, blue text), not the primary blue fill');
+      // LMS redesign R1a (UX-94): the secondary style's text is the school's strong colour (was the fixed blue #0b3d91).
+      const schoolStrong = await page.evaluate(() => { const i = document.createElement('i'); i.style.color = 'var(--brand-strong)'; document.body.append(i); const c = getComputedStyle(i).color; i.remove(); return c; });
+      assert.deepEqual(style, { bg: 'rgb(255, 255, 255)', color: schoolStrong }, 'the secondary style (white, school-strong text), not the primary fill');
       await uxShot(page, shot);
       await k.ctx.close();
     }

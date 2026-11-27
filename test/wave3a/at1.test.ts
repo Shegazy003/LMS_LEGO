@@ -12,7 +12,8 @@ import {
 } from './world.ts';
 
 /** The titles of the cards on a home, in order. */
-const cardTitles = (doc: string) => [...doc.matchAll(/<li class="card" data-subject="[^"]+">\s*<h2 class="title"><a [^>]*><bdi>([^<]*)<\/bdi>/g)].map((m) => m[1]);
+// LMS redesign R1a (UX-1 row, look only; UX-99): the card is `card subj`, its colour band and icon tile before the title.
+const cardTitles = (doc: string) => [...doc.matchAll(/<li class="card subj" data-subject="[^"]+"[^>]*>[\s\S]*?<h2 class="title"><a [^>]*><bdi>([^<]*)<\/bdi>/g)].map((m) => m[1]);
 
 /** Asserts today's plain refusal (403, the noAccess sentence, no banner). */
 async function refused(c: Client, path: string, lang: 'ar' | 'en', what: string): Promise<void> {
@@ -86,7 +87,8 @@ describe('W3a AT-1 who may preview, and what each may see', { concurrency: false
       const doc = await res.text();
       assert.ok(doc.includes(`id="space-name">مدرسة مسك<`), 'the space\'s name');
       assert.ok(doc.includes(`src="/s/${w.school.id}/logo"`), 'the space\'s logo');
-      assert.ok(doc.includes('style="background:#0b6e4f"'), 'the space\'s colour');
+      // LMS redesign R1a (S2, UX-94): the space's colour is carried as --brand on <html>; the header reads it.
+      assert.ok(doc.includes('--brand:#0b6e4f;'), 'the space\'s colour');
       assert.ok(doc.includes(`id="nothing-yet"`) && doc.includes(word(lang, 'nothingAssigned')), 'nothing assigned');
       assert.ok(!/data-subject=|id="notice-|id="results"/.test(doc), 'no subject, notice or result');
       assert.ok((await results.text()).includes(`id="results-none"`), 'My results: the empty state');

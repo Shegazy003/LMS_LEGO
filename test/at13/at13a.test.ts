@@ -136,10 +136,11 @@ describe('AT-13a the running product: guardian pages carry no activity, and open
   });
 
   test('AT-13a scan self-check (R2-c): the results section allows exam dates, scores and Corrected lines, and nothing else with a digit', () => {
-    const ok = '<section id="results" data-learner="x"><h2 id="results-title">Results: Salma</h2><ol><li class="card result"><span class="muted date" dir="ltr">2026-11-12</span><span class="score" dir="auto">17.5 / 20</span><span class="corrected">Corrected on 2026-11-03</span></li><li class="card result"><span class="score" dir="auto">Absent</span></li></ol></section>';
+    // LMS redesign R1a (UX-16a row, contract S4): dates are S4 dates; the exam date sits in `<time datetime>`.
+    const ok = '<section id="results" data-learner="x"><h2 id="results-title">Results: Salma</h2><ol><li class="card result"><span class="muted date" dir="ltr"><time datetime="2026-11-12">Nov 12</time></span><span class="score" dir="auto">17.5 / 20</span><span class="corrected">Corrected on Nov 3</span></li><li class="card result"><span class="muted date" dir="rtl"><time datetime="2025-11-12">12 نوفمبر 2025</time></span><span class="score" dir="auto">Absent</span></li></ol></section>';
     assert.deepEqual(resultsSection(`<p>a</p>${ok}`), { rest: '<p>a</p> ', strays: [] });
     assert.deepEqual(resultsSection(ok.replace('Results: Salma', 'Last opened 3 times')).strays, ['3']);
-    assert.deepEqual(resultsSection(ok.replace('Corrected on 2026-11-03', 'Corrected at 10:15 on 2026-11-03')).strays, ['10:15', '2026-11-03']);
+    assert.deepEqual(resultsSection(ok.replace('Corrected on Nov 3', 'Corrected at 10:15 on Nov 3')).strays, ['10:15', '3']);
   });
 
   it('with lesson activity off (the state after deploy), a learner opening their subject, lesson and file (twice), and a guardian, admin and publisher looking, store nothing', async () => {

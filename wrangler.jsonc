@@ -8,6 +8,14 @@
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
   "workers_dev": true,
+  // LMS redesign wave R1a (product-contract v2 on PIL-322, S3): the typeface's
+  // WOFF2 files and their OFL licence are static assets of this Worker's own
+  // origin (/assets/fonts/…), served before the Worker runs and never inside its
+  // script. tools/build-assets.mjs fills dist/static from the exact-pinned npm
+  // package before every `wrangler dev` and `wrangler deploy`; its _headers file
+  // gives them a one-year cache.
+  "build": { "command": "node tools/build-assets.mjs" },
+  "assets": { "directory": "./dist/static" },
   // Production build: the test hooks (controllable clock) are compiled out.
   "define": { "__TEST_HOOKS__": "false" },
   // Password strength in PBKDF2 iterations (README "Password strength").
@@ -51,6 +59,7 @@
     "test": {
       "define": { "__TEST_HOOKS__": "true" },
       "vars": { "TEST_HOOKS": "1" },
+      "assets": { "directory": "./dist/static" },
       "d1_databases": [
         { "binding": "DB", "database_name": "lms-lego", "migrations_dir": "migrations" }
       ],

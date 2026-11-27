@@ -532,13 +532,10 @@ const en = {
   // LMS wave 5, W5-1 (product-contract v2 on PIL-246, section 8; ux-plan UX-56 key table, the single source).
   // The numbers come from the constants of src/announcements.ts; kit words inside a sentence come in lower case.
   annTitle: 'Announcements',
-  annHomeTitle: 'Latest announcements',
   annOlder: 'Older announcements ({n})',
   annByLine: '{role} · {date}',
   annEdited: 'Edited {date}',
-  annFull: 'Full announcement',
-  annFullFor: 'Full announcement: {subject}',
-  annHelp: 'Plain text, up to {max} characters. Each {learner} of this {subject} sees the newest {shown} on the {subject} page, with {folded} older ones folded, and the newest {home} of the last {days} days on their home. No replies.',
+  annHelp: 'Plain text, up to {max} characters. Each {learner} of this {subject} sees the newest {shown} on the {subject} page, with {folded} older ones folded, and the newest one on the {subject}\'s card on their home. No replies.',
   annUnpublished: 'Shown once the {subject} is published.',
   annNewLabel: 'New announcement',
   annPost: 'Post announcement',
@@ -711,6 +708,22 @@ const en = {
   // LMS wave 8, W8-1b (ux-plan wording table): the reason line before an opening date, and the home card line when nothing open is left.
   openedOn: 'Opens on {date}.',
   openNext: 'Next: {chapter}: {title}, opens on {date}.',
+  // LMS redesign wave R1a (product-contract v2 on PIL-322, S6, S9, S10; ux-plan wording table): no word agrees with a kit word.
+  todoNav: 'To do',
+  dueSoonHeading: 'Due soon',
+  seeAll: 'See all',
+  nothingDue: 'Nothing due now',
+  tagLate: 'Late · {date}',
+  tagToday: 'Due today',
+  tagDue: 'Due {date}',
+  tagOpens: 'Opens {date}',
+  latestAnnouncement: 'Latest announcement',
+  cardStart: 'Start',
+  cardContinue: 'Continue',
+  cardContinueName: 'Continue: {title}',
+  cardReadAgain: 'Read again',
+  emptyHomeLine: 'When something is assigned to you, it appears here.',
+  heroLesson: '{subjectTitle} · {chapterTitle}',
 };
 
 export type UiKey = keyof typeof en;
@@ -1070,7 +1083,7 @@ const ar: Record<UiKey, string> = {
   activityWhoTitle: 'من يراه',
   activityWho: 'فقط {guardian} المرتبط بـ{child}، وابتداءً من يوم التفعيل ومن يوم الربط. لا يراه {publisher} ولا {admin}.',
   activityKeptTitle: 'مدة الحفظ',
-  activityKept: 'ما دامت الخاصية مفعَّلة. تُحذف كل السجلات عند إيقافها أو عند الطلب، وقد تبقى نسخة في النسخ الاحتياطية حتى ٣٠ يومًا إضافية.',
+  activityKept: 'ما دامت الخاصية مفعَّلة. تُحذف كل السجلات عند إيقافها أو عند الطلب، وقد تبقى نسخة في النسخ الاحتياطية حتى 30 يومًا إضافية.',
   activityStartNote: 'يبدأ التسجيل لحظة التفعيل. ما فُتح قبل ذلك لا يُسجَّل ولا يمكن استرجاعه.',
   activityNoticeTitle: 'ما يراه كل {learner} في صفحته وفي كل {lesson} يفتحه',
   activityTold: 'أُبلغ كل {guardian} وكل {learner} (مطلوب)',
@@ -1235,13 +1248,10 @@ const ar: Record<UiKey, string> = {
   monthWords: 'يناير,فبراير,مارس,أبريل,مايو,يونيو,يوليو,أغسطس,سبتمبر,أكتوبر,نوفمبر,ديسمبر',
   // LMS wave 5, W5-1 (ux-plan UX-56 key table).
   annTitle: 'الإعلانات',
-  annHomeTitle: 'أحدث الإعلانات',
   annOlder: 'إعلانات أقدم ({n})',
   annByLine: '{role} · {date}',
   annEdited: 'آخر تعديل {date}',
-  annFull: 'الإعلان كاملًا',
-  annFullFor: 'الإعلان كاملًا: {subject}',
-  annHelp: 'نص عادي حتى {max} حرف. تظهر في صفحة {subject} أحدث {shown} إعلانات و{folded} إعلانات أقدم مطويّة، وفي الصفحة الرئيسية لكل {learner} أحدث {home} إعلانات من آخر {days} يومًا. بلا ردود.',
+  annHelp: 'نص عادي حتى {max} حرف. تظهر في صفحة {subject} أحدث {shown} إعلانات و{folded} إعلانات أقدم مطويّة، ويظهر أحدثها على بطاقته في الصفحة الرئيسية لكل {learner}. بلا ردود.',
   annUnpublished: 'تظهر الإعلانات بعد نشر {subject}.',
   annNewLabel: 'إعلان جديد',
   annPost: 'نشر الإعلان',
@@ -1407,6 +1417,21 @@ const ar: Record<UiKey, string> = {
   openEmpty: 'لا يوجد ما يُحدَّد له موعد بعد.',
   openedOn: 'يُتاح الوصول في {date}.',
   openNext: 'التالي: {chapter}: {title}، ويُتاح الوصول في {date}.',
+  todoNav: 'المطلوب',
+  dueSoonHeading: 'المطلوب قريبًا',
+  seeAll: 'عرض الكل',
+  nothingDue: 'لا شيء مطلوب الآن',
+  tagLate: 'فات الموعد · {date}',
+  tagToday: 'الموعد اليوم',
+  tagDue: 'الموعد {date}',
+  tagOpens: 'موعد الفتح {date}',
+  latestAnnouncement: 'آخر إعلان',
+  cardStart: 'ابدأ',
+  cardContinue: 'تابع',
+  cardContinueName: 'تابع: {title}',
+  cardReadAgain: 'قراءة من جديد',
+  emptyHomeLine: 'عندما يُخصَّص لك شيء يظهر هنا.',
+  heroLesson: '{subjectTitle} · {chapterTitle}',
 };
 
 export const UI: Record<'ar' | 'en', Record<UiKey, string>> = { en, ar };

@@ -16,7 +16,8 @@ import {
 const LANGS = ['ar', 'en'] as const;
 type Lang = (typeof LANGS)[number];
 
-const cardTitles = (doc: string) => [...doc.matchAll(/<li class="card" data-subject="[^"]+">\s*<h2 class="title"><a [^>]*><bdi>([^<]*)<\/bdi>/g)].map((m) => m[1]);
+// LMS redesign R1a (UX-1 row, look only; UX-99): the card is `card subj`, its colour band and icon tile before the title.
+const cardTitles = (doc: string) => [...doc.matchAll(/<li class="card subj" data-subject="[^"]+"[^>]*>[\s\S]*?<h2 class="title"><a [^>]*><bdi>([^<]*)<\/bdi>/g)].map((m) => m[1]);
 const hrefs = (doc: string) => [...doc.matchAll(/\bhref="([^"]*)"/g)].map((m) => m[1].replace(/&amp;/g, '&'));
 
 async function ok(c: Client, path: string, what: string): Promise<string> {

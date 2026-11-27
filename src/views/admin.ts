@@ -35,7 +35,7 @@ const ORDER_CARD_CSS = `#order-state{display:flex;flex-direction:column;gap:8px;
 #order-state .order-value{font-weight:700}
 #order-state .order-explain{color:#57606a;font-size:.9rem;overflow-wrap:anywhere}
 #order-state form{display:flex}
-#order-state button.order-switch{min-height:44px;min-width:44px;background:#fff;color:#1a5fd0;border:2px solid #1a5fd0}`;
+#order-state button.order-switch{min-height:44px;min-width:44px;background:#fff;color:var(--brand-strong);border:2px solid var(--brand-strong)}`;
 
 /** The setting card (LMS wave 4, section 4.2, UX-44) of the publisher's editor
  * (inside the card of Publish and Preview) and of the admin's subject page (a

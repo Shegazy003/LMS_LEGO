@@ -17,7 +17,7 @@ import { utcDate } from '../../src/access.ts';
 import { ANN_CUT, codePoints, cutText } from '../../src/announcements.ts';
 import type { Lang } from '../../src/labels.ts';
 import {
-  ADMIN, AT2_ARABIC, AT2_MATH, COMPANY_ADMIN, HADEER, KARIM5, OMAR, RANA5, SALMA, UNIVERSITY_ADMIN, adminAnn, annRows, as, blockTexts, browserAs, byLine,
+  ADMIN, AT2_ARABIC, AT2_MATH, COMPANY_ADMIN, HADEER, KARIM5, OMAR, RANA5, SALMA, UNIVERSITY_ADMIN, adminAnn, annRows, as, blockTexts, browserAs, cardLines, learnerByLine, learnerDay,
   home, learnerBlockOf, post, press, publisherAnn, setOrder, storedAt, subjectPath, wave4World, withAt2, withW5a, words, type Wave1World,
 } from './world.ts';
 
@@ -27,9 +27,9 @@ const DAY = 86_400_000;
 const escaped = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 
 /** The subject ids of the home's cards (learnerCards, the same request). */
-const cardSubjects = (html: string) => new Set([...html.matchAll(/<li class="card" data-subject="([^"]+)"/g)].map((m) => m[1]));
-/** The subject ids of the home's announcement block. */
-const blockSubjects = (html: string) => new Set((learnerBlockOf(html)?.items ?? []).map((i) => i.subject!.id));
+const cardSubjects = (html: string) => new Set([...html.matchAll(/<li class="card subj" data-subject="([^"]+)"/g)].map((m) => m[1]));
+/** The subject ids whose card shows an announcement line (LMS redesign R1a, UX-55 row: in place of the home block). */
+const blockSubjects = (html: string) => new Set(cardLines(html).keys());
 
 async function readers(w: Wave1World, lang: Lang) {
   return [
@@ -73,7 +73,7 @@ describe('W5 AT-2.1 subject page: the block under the title block, newest first,
         assert.ok(!blockTexts(b).includes(AT2_ARABIC), `${who} ${lang}: not Arabic grammar's`);
         const all = [...b.items, ...b.fold.items];
         for (const [i, item] of all.entries()) {
-          assert.equal(item.by, byLine(lang, rows[i].author_role as 'publisher' | 'admin', rows[i].created_at), `${who} ${lang}: the role and date line of item ${i + 1}`);
+          assert.equal(item.by, learnerByLine(lang, rows[i].author_role as 'publisher' | 'admin', rows[i].created_at), `${who} ${lang}: the role and date line of item ${i + 1}`);
           assert.equal(item.edited, false, 'not edited');
         }
         assert.ok(all[0].by.startsWith(`${W(lang)('admin')} · `), `${who} ${lang}: Amal's says the admin word`);
@@ -109,7 +109,7 @@ describe('W5 AT-2.1 subject page: the block under the title block, newest first,
       const b = learnerBlockOf(doc)!;
       const item = b.items.find((i) => i.text === 'Bring a ruler and a pencil.')!;
       assert.ok(item.edited, `${lang}: annEdited on the edited item`);
-      assert.equal(item.by, `${byLine(lang, 'publisher', edited.created_at)} · ${W(lang)('annEdited', { date: edited.edited_at!.slice(0, 10) })}`, `${lang}: "Teacher · <date> · Edited <date>"`);
+      assert.equal(item.by, `${learnerByLine(lang, 'publisher', edited.created_at)} · ${W(lang)('annEdited', { date: learnerDay(edited.edited_at!, lang) })}`, `${lang}: "Teacher · <date> · Edited <date>"`);
     }
     // 8 older ones: 12 in all.
     const now = await workerNow(w.p.url);
@@ -133,59 +133,54 @@ describe('W5 AT-2.1 subject page: the block under the title block, newest first,
 });
 
 // ------------------------------------------------------------------ AT-2.2 ----
+// LMS redesign R1a (product-contract v2 on PIL-322, UX-55 row): the home has no announcements block any more. Each
+// subject card shows one line, the first item its subject page shows this learner (same rule, same order, any age),
+// cut at 100 code points by the same rule, linking to the subject page's block; none when the page shows none.
 describe('W5 AT-2.2 home: the block after the notice and after Continue (the UX-55 fallback form (2)), the newest 3 of the last 30 days, subject links, the cut at 100 code points', { concurrency: false }, () => {
   let w: Wave1World;
   before(async () => (w = await at2World({ activity: true })));
   after(() => w?.close());
 
-  it('W5 AT-2.2 Salma\'s home: annHomeTitle after the activity notice and just after "Continue where you stopped" (fallback form (2)), the newest 3 across her subjects, each linking to its subject\'s block', async () => {
+  it('W5 AT-2.2 Salma\'s home (UX-55 row): no announcements block; each card\'s line is the first item of its subject page\'s block, linking to that block', async () => {
     const s = w.school;
-    const rows = (await annRows(w)).reverse();
     for (const lang of ['ar', 'en'] as const) {
-      const doc = await text(await as(w, SALMA, lang), home(s));
-      const at = doc.indexOf('id="announcements"');
-      assert.ok(at > 0, `${lang}: the block`);
-      assert.ok(doc.indexOf('id="notice-') > 0 && doc.indexOf('id="notice-') < at, `${lang}: after the activity notice`);
-      // Contract section 5.3, phone check: form (2), the block just after "Continue where you stopped" and before the cards (test/wave5/ux-learner.test.ts measures why).
-      assert.ok(doc.indexOf('id="continue"') > 0 && doc.indexOf('id="continue"') < at, `${lang}: just after "Continue where you stopped"`);
-      assert.ok(at < doc.indexOf('id="my-list"'), `${lang}: before the cards`);
-      const b = learnerBlockOf(doc)!;
-      assert.equal(b.heading, W(lang)('annHomeTitle'), `${lang}: annHomeTitle`);
-      assert.equal(b.fold, null, 'no fold on the home');
-      assert.deepEqual(b.items.map((i) => i.text), rows.slice(0, 3).map((r) => r.body), `${lang}: the newest 3, newest first (Arabic grammar's, Amal's, Hadeer's newest)`);
-      for (const [i, item] of b.items.entries()) {
-        const r = rows[i];
-        const title = r.subject_id === s.math ? 'Mathematics' : 'Arabic grammar';
-        assert.deepEqual(item.subject, { id: r.subject_id, title, href: `/s/${s.id}/learn/${r.subject_id}#announcements` }, `${lang}: item ${i + 1}'s subject link`);
-        assert.equal(item.by, byLine(lang, r.author_role as 'publisher' | 'admin', r.created_at), `${lang}: item ${i + 1}'s role and date line`);
-        assert.equal(item.full, null, 'short: not cut');
+      const c = await as(w, SALMA, lang);
+      const doc = await text(c, home(s));
+      assert.ok(!doc.includes('id="announcements"'), `${lang}: no announcements block on the home`);
+      const lines = cardLines(doc);
+      for (const subject of [s.math, s.arabic]) {
+        const first = learnerBlockOf(await text(c, subjectPath(s, subject)))!.items[0];
+        const line = lines.get(subject);
+        assert.ok(line, `${lang}: the ${subject === s.math ? 'Mathematics' : 'Arabic grammar'} card has a line`);
+        assert.equal(line.text, first.text, `${lang}: the line is the subject page's first item`);
+        assert.equal(line.href, `/s/${s.id}/learn/${subject}#announcements`, `${lang}: linking to the subject page's block`);
+        assert.equal(line.links, 1, `${lang}: one link`);
       }
+      assert.equal(lines.get(s.math)!.text, AT2_MATH[3], `${lang}: Mathematics' newest`);
+      assert.equal(lines.get(s.arabic)!.text, AT2_ARABIC, `${lang}: Arabic grammar's`);
     }
   });
 
-  it('W5 AT-2.2 a text over 100 code points is cut at the last blank at or before 100, ends with "…" and the inline annFull link to the same address; with no blank, at 100', async () => {
+  it('W5 AT-2.2 a text over 100 code points is cut at the last blank at or before 100 and ends with "…"; with no blank, at 100', async () => {
     const s = w.school;
     const hadeer = await as(w, HADEER, 'en');
     const long = `${'Word '.repeat(19)}abcdefghij klmnopqrst uvwxyz end of the long announcement.`;
     const solid = 'x'.repeat(150);
     await post(hadeer, publisherAnn(s, s.math), long);
+    for (const lang of ['ar', 'en'] as const) {
+      const line = cardLines(await text(await as(w, SALMA, lang), home(s))).get(s.math)!;
+      const expected = cutText(long).text;
+      assert.equal(line.text, `${expected}…`, `${lang}: cut at the last blank`);
+      assert.ok(codePoints(expected) <= ANN_CUT && long.startsWith(expected) && long[expected.length] === ' ', `${lang}: at a blank, at most 100 code points`);
+    }
     await post(w.admin, adminAnn(s, s.math), solid);
     for (const lang of ['ar', 'en'] as const) {
-      const b = learnerBlockOf(await text(await as(w, SALMA, lang), home(s)))!;
-      const [first, second] = b.items;
-      assert.equal(first.text, `${'x'.repeat(100)}…`, `${lang}: no blank: cut at code point 100`);
-      const expected = cutText(long).text;
-      assert.equal(second.text, `${expected}…`, `${lang}: cut at the last blank`);
-      assert.ok(codePoints(expected) <= ANN_CUT && long.startsWith(expected) && long[expected.length] === ' ', `${lang}: at a blank, at most 100 code points`);
-      for (const item of [first, second]) {
-        const href = `/s/${s.id}/learn/${s.math}#announcements`;
-        assert.deepEqual(item.full, { href, name: W(lang)('annFullFor', { subject: 'Mathematics' }), text: W(lang)('annFull') }, `${lang}: annFull, named for its subject`);
-        assert.match(item.raw, /…\s<a class="ann-full"/, `${lang}: the link follows the "…" in the same paragraph`);
-      }
+      const line = cardLines(await text(await as(w, SALMA, lang), home(s))).get(s.math)!;
+      assert.equal(line.text, `${'x'.repeat(100)}…`, `${lang}: no blank: cut at code point 100`);
     }
     // The rule on characters that must stay whole: combining marks, ZWJ sequences, surrogate pairs.
     const family = '\u{1F468}‍\u{1F469}‍\u{1F467}';
-    for (const [name, unit] of [['combining mark', 'é'], ['ZWJ sequence', family], ['surrogate pair', '\u{1F600}'], ['Arabic with a diacritic', 'بَ']] as const) {
+    for (const [name, unit] of [['combining mark', 'é'], ['ZWJ sequence', family], ['surrogate pair', '\u{1F600}'], ['Arabic with a diacritic', 'بَ']] as const) {
       const sample = unit.repeat(120);
       const { text: cut, cut: was } = cutText(sample);
       assert.ok(was, `${name}: cut`);
@@ -196,24 +191,27 @@ describe('W5 AT-2.2 home: the block after the notice and after Continue (the UX-
     assert.deepEqual(cutText('a'.repeat(100)), { text: 'a'.repeat(100), cut: false }, '100 code points: not cut');
   });
 
-  it('W5 AT-2.2 W5-c dates: 1 and 29 days old show on the home, 31 and 60 do not (they stay on the subject page); none in the last 30 days: no block', async () => {
+  it('W5 AT-2.2 W5-c dates (UX-55 row: any age, as the subject page): the card shows the newest the page shows; all removed: no line', async () => {
     const w2 = await wave4World();
     try {
       const s = w2.school;
       const now = await workerNow(w2.p.url);
       const ids: Record<number, string> = {};
       for (const days of [60, 31, 29, 1]) ids[days] = await storedAt(w2, { space: s.id, subject: s.math, body: `Posted ${days} days ago.`, role: 'publisher', at: now - days * DAY });
-      for (const lang of ['ar', 'en'] as const) {
-        const salma = await as(w2, SALMA, lang);
-        assert.deepEqual(learnerBlockOf(await text(salma, home(s)))!.items.map((i) => i.text), ['Posted 1 days ago.', 'Posted 29 days ago.'], `${lang}: the home shows the 1- and 29-day-old`);
-        assert.deepEqual(blockTexts(learnerBlockOf(await text(salma, subjectPath(s, s.math)))), [1, 29, 31, 60].map((d) => `Posted ${d} days ago.`), `${lang}: the subject page shows all four`);
-      }
+      const check = async (want: string | null, what: string) => {
+        for (const lang of ['ar', 'en'] as const) {
+          const salma = await as(w2, SALMA, lang);
+          const line = cardLines(await text(salma, home(s))).get(s.math);
+          const page = blockTexts(learnerBlockOf(await text(salma, subjectPath(s, s.math))));
+          assert.equal(page[0] ?? null, want, `${lang} ${what}: the subject page's first item`);
+          assert.equal(line?.text ?? null, want, `${lang} ${what}: the card's line`);
+        }
+      };
+      await check('Posted 1 days ago.', 'all four');
       for (const days of [1, 29]) await w2.p.sql(`UPDATE announcement SET removed_at = '${new Date(now).toISOString()}', body = '' WHERE id = '${ids[days]}'`);
-      for (const lang of ['ar', 'en'] as const) {
-        const doc = await text(await as(w2, SALMA, lang), home(s));
-        assert.equal(learnerBlockOf(doc), null, `${lang}: none in the last 30 days: no block`);
-        assert.ok(!doc.includes('id="announcements"') && !doc.includes(W(lang)('annHomeTitle')), `${lang}: no block, no heading`);
-      }
+      await check('Posted 31 days ago.', 'none in the last 30 days');
+      for (const days of [31, 60]) await w2.p.sql(`UPDATE announcement SET removed_at = '${new Date(now).toISOString()}', body = '' WHERE id = '${ids[days]}'`);
+      await check(null, 'all removed');
     } finally {
       await w2.close();
     }
@@ -230,30 +228,37 @@ describe('W5 AT-2.3 everyone in the subject and nobody else; unpublished, unassi
   async function subset(c: { get(p: string): Promise<Response> }, who: string, what: string): Promise<string> {
     const res = await c.get(home(w.school));
     const doc = await res.text();
+    assert.ok(!doc.includes('id="announcements"'), `${who} (${what}): no announcements block on the home (UX-55 row)`);
     if (res.status === 200 && doc.includes('id="my-list"')) {
       const cards = cardSubjects(doc);
-      for (const id of blockSubjects(doc)) assert.ok(cards.has(id), `${who} (${what}): the home block's subject ${id} is one of the cards`);
+      for (const id of blockSubjects(doc)) assert.ok(cards.has(id), `${who} (${what}): the line's subject ${id} is one of the cards`);
     } else {
-      assert.equal(learnerBlockOf(doc), null, `${who} (${what}): no cards, no block`);
+      assert.equal(blockSubjects(doc).size, 0, `${who} (${what}): no cards, no line`);
     }
     return doc;
   }
 
+  // LMS redesign R1a (UX-55 row): the home's announcement read is latestRows over the ids of the same request's cards
+  // (learnerCards, previewCards), on subjectRows' rule and order; wave 5's learnerAnnouncements is gone.
   it('W5 AT-2.3 one rule, one place: the home\'s announcement read uses learnerCards\' readable-subject rule, word for word (src/learning.ts)', () => {
-    const src = readFileSync(fileURLToPath(new URL('../../src/learning.ts', import.meta.url)), 'utf8');
+    const read = (path: string) => readFileSync(fileURLToPath(new URL(`../../src/${path}`, import.meta.url)), 'utf8');
+    assert.doesNotMatch(read('learning.ts'), /learnerAnnouncements|previewAnnouncements/, 'the wave 5 home reads are gone');
+    const ann = read('announcements.ts');
     const body = (fn: string) => {
-      const at = src.indexOf(`export async function ${fn}(`) >= 0 ? src.indexOf(`export async function ${fn}(`) : src.indexOf(`export function ${fn}(`);
-      assert.ok(at >= 0, `${fn} in src/learning.ts`);
-      return src.slice(at, src.indexOf('\n}\n', at));
+      const at = ann.search(new RegExp(`export (async )?function ${fn}\\(`));
+      assert.ok(at >= 0, `${fn} in src/announcements.ts`);
+      return ann.slice(at, ann.indexOf('\n}\n', at));
     };
-    const rule = (fn: string) => {
-      const m = /s\.is_published = 1\s+AND EXISTS \([\s\S]*?gm\.user_id = \?\)\)\)/.exec(body(fn));
-      assert.ok(m, `${fn}: the readable-subject rule`);
-      return m[0].replace(/\s+/g, ' ');
-    };
-    assert.equal(rule('learnerAnnouncements'), rule('learnerCards'), 'the same rule text');
-    assert.match(body('learnerAnnouncements'), /WHERE n\.space_id = \? AND n\.removed_at IS NULL AND n\.created_at >= \?/, 'not removed, within the 30 days');
-    assert.doesNotMatch(body('learnerAnnouncements'), /\bIN \(\?/, 'no list of subject ids');
+    for (const fn of ['subjectRows', 'latestRows']) {
+      assert.match(body(fn), /removed_at IS NULL/, `${fn}: not removed`);
+      assert.match(body(fn), /ORDER BY (n\.)?created_at DESC, (n\.)?id DESC/, `${fn}: newest first, the same order`);
+    }
+    const app = read('app.ts');
+    const calls = [...app.matchAll(/latestRows\(c\.get\('db'\), view\.id, cards\.map\(\(x\) => x\.id\)\)/g)];
+    assert.equal(calls.length, (app.match(/latestRows\(/g) ?? []).length, 'every call reads for the same request\'s cards');
+    assert.equal(calls.length, 2, 'the learner\'s cards and the preview\'s cards');
+    assert.match(app, /const cards = await learnerCards\([^;]*;[\s\S]{0,700}latestRows\(c\.get\('db'\), view\.id, cards\.map/, 'the learner\'s: learnerCards\' cards');
+    assert.match(app, /const cards = await previewCards\([^;]*;[\s\S]{0,700}latestRows\(c\.get\('db'\), view\.id, cards\.map/, 'the preview\'s: previewCards\' cards');
   });
 
   it('W5 AT-2.3 Salma, Omar C and Rana Test (class only) see the same Mathematics announcements; Karim Test only Arabic grammar\'s', async () => {
@@ -265,12 +270,12 @@ describe('W5 AT-2.3 everyone in the subject and nobody else; unpublished, unassi
         assert.deepEqual(blockTexts(b), [...AT2_MATH].reverse(), `${who} ${lang}`);
         blocks.push(b.block);
         const doc = await subset(c, who, lang);
-        for (const item of learnerBlockOf(doc)!.items) assert.ok([s.math, s.arabic].includes(item.subject!.id), `${who} ${lang}: own subjects only`);
+        for (const id of blockSubjects(doc)) assert.ok([s.math, s.arabic].includes(id), `${who} ${lang}: own subjects only`);
       }
       assert.ok(blocks.every((b) => b === blocks[0]), `${lang}: the same block for the three`);
       const karim = await as(w, KARIM5, lang);
       const kHome = await subset(karim, 'Karim Test', lang);
-      assert.deepEqual(learnerBlockOf(kHome)!.items.map((i) => [i.subject!.id, i.text]), [[s.arabic, AT2_ARABIC]], `${lang}: Karim Test's home: Arabic grammar's only`);
+      assert.deepEqual([...cardLines(kHome).values()].map((l) => [l.subject, l.text]), [[s.arabic, AT2_ARABIC]], `${lang}: Karim Test's home: Arabic grammar's only`);
       assert.equal((await karim.get(subjectPath(s, s.math))).status, 403, `${lang}: Karim Test: Mathematics is today's 403`);
       assert.deepEqual(blockTexts(learnerBlockOf(await text(karim, subjectPath(s, s.arabic)))), [AT2_ARABIC], `${lang}: Karim Test: the Arabic grammar page`);
       // Rana Test's home: Mathematics only (her one subject).
@@ -360,11 +365,11 @@ describe('W5 AT-2.4 safe text: markup, markdown and entities shown as literal te
       assert.equal(res.headers.get('content-security-policy'), headersBefore.page.get('content-security-policy'), `${lang}: today's Content-Security-Policy`);
       assert.equal(res.headers.get('cache-control'), 'no-store');
       const homeRes = await c.get(home(s));
-      const h = learnerBlockOf(await homeRes.text())!;
-      for (const item of h.items) {
-        assert.ok(!/<(script|b|img|iframe)\b/i.test(item.raw), `${lang} home: no element made from a text`);
-        assert.deepEqual([...item.raw.matchAll(/<a\b[^>]*>/g)].map((m) => /class="([^"]+)"/.exec(m[0])![1]), item.full ? ['ann-full'] : [], `${lang} home: the only link is annFull`);
-      }
+      // LMS redesign R1a (UX-55 row): the home shows the newest as the Mathematics card's line: one link, the text one escaped text node.
+      const line = cardLines(await homeRes.text()).get(s.math)!;
+      assert.ok(!/<(script|b|img|iframe)\b/i.test(line.raw), `${lang} home: no element made from a text`);
+      assert.equal(line.raw, escaped(line.text), `${lang} home: the line's text is one escaped text node`);
+      assert.equal(line.links, 1, `${lang} home: the line's one link`);
       assert.equal(homeRes.headers.get('content-security-policy'), headersBefore.home.get('content-security-policy'), `${lang} home: today's Content-Security-Policy`);
     }
   });
@@ -377,8 +382,9 @@ describe('W5 AT-2.4 safe text: markup, markdown and entities shown as literal te
         await tab.page.goto(`${w.p.url}${path}`);
         const fold = tab.page.locator('#announcements details summary');
         if (await fold.count()) await fold.first().click();
+        // LMS redesign R1a (UX-55 row): on the home, the card's one-line announcement (cut with an ellipsis) stays inside its box.
         const m = await tab.page.evaluate(() => {
-          const b = document.getElementById('announcements')!;
+          const b = (document.getElementById('announcements') ?? document.querySelector('#my-list .ann'))!;
           return { block: [b.scrollWidth, b.clientWidth], doc: [document.documentElement.scrollWidth, document.documentElement.clientWidth] };
         });
         assert.ok(m.block[0] <= m.block[1], `${path}: the block does not overflow (${m.block})`);
@@ -411,7 +417,9 @@ describe('W5 AT-2.5 kits and languages: the kit\'s role words, every new string 
       for (const lang of ['ar', 'en'] as const) {
         const t = W(lang, sp.kit);
         const salma = await as(w, SALMA, lang);
-        for (const [where, path, heading] of [['subject page', subjectPath(sp.s, sp.s.math), 'annTitle'], ['home', home(sp.s), 'annHomeTitle']] as const) {
+        // LMS redesign R1a: the home has no block (UX-55 row; the card's line is asserted in AT-2.2); the subject page's
+        // dates are S4's (UX-16a row), in the <time> element with the stored instant.
+        for (const [where, path, heading] of [['subject page', subjectPath(sp.s, sp.s.math), 'annTitle']] as const) {
           const b = learnerBlockOf(await text(salma, path))!;
           assert.ok(b, `${sp.kit} ${lang} ${where}: the block`);
           assert.equal(b.heading, t(heading), `${sp.kit} ${lang} ${where}: ${heading}`);
@@ -419,8 +427,8 @@ describe('W5 AT-2.5 kits and languages: the kit\'s role words, every new string 
           assert.equal(items.length, 2, `${sp.kit} ${lang} ${where}: both notes`);
           for (const [i, item] of items.entries()) {
             const r = rows[i];
-            assert.equal(item.by, t('annByLine', { role: t(r.author_role as 'publisher' | 'admin'), date: utcDate(Date.parse(r.created_at)) }), `${sp.kit} ${lang} ${where}: the kit's role word`);
-            assert.ok(b.block.includes(`<time datetime="${r.created_at}">${utcDate(Date.parse(r.created_at))}</time>`), `${sp.kit} ${lang} ${where}: the date as today's dated pages write it`);
+            assert.equal(item.by, t('annByLine', { role: t(r.author_role as 'publisher' | 'admin'), date: learnerDay(r.created_at, lang) }), `${sp.kit} ${lang} ${where}: the kit's role word`);
+            assert.ok(b.block.includes(`<time datetime="${r.created_at}">${learnerDay(r.created_at, lang)}</time>`), `${sp.kit} ${lang} ${where}: the date as learner pages write it (S4)`);
           }
           if (lang === 'en') {
             assert.ok(items[0].by.startsWith(`${sp.en[1]} · `), `${sp.kit} en ${where}: ${sp.en[1]}`);
@@ -431,7 +439,7 @@ describe('W5 AT-2.5 kits and languages: the kit\'s role words, every new string 
     }
     // The Arabic values are the ui.ts values (the single source, ux-plan UX-56): read from the file itself.
     const ui = readFileSync(fileURLToPath(new URL('../../src/i18n/ui.ts', import.meta.url)), 'utf8');
-    for (const key of ['annTitle', 'annHomeTitle', 'annOlder', 'annFull', 'annFullFor', 'annByLine'] as const) {
+    for (const key of ['annTitle', 'annOlder', 'annByLine'] as const) { // R1a (UX-55 row): annHomeTitle, annFull, annFullFor went with the home block
       assert.ok(ui.includes(`${key}: '`), `${key} is a ui.ts key`);
       // annByLine is "<role> · <date>" in both languages; every other new learner string is Arabic in Arabic.
       if (key !== 'annByLine') assert.match(W('ar')(key, { n: '1', subject: 'x' }), /[؀-ۿ]/, `${key}: its Arabic value`);

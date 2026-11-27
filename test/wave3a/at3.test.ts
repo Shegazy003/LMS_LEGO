@@ -137,7 +137,7 @@ async function clickEverything(page: Page, j: Journey, who: string, path: string
   for (const c of CONTROLS) {
     const e = element(doc, c.open);
     if (!e) continue;
-    const sel = { brand: 'a.brand', 'sign-out': '#signout', 'my-account': '#nav-account', 'got-it': '#notice-fold button', done: '#done-control' }[c.kind];
+    const sel = { brand: 'a.brand', 'sign-out': '#signout', 'my-account': '#nav-account', 'got-it': '#notice-fold button', done: '#done-control', 'see-all': '#todo-all' /* R1a S9, UX-98 */ }[c.kind];
     const target = page.locator(sel).first();
     // Chromium animates the scroll a Space press starts: a click aimed while it moves can land on the
     // element below (the done control sits right above Next, LMS wave 2). Wait until the page is still.
@@ -227,6 +227,9 @@ async function run(): Promise<Journey> {
     const base = world.p.url;
     ctx.on('request', (r) => {
       if (!r.url().startsWith(base)) return;
+      // LMS redesign R1a (S3, UX-95): the font files are static assets, answered before the Worker (as Cloudflare
+      // does), so they are no Worker request and never reach the usage count.
+      if (new URL(r.url()).pathname.startsWith('/assets/')) return;
       j.requests++;
       j.steps.push({ who: name, method: r.method(), url: r.url().slice(base.length), preview: /\/preview(?=[/?#]|$)/.test(r.url()), setCookie: false, cacheControl: null });
     });
@@ -248,7 +251,8 @@ async function run(): Promise<Journey> {
     const start = owner ? ownerPreview(world.school) : previewHome(world.school, 'home');
     await visit(start);
     if (!owner) {
-      assert.equal(await page.locator('#announcements').count(), 1, `${name}: the preview home shows the announcements (W5 AT-3.4e)`);
+      // LMS redesign R1a (UX-55 row): the home's announcements block became each card's latest-announcement line.
+      assert.ok(await page.locator('#my-list li[data-subject] .ann').count() >= 1, `${name}: the preview home shows the announcements (W5 AT-3.4e; R1a UX-55 row: the card lines)`);
       const titles = await hrefs(page, 'li.card[data-subject] h2 a');
       const starts = await hrefs(page, 'li.card[data-subject] a.start');
       for (const t of titles) {

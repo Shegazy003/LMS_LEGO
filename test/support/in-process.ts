@@ -25,7 +25,7 @@ export interface StatementHooks {
   seen?(sql: string, params: Param[]): void;
 }
 
-function d1Over(sqlite: DatabaseSync, hooks: StatementHooks): D1Database {
+export function d1Over(sqlite: DatabaseSync, hooks: StatementHooks): D1Database {
   const exec = (sql: string, params: Param[]) => {
     const [s, p] = hooks.rewrite ? hooks.rewrite(sql, params) : [sql, params];
     hooks.seen?.(s, p);

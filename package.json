@@ -83,7 +83,10 @@
     "typecheck": "tsc --noEmit",
     "dev": "wrangler d1 migrations apply lms-lego --local && wrangler dev",
     "dev:test": "wrangler d1 migrations apply lms-lego --local --env test && wrangler dev --env test",
-    "test:wave3b": "node --test --test-concurrency=1 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./test/support/github-reporter.mjs --test-reporter-destination=stdout"
+    "test:wave3b": "node --test --test-concurrency=1 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./test/support/github-reporter.mjs --test-reporter-destination=stdout",
+    "test:redesign": "node --test --test-concurrency=1 --test-reporter=spec --test-reporter-destination=stdout --test-reporter=./test/support/github-reporter.mjs --test-reporter-destination=stdout",
+    "build:assets": "node tools/build-assets.mjs",
+    "seed:demo": "node tools/seed-demo.ts"
   },
   "engines": {
     "node": ">=22"
@@ -93,6 +96,7 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "5.20261012.1",
+    "@fontsource/ibm-plex-sans-arabic": "5.3.0",
     "playwright": "1.63.0",
     "typescript": "6.0.3",
     "wrangler": "4.149.0"

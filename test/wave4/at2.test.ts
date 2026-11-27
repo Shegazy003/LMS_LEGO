@@ -277,10 +277,12 @@ describe('W4 AT-2.5 home never leads into a lock: world W4-c offers "Continue: C
       const salma = await as(w, SALMA, 'en');
       const read = async () => {
         const html = await (await salma.get(home(s))).text();
-        const area = /<a id="continue-link"[^>]*href="([^"]+)"[^>]*><span class="line1">([\s\S]*?)<\/span>/.exec(html)!;
+        // LMS redesign R1a (UX-34 row, UX-97, UX-99): the hero link holds one line; the card action shows its word
+        // and carries «<word>: <title>» as its accessible name.
+        const area = /<a id="continue-link"[^>]*href="([^"]+)"[^>]*><span>([\s\S]*?)<\/span>/.exec(html)!;
         const at = html.indexOf(`data-subject="${s.math}"`);
         const card = html.slice(at, html.indexOf('</li>', at));
-        const action = /<a class="button start" data-action="([^"]+)" href="([^"]+)"><span>([\s\S]*?)<\/span><\/a>/.exec(card)!;
+        const action = /<a class="button start go-card" data-action="([^"]+)" href="([^"]+)" aria-label="([^"]*)">/.exec(card)!;
         return { area: [inline(area[2]), area[1]], card: [action[1], inline(action[3]), action[2]], locked: /class="lock-tag"|data-locked|id="order-box"/.test(html) };
       };
       const toPercent = lessonPath(s, L(s, 'What is a percent'));

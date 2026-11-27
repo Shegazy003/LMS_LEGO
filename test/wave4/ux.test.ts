@@ -312,7 +312,8 @@ describe('UX-46 locked lesson page', { concurrency: false }, () => {
     const outlineReason = /<span class="lock-reason">([\s\S]*?)<\/span>(?=<\/span>)/.exec(summary)?.[1].replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').trim();
     assert.equal((await page.innerText('#lock-reason')).trim(), outlineReason, `${label}: the reason equals the outline's`);
     assert.equal((await page.innerText('h1#lesson-title')).trim(), title, `${label}: the lesson title`);
-    assert.ok(['', 'body.'].includes(await focused(page)), `${label}: a normal page load (no focus move)`);
+    // LMS redesign R1a (UX-96): the body carries has-bar on learner pages with the bottom bar.
+    assert.ok(['', 'body.', 'body.has-bar'].includes(await focused(page)), `${label}: a normal page load (no focus move)`);
   }
 
   it('UX-46 DOM order, absent blocks, sizes, the Go to target and the reason equal to the outline\'s for a lesson in Decimals, Percent and Review', async () => {

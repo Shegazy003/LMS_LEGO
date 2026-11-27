@@ -29,6 +29,7 @@ import { BASE_ROOT, BASE_SHA, CLOCKS, capture, captureOn, differences, readFixtu
 import { AMAL, AT8, HADEER, ID, MONA, OMAR, OPENINGS, OWNER8, RANA, SALMA, adminOf, editorOf, openPage, openPost, seedW8, w8World, type Twin, type W8World } from './world.ts';
 import { learnerData, rowCounts } from './learner.ts';
 import { Client } from '../support/http.ts';
+import { r1aNormal } from '../redesign/base.ts';
 
 const repo = fileURLToPath(new URL('../..', import.meta.url));
 const MIGRATION = '0017_chapter_opening.sql';
@@ -42,9 +43,49 @@ function baseIsThere(): void {
 /** a41f7d8's live captures of this run, per clock (for the first-difference hint). */
 const live = new Map<ClockKey, Captured[]>();
 
-function same(what: string, got: Captured[], clock: ClockKey): void {
-  const diff = differences(got, readFixture(clock), live.get(clock));
-  assert.equal(diff.join('\n'), '', `${what}: identical (N1) to a41f7d8's stored responses at ${clock}`);
+/** a41f7d8's capture at one clock, recaptured here if the recapture test did not run first, and checked against the stored fixture. */
+async function baseAt(clock: ClockKey): Promise<Captured[]> {
+  let got = live.get(clock);
+  if (!got) {
+    baseIsThere();
+    got = await capture({ root: BASE_ROOT, dates: false, atMs: CLOCKS[clock] });
+    live.set(clock, got);
+  }
+  assert.equal(differences(got, readFixture(clock)).join('\n'), '', `a41f7d8 at ${clock}: the recapture equals the stored fixture`);
+  return got;
+}
+
+/** LMS redesign R1a (PIL-325; rule rows UX-3, UX-1 look, UX-34/UX-54/UX-62, UX-55, UX-62/UX-63, UX-16a): every page's
+ * shell changed, so the candidate is compared with a41f7d8's live capture (itself equal to the stored fixture, byte for
+ * byte, above), each response by N1 and then the R1a normaliser on both sides (test/redesign/base.ts): same request,
+ * status and headers, and the same body after r1aNormal. */
+function r1aDifferences(got: Captured[], base: Captured[], clock: ClockKey): string[] {
+  const today = new Date(CLOCKS[clock]).toISOString().slice(0, 10);
+  const out: string[] = [];
+  if (got.length !== base.length) out.push(`${got.length} responses, a41f7d8 ${base.length}`);
+  for (let i = 0; i < Math.min(got.length, base.length) && out.length < 8; i++) {
+    const a = got[i];
+    const b = base[i];
+    const what = `#${a.n} ${a.who} ${a.method} ${a.path}`;
+    if (a.path !== b.path || a.who !== b.who) out.push(`${what}: the request list differs (${b.who} ${b.path})`);
+    else if (a.status !== b.status) out.push(`${what}: status ${a.status}, a41f7d8 ${b.status}`);
+    else if (JSON.stringify(a.headers) !== JSON.stringify(b.headers)) out.push(`${what}: headers ${JSON.stringify(a.headers)}, a41f7d8 ${JSON.stringify(b.headers)}`);
+    else {
+      const x = r1aNormal(b.body.toString('utf8'), today);
+      const y = r1aNormal(a.body.toString('utf8'), today);
+      if (x !== y) {
+        let k = 0;
+        while (k < x.length && x[k] === y[k]) k++;
+        out.push(`${what}: body at ${k}:\n a41f7d8:   ${JSON.stringify(x.slice(Math.max(0, k - 100), k + 140))}\n candidate: ${JSON.stringify(y.slice(Math.max(0, k - 100), k + 140))}`);
+      }
+    }
+  }
+  return out;
+}
+
+async function same(what: string, got: Captured[], clock: ClockKey): Promise<void> {
+  const diff = r1aDifferences(got, await baseAt(clock), clock);
+  assert.equal(diff.join('\n'), '', `${what}: identical (N1, then the R1a normaliser on both sides) to a41f7d8's responses at ${clock}`);
 }
 
 // ------------------------------------------------------------------ AT-5.1 ----
@@ -61,11 +102,11 @@ describe('W8 AT-5.1 every 3.4 response is identical (N1) to the stored a41f7d8 f
   });
 
   it('W8 AT-5.1 W8-0 (no date stored) on the candidate, at 2026-12-09 and 2027-01-01', async () => {
-    for (const clock of ['d9', 'y2027'] as const) same(`W8-0 at ${clock}`, await capture({ dates: false, atMs: CLOCKS[clock] }), clock);
+    for (const clock of ['d9', 'y2027'] as const) await same(`W8-0 at ${clock}`, await capture({ dates: false, atMs: CLOCKS[clock] }), clock);
   });
 
   it('W8 AT-5.1 W8-a with every date passed (2027-01-01) on the candidate', async () => {
-    same('W8-a at 2027-01-01', await capture({ dates: true, atMs: CLOCKS.y2027 }), 'y2027');
+    await same('W8-a at 2027-01-01', await capture({ dates: true, atMs: CLOCKS.y2027 }), 'y2027');
   });
 
   it('W8 AT-5.1 self-check: one changed byte, status or header is found', () => {
@@ -191,7 +232,9 @@ describe('W8 AT-5.3 migration 0017 is additive; a41f7d8\'s code runs on the migr
         const pin = await fetch(old.worker.url + '/__test/clock-fixed', { method: 'POST', headers: { 'content-type': 'application/json', origin: old.worker.url }, body: JSON.stringify({ atMs: CLOCKS[clock] }) });
         assert.equal(pin.status, 200);
         const o = old;
-        same(`a41f7d8 on the migrated database at ${clock}`, await captureOn(o.worker.url, () => o.worker.settle()), clock);
+        // a41f7d8's own code: the stored fixture, byte for byte by N1 (no R1a normalising: no R1a code runs here).
+        const got = await captureOn(o.worker.url, () => o.worker.settle());
+        assert.equal(differences(got, readFixture(clock), live.get(clock)).join('\n'), '', `a41f7d8 on the migrated database at ${clock}: identical (N1) to a41f7d8's stored responses`);
       } finally {
         await old?.stop();
         await w.close();
@@ -329,12 +372,16 @@ describe('W8 AT-5.2 (W8-1b) every 3.4 request makes at most a41f7d8\'s D1 statem
         const reads = (l: { stmts: Stmt[] }[]) => l.map((r) => r.stmts.filter((s) => READ.test(s.sql)));
         const rowsCand = await rowsReadOnLocalD1(fresh, reads(cand));
         const rowsBase = await rowsReadOnLocalD1(fresh, reads(base));
+        // LMS redesign R1a (UX-55 row, S13): the cards' latest-announcement line is one read of every shown announcement of the
+        // learner's subjects (any age, as the subject page shows them); its rows are allowed on top, nothing else (budget: AT-R1a.6a).
+        const LATEST_ANN = /PARTITION BY n\.subject_id ORDER BY n\.created_at DESC/;
+        const rowsAnn = await rowsReadOnLocalD1(fresh, reads(cand).map((l) => l.filter((s) => LATEST_ANN.test(s.sql))));
         rmSync(fresh, { force: true });
         const lines: string[] = [];
         for (let i = 0; i < cand.length; i++) {
-          lines.push(`${cand[i].label}: ${cand[i].stmts.length}/${base[i].stmts.length} statements, ${rowsCand[i]}/${rowsBase[i]} rows read`);
+          lines.push(`${cand[i].label}: ${cand[i].stmts.length}/${base[i].stmts.length} statements, ${rowsCand[i]}/${rowsBase[i]} rows read (${rowsAnn[i]} by the latest-announcement read)`);
           assert.ok(cand[i].stmts.length <= base[i].stmts.length, `${cand[i].label}: ${cand[i].stmts.length} statements, a41f7d8 ${base[i].stmts.length}`);
-          assert.ok(rowsCand[i] <= rowsBase[i], `${cand[i].label}: ${rowsCand[i]} rows read, a41f7d8 ${rowsBase[i]}`);
+          assert.ok(rowsCand[i] <= rowsBase[i] + rowsAnn[i], `${cand[i].label}: ${rowsCand[i]} rows read, a41f7d8 ${rowsBase[i]} (+${rowsAnn[i]} latest-announcement rows allowed)`);
           for (const s of cand[i].stmts) assert.ok(s.params.length <= 100, `${cand[i].label}: at most 100 bound parameters (${s.params.length})`);
         }
         t.diagnostic(`AT-5.2 candidate/a41f7d8 per request:\n${lines.join('\n')}`);

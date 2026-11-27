@@ -11,6 +11,7 @@
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync } from 'node:fs';
+import { showDate } from '../../src/format.ts';
 import { fileURLToPath } from 'node:url';
 import { chromium, type Browser } from 'playwright';
 import { assertPage, follow, phone, readable, shot, signIn, submit } from '../support/browser.ts';
@@ -89,7 +90,8 @@ describe('AT-12a a published mark is corrected with a reason; the learner and th
       const html = await res.text();
       const quiz = resultCards(html).find((c) => c.exam === 'Quiz 1');
       assert.equal(quiz?.score, '16 / 20', path);
-      assert.equal(quiz?.corrected, `صُحّحت في ${day}`, `${path}: Corrected on the day of the correction`);
+      // LMS redesign R1a (UX-16a row): the day as S4 shows it on learner pages.
+      assert.equal(quiz?.corrected, `صُحّحت في ${showDate(day, 'ar', isoDay(Date.now()))}`, `${path}: Corrected on the day of the correction`);
       assert.ok(!html.includes('14 / 20') && !standsAlone(visibleText(html), '14'), `${path}: the previous value is not shown`);
       assert.ok(!html.includes('Question 3'), `${path}: the reason is not shown to the learner`);
     }
@@ -131,7 +133,7 @@ describe('AT-12a a published mark is corrected with a reason; the learner and th
     const a = await as(w, A);
     assert.equal((await a.post('/account/language', { lang: 'en' })).status, 303);
     const en = resultCards(await (await a.get(`/s/${w.spaceId}/results`)).text()).find((x) => x.exam === 'Quiz 1');
-    assert.ok(en?.corrected.startsWith('Corrected on 20'), `English: ${en?.corrected}`);
+    assert.ok(en?.corrected.startsWith('Corrected on ') && /\d/.test(en.corrected) && !/\d{4}-\d{2}-\d{2}/.test(en.corrected), `English (R1a: S4 date): ${en?.corrected}`);
   });
 
   it('in a real browser at phone width: A reads the corrected result, English', async () => {

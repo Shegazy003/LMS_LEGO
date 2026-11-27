@@ -14,15 +14,25 @@ import type { Label, Lang, LabelKey } from '../labels.ts';
 import type { CardProgress, ChapterLocks, ContinueArea, LearnerCard, LessonRow, LockReason, MaterialKind, MaterialRow, OutlineChapter, SequenceStep, WaitingFor } from '../learning.ts';
 import { externalUrl } from '../links.ts';
 import type { NoticeForm } from '../notice.ts';
+import { cutText } from '../announcements.ts';
+import { dayLabel } from '../format.ts';
+import { icon, ring } from '../icons.ts';
+import { subjectVars } from '../look.ts';
 import { activityNotice } from './activity.ts';
-import { layout, marked, sentence, type Html } from './layout.ts';
+import { dateText, layout, marked, sentence, type Html } from './layout.ts';
 import { INERT, learnerUrl, spaceHeader, spaceNav, type NavCurrent, type SpaceView } from './space.ts';
 
-export function spacePage(t: Label, lang: Lang, space: SpaceView, title: string, body: Html, opts: { current?: NavCurrent; wide?: boolean } = {}): Html {
+/** A page inside a space. LMS redesign R1a (S2, S8, S9): every one in the school colour; `bar` for the learner and
+ * guardian pages, whose navigation is a bottom bar below 960 px (staff pages keep it in the header). */
+export function spacePage(t: Label, lang: Lang, space: SpaceView, title: string, body: Html, opts: { current?: NavCurrent; wide?: boolean; bar?: boolean; mainClass?: string } = {}): Html {
   // LMS wave 3a (section 7.2): a preview's title starts with "Preview · ", and its banner and bottom line frame the page.
   const shown = space.preview ? `${t('previewTitlePrefix')} · ${title}` : title;
   const preview = space.preview ? { banner: space.preview.banner, end: space.preview.end } : undefined;
-  return layout({ t, lang, title: shown, signedIn: true, wide: opts.wide, header: html`${spaceHeader(space)}${spaceNav(t, space, opts.current)}`, body, preview });
+  const bar = Boolean(opts.bar);
+  return layout({
+    t, lang, title: shown, signedIn: true, wide: opts.wide, header: html`${spaceHeader(space)}${spaceNav(t, space, opts.current, bar)}`, body, preview,
+    school: space.primaryColor, bar, mainClass: opts.mainClass,
+  });
 }
 
 // Every learner link goes through learnerUrl, so in a preview it leads to the matching preview address (wave 3a, section 8.2).
@@ -39,130 +49,187 @@ function lessonCount(t: Label, lang: Lang, n: number): Html[] | string[] {
     : sentence(t, 'lessonCount', { n: String(n) });
 }
 
-/** One subject card (section 4.1, UX-1): its title links to the outline, the teacher line only with a publisher, the count, and Start, its one action.
- * LMS wave 2, W2-2 (section 8.3, UX-34): once the learner marked one of its lessons, "Done: N of M <lessons>" (or "All done: M <lessons>")
- * in place of the count, and "Continue: <its target>" (or "Read again: <first lesson>") in place of Start; an unstarted card is exactly today's. */
-function subjectCard(t: Label, lang: Lang, space: SpaceView, card: LearnerCard, p?: CardProgress): Html {
-  const teacher = card.publisherName ? html`<p class="teacher">${sentence(t, 'teacherLine', { publisher: t('publisher'), name: card.publisherName })}</p>` : '';
+/** A card's latest announcement (LMS redesign R1a, UX-55 row): the first item its subject page shows this learner. */
+export interface CardAnnouncement {
+  id: string;
+  body: string;
+}
+
+/** The colour pairs of a subject surface (S2, S7: the automatic colour until a teacher chooses one in wave R1b). */
+const subjStyle = (subjectId: string) => subjectVars(subjectId);
+/** The school colour as a subject surface (the hero with no subject: first time, all done). */
+const SCHOOL_AS_SUBJECT = '--subj:var(--brand);--on-subj:var(--on-brand);--subj-strong:var(--brand-strong);--subj-tint:var(--brand-tint)';
+
+/** One subject card (section 4.1, UX-1; LMS redesign R1a, UX-99): the subject's colour band and icon tile, its
+ * title linking to the outline, the teacher line only with a publisher, a decorative ring beside the progress
+ * text (UX-29) and one action («ابدأ» / «تابع», named with the lesson), then the latest-announcement line.
+ * LMS wave 2, W2-2 (section 8.3, UX-34): once the learner marked one of its lessons, "Done: N of M <lessons>" (or
+ * "All done: M <lessons>") in place of the count, and Continue (or Read again) in place of Start. No ring or
+ * progress in a preview (UX-31). */
+function subjectCard(t: Label, lang: Lang, space: SpaceView, card: LearnerCard, p?: CardProgress, ann?: CardAnnouncement): Html {
+  const teacher = card.publisherName ? html`<p class="teacher by">${sentence(t, 'teacherLine', { publisher: t('publisher'), name: card.publisherName })}</p>` : '';
   // LMS wave 8 (L2, UX-90): when what is left waits for an opening date, the card says so as plain text, never as a link.
   const waiting = p ? (p.target ? null : p.waiting ?? null) : null;
   const go = waiting ? null : p?.target ?? card.first;
-  const work = p && waiting
-    ? html`<p class="count done-count" data-done="card">${doneLine(t, lang, p.done, card.count)}</p>
-  ${openNextLine(t, waiting)}`
+  const action = (kind: 'start' | 'continue' | 'read-again', lesson: { id: string; title: string }) => {
+    const word = t(kind === 'start' ? 'cardStart' : kind === 'continue' ? 'cardContinue' : 'cardReadAgain');
+    const name = t(kind === 'start' ? 'startLesson' : kind === 'continue' ? 'cardContinueName' : 'readAgain', { title: lesson.title });
+    return html`<a class="button start go-card"${kind === 'start' ? '' : html` data-action="${kind}"`} href="${lessonHref(space, lesson.id)}" aria-label="${name}">${word}</a>`;
+  };
+  const progress = p ? html`<p class="count done-count" data-done="card">${doneLine(t, lang, p.done, card.count)}</p>` : html`<p class="count muted">${lessonCount(t, lang, card.count)}</p>`;
+  const ringed = (done: number) => (space.preview ? '' : ring(done, card.count));
+  const side = p && waiting
+    ? html`${ringed(p.done)}${progress}${openNextLine(t, lang, waiting, undefined, 'wait')}`
     : p && go
-    ? html`<p class="count done-count" data-done="card">${doneLine(t, lang, p.done, card.count)}</p>
-  <a class="button start" data-action="${p.target ? 'continue' : 'read-again'}" href="${lessonHref(space, go.id)}"><span>${sentence(t, p.target ? 'continueLink' : 'readAgain', { title: go.title })}</span></a>`
+    ? html`${ringed(p.done)}${progress}${action(p.target ? 'continue' : 'read-again', go)}`
     : p
-    ? html`<p class="count done-count" data-done="card">${doneLine(t, lang, p.done, card.count)}</p>`
+    ? html`${ringed(p.done)}${progress}`
     : card.first
-    ? html`<p class="count muted">${lessonCount(t, lang, card.count)}</p>
-  <a class="button start" href="${lessonHref(space, card.first.id)}"><span>${sentence(t, 'startLesson', { title: card.first.title })}</span></a>`
+    ? html`${ringed(0)}${progress}${action('start', card.first)}`
     : card.next
-    ? html`<p class="count muted">${lessonCount(t, lang, card.count)}</p>
-  ${openNextLine(t, card.next)}`
+    ? html`${progress}${openNextLine(t, lang, card.next, undefined, 'wait')}`
     : html`<p class="none muted">${t('noLessonsYet')}</p>`;
-  return html`<li class="card" data-subject="${card.id}">
-  <h2 class="title"><a href="${subjectHref(space, card.id)}"><bdi>${card.title}</bdi></a></h2>
-  ${teacher}
-  ${work}
+  const line = ann ? annLine(t, space, card.id, ann) : '';
+  return html`<li class="card subj" data-subject="${card.id}" style="${subjStyle(card.id)}">
+  <span class="band" aria-hidden="true"></span>
+  <div class="body"><span class="sicon">${icon('book')}</span><h2 class="title"><a href="${subjectHref(space, card.id)}"><bdi>${card.title}</bdi></a></h2>
+  ${teacher}</div>
+  <div class="side">${side}</div>${line}
 </li>`;
 }
 
-const CONTINUE_CSS = `.continue h2{margin:0 0 8px;font-size:1.25rem}
-.continue p{margin:0 0 8px}
-.continue a.go{margin-top:8px}
-.continue .line1,.continue .line2{overflow-wrap:anywhere}`;
+/** The announcement line of a card (UX-55 row, UX-99): bell icon, the text cut at 100 code points by the rule of the subject block, one link to the announcements of the subject page. */
+function annLine(t: Label, space: SpaceView, subjectId: string, ann: CardAnnouncement): Html {
+  const cut = cutText(ann.body);
+  return html`
+  <p class="ann" data-ann="${ann.id}">${icon('bell')}<span class="sr-only">${t('latestAnnouncement')}: </span><a href="${subjectHref(space, subjectId)}#announcements" dir="auto">${cut.text}${cut.cut ? '…' : ''}</a></p>`;
+}
 
-/** "Continue where you stopped" (LMS wave 2, W2-2, section 8, UX-34): after the
- * greeting and the notice, before the cards, on a home with at least one card (with
- * nothing assigned, the home stays wave 1's empty home: greeting, heading and the
- * "nothing assigned" line only, as is the owner's preview). First time (and in every preview):
- * how it works, no link; with a target: the subject, its progress and one link
- * to the lesson (its chapter on a second line); everything started done: one
- * line, no link. A plain link: opening it is a normal open. */
+/** "Continue where you stopped" (LMS wave 2, W2-2, section 8, UX-34; LMS redesign R1a, UX-97): the hero on the
+ * target subject's colour, after the greeting and the notice, before the due strip. First time (and in every
+ * preview): how it works, no link; with a target: the subject · chapter kicker, the lesson, its progress and one
+ * link to the lesson; waiting (L2, UX-90): what it waits for as plain text beside a calendar icon, no link;
+ * everything started done: one line, no link. A plain link: opening it is a normal open. */
 function continueArea(t: Label, lang: Lang, space: SpaceView, area: ContinueArea): Html {
   let inner: Html;
+  let style = SCHOOL_AS_SUBJECT;
+  const kick = (card: LearnerCard, chapterTitle: string) =>
+    html`<p id="continue-subject" class="kick">${icon('book')}<span>${sentence(t, 'heroLesson', { subjectTitle: card.title, chapterTitle })}</span></p>`;
   if (area.kind === 'target') {
-    const forward = lang === 'ar' ? '←' : '→';
-    inner = html`<p id="continue-subject"><span class="muted">${t('subject')}:</span> <bdi>${area.card.title}</bdi></p>
+    style = subjStyle(area.card.id);
+    inner = html`${kick(area.card, area.target.chapterTitle)}
+<p class="hero-title"><bdi>${area.target.title}</bdi></p>
 <p id="continue-progress" data-done="area">${doneLine(t, lang, area.done, area.card.count)}</p>
-<a id="continue-link" class="go next" href="${lessonHref(space, area.target.id)}"><span class="line1">${sentence(t, 'continueLink', { title: area.target.title })}</span><span class="line2">${sentence(t, 'chapterLine', { title: area.target.chapterTitle })}</span><span class="arrow" aria-hidden="true">${forward}</span></a>`;
+${ring(area.done, area.card.count, 62)}
+<a id="continue-link" class="hero-btn" href="${lessonHref(space, area.target.id)}"><span>${sentence(t, 'continueLink', { title: area.target.title })}</span>${icon('chev', 'flip')}</a>`;
   } else if (area.kind === 'waiting') {
     // LMS wave 8 (L2, UX-90): the subject and its progress, then what it waits for, with no link.
-    inner = html`<p id="continue-subject"><span class="muted">${t('subject')}:</span> <bdi>${area.card.title}</bdi></p>
+    style = subjStyle(area.card.id);
+    inner = html`<p id="continue-subject" class="kick">${icon('book')}<span><bdi>${area.card.title}</bdi></span></p>
 <p id="continue-progress" data-done="area">${doneLine(t, lang, area.done, area.card.count)}</p>
-${openNextLine(t, area.next, 'continue-state')}`;
+${ring(area.done, area.card.count, 62)}
+${openNextLine(t, lang, area.next, 'continue-state', 'hero-state')}`;
   } else if (area.kind === 'all-done') {
-    inner = html`<p id="continue-state" data-done="area">${t('everythingDone')}</p>`;
+    inner = html`<p id="continue-state" class="hero-title hero-state" data-done="area">${icon('check')}<span>${t('everythingDone')}</span></p>`;
   } else {
-    inner = html`<p id="continue-state" class="muted">${sentence(t, 'continueFirst', { lesson: t('lesson').toLocaleLowerCase(lang) })}</p>`;
+    inner = html`<p id="continue-state" class="hero-state">${sentence(t, 'continueFirst', { lesson: t('lesson').toLocaleLowerCase(lang) })}</p>`;
   }
-  return html`<section id="continue" class="card continue" aria-labelledby="continue-heading"><style>${raw(CONTINUE_CSS)}</style>
-<h2 id="continue-heading">${t('continueHeading')}</h2>
+  return html`<section id="continue" class="hero" style="${style}" aria-labelledby="continue-heading">
+<h2 id="continue-heading" class="sr-only">${t('continueHeading')}</h2>
 ${inner}
 </section>`;
 }
 
-/** A learner’s home: exactly the published subjects assigned to them, as cards;
- * My results is in the top navigation; from R2-d, while lesson activity is on,
- * the learner’s notice (AT-15f), in full once, then folded (wave 1, section 7). */
+/** A learner’s home (LMS redesign R1a, P2, UX-34/UX-54/UX-62 rows, UX-97 to UX-99, UX-103, UX-105): the greeting,
+ * the activity notice while lesson activity is on (R2-d, AT-15f: in full once, then folded), the "continue" hero,
+ * the due-soon strip (the to-do list's first three items), then exactly the published subjects assigned to them
+ * as cards, each with its latest announcement (no announcements block on the home). */
 export function learnerHome(
   t: Label, lang: Lang, space: SpaceView, displayName: string, cards: LearnerCard[], notice: NoticeForm | null = null,
   where: { area: ContinueArea; progress: Map<string, CardProgress> } | null = { area: { kind: 'first' }, progress: new Map() },
-  announcements: Html | string = '',
-  /** LMS wave 6 (section 5.5): the to-do block, after "Continue" (empty: no block). */
-  todo: Html | string = '',
+  /** The latest announcement of each card's subject, by subject id. */
+  latest: Map<string, CardAnnouncement> = new Map(),
+  /** The request's UTC day (S4: the tags' today / tomorrow / yesterday). */
+  today = '',
+  /** LMS wave 6: the learner's to-do groups (null: no strip, for a person without the learner role). */
+  groups: TodoGroup[] | null = null,
 ): Html {
   // The continue area (W2-2, section 8.1) is on every learner home and every
   // preview home, also with nothing assigned (the first-time state, AT-5.4);
   // `null` only for a signed-in person without the learner role.
-  // The heading shows also with nothing assigned, as today: it carries the
-  // kit's subject word (release 1 AT-5.6; contract section 10 keeps kit-word
-  // assertions unchanged).
-  const list = html`<h2>${t('assignedToYou')} <span class="muted">· ${t('subject')}</span></h2>
+  // The heading carries the kit's subject word, as before (release 1 AT-5.6;
+  // contract section 10 keeps kit-word assertions unchanged).
+  const list = html`<section class="home-cards">
+<h2>${t('assignedToYou')} <span class="muted">· ${t('subject')}</span></h2>
 ${cards.length
-    ? html`<ul id="my-list" class="cards">${cards.map((card) => subjectCard(t, lang, space, card, where?.progress.get(card.id)))}</ul>`
-    : html`<p id="nothing-yet" class="card message">${t('nothingAssigned')}</p>`}`;
-  const body = html`<p id="greeting">${t('welcome', { name: displayName })}</p>
+    ? subjectList(t, lang, space, cards, where?.progress, latest)
+    : html`<div id="nothing-yet" class="card empty"><span class="disc">${icon('books')}</span><h2>${t('nothingAssigned')}</h2><p>${t('emptyHomeLine')}</p></div>`}
+</section>`;
+  const body = html`<div class="home-grid">
+<p id="greeting">${t('welcome', { name: displayName })}</p>
 ${notice ? activityNotice(t, notice, learnerUrl(space), Boolean(space.preview)) : ''}
 ${where ? html`${continueArea(t, lang, space, where.area)}
-` : ''}${todo}${announcements}${list}`;
-  return spacePage(t, lang, space, space.name, body, { current: 'home', wide: true });
+` : ''}${groups && cards.length ? dueStrip(t, lang, space, groups, today) : ''}${list}
+</div>`;
+  return spacePage(t, lang, space, space.name, body, { current: 'home', bar: true, mainClass: 'home' });
+}
+
+/** The cards of the home and of My subjects (the same markup on both). */
+function subjectList(t: Label, lang: Lang, space: SpaceView, cards: LearnerCard[], progress: Map<string, CardProgress> | undefined, latest: Map<string, CardAnnouncement>): Html {
+  return html`<ul id="my-list" class="cards">${cards.map((card) => subjectCard(t, lang, space, card, progress?.get(card.id), latest.get(card.id)))}</ul>`;
+}
+
+/** LMS redesign R1a (S9, UX-102): My subjects, the home's subject cards and nothing else. */
+export function mySubjectsPage(t: Label, lang: Lang, space: SpaceView, cards: LearnerCard[], progress: Map<string, CardProgress>, latest: Map<string, CardAnnouncement>): Html {
+  const body = html`<h1 class="page-title">${t('mySubjects')}</h1>
+${cards.length
+    ? subjectList(t, lang, space, cards, progress, latest)
+    : html`<div id="nothing-yet" class="card empty"><span class="disc">${icon('books')}</span><h2>${t('nothingAssigned')}</h2><p>${t('emptyHomeLine')}</p></div>`}`;
+  return spacePage(t, lang, space, t('mySubjects'), body, { current: 'mySubjects', bar: true, mainClass: 'home' });
 }
 
 // ------------------------------------------------------------ to-do list ----
 // LMS wave 6, W6-1b (product-contract v2 on PIL-257, sections 5.3 and 5.5;
-// ux-plan UX-62, UX-64): the learner's own to-do block on their home, right
-// after "Continue where you stopped". Absent when no group has an item, so a
-// home without due dates is exactly today's. Overdue is told by its heading
-// and its place, never by colour or a badge. The CSS is in layout.ts's
-// `/* wave 6 due dates */` block.
+// ux-plan UX-62, UX-64): the learner's own to-do list. LMS redesign R1a
+// (product-contract v2 on PIL-322, UX-34/UX-54/UX-62 rows, UX-98, UX-102): the
+// home shows its first three items as the due-soon strip; the full block moved,
+// unchanged in content, to /s/<space>/todo; every row carries its group's S6 tag
+// (colour + icon + words). The CSS is in layout.ts.
 
-/** How many items of a group show before its fold (section 5.3). */
+/** How many items of a group show before its fold (section 5.3), and how many the home's strip shows. */
 const TODO_SHOWN = 3;
+const STRIP_SHOWN = 3;
 
-/** A date as the product shows dates: Latin digits, left to right (as exam dates). */
-const dueDate = (iso: string) => html`<bdi dir="ltr" class="due-date"><time datetime="${iso}">${iso}</time></bdi>`;
+/** A UTC day as the product shows it (S4): day and month name, the year when it is not this year; the ISO day stays in `datetime`. */
+const dueDate = (iso: string, lang: Lang) => html`<bdi dir="${lang === 'ar' ? 'rtl' : 'ltr'}" class="due-date">${dateText(iso, lang)}</bdi>`;
 
 /** "Due <date>" (dueOn), the outline's line (UX-63). */
-const dueLine = (t: Label, iso: string) => withMarkup(t, 'dueOn', { date: dueDate(iso) });
+const dueLine = (t: Label, lang: Lang, iso: string) => withMarkup(t, 'dueOn', { date: dueDate(iso, lang) });
 
 const TODO_HEADING = { overdue: 'todoOverdue', today: 'todoToday', next: 'todoNext7' } as const;
+const TODO_ICON = { overdue: 'alert', today: 'clock', next: 'cal' } as const;
+const TODO_TAG = { overdue: 'late', today: 'today', next: 'due' } as const;
 
-/** One item (UX-62): the title link (a lesson to its page, a chapter to the outline with that chapter open), then its line, and for a chapter wave 2's done count
- * on wave 2's rule: drawn from the first mark on (as the outline's and the card's lines), so never with no marks and never in the preview. */
-function todoItem(t: Label, lang: Lang, space: SpaceView, item: TodoItem): Html {
-  const href = item.kind === 'lesson' ? lessonHref(space, item.id) : subjectHref(space, item.subjectId, item.id);
-  const line = withMarkup(t, 'todoItemLine', { kind: html`${t(item.kind)}`, subjectTitle: html`<bdi>${item.subjectTitle}</bdi>`, date: dueDate(item.dueOn) });
-  const progress = item.progress && item.progress.done > 0 ? html`
-<p class="todo-progress">${doneLine(t, lang, item.progress.done, item.progress.total)}</p>` : '';
-  return html`<li class="todo-item" data-kind="${item.kind}" data-item="${item.id}" data-subject="${item.subjectId}"><a class="todo-link" href="${href}"><bdi>${item.title}</bdi></a>
-<p class="todo-line">${line}</p>${progress}</li>`;
+/** The S6 tag of a to-do item: words + icon + colour pair; the words alone say the state. */
+function dueTag(t: Label, lang: Lang, group: TodoGroup['key'], iso: string, today: string): Html {
+  const state = TODO_TAG[group];
+  const day = html`<time datetime="${iso}">${dayLabel(iso, lang, today || iso)}</time>`;
+  const words = state === 'late' ? withMarkup(t, 'tagLate', { date: day }) : state === 'today' ? t('tagToday') : withMarkup(t, 'tagDue', { date: day });
+  return html`<span class="tag ${state}">${icon(TODO_ICON[group])}<span>${words}</span></span>`;
 }
 
-/** One group (UX-62): its heading with the full count, the first three items, then up to seven more in a closed native fold that ends with todoCapped when the group has more than it draws. */
-function todoGroup(t: Label, lang: Lang, space: SpaceView, g: TodoGroup): Html {
+/** One item (UX-62, UX-102): the subject icon, the title link (a lesson to its page, a chapter to the outline with that chapter open), then its
+ * line with the tag, and for a chapter wave 2's done count on wave 2's rule: drawn from the first mark on, so never with no marks and never in the preview. */
+function todoItem(t: Label, lang: Lang, space: SpaceView, item: TodoItem, group: TodoGroup['key'], today: string): Html {
+  const href = item.kind === 'lesson' ? lessonHref(space, item.id) : subjectHref(space, item.subjectId, item.id);
+  const progress = item.progress && item.progress.done > 0 ? html`
+<p class="todo-progress">${doneLine(t, lang, item.progress.done, item.progress.total)}</p>` : '';
+  return html`<li class="todo-item" data-kind="${item.kind}" data-item="${item.id}" data-subject="${item.subjectId}" style="${subjStyle(item.subjectId)}"><span class="sicon">${icon('book')}</span><div class="todo-main"><a class="todo-link" href="${href}"><bdi>${item.title}</bdi></a>
+<p class="todo-line">${t(item.kind)} · <bdi>${item.subjectTitle}</bdi> ${dueTag(t, lang, group, item.dueOn, today)}</p>${progress}</div></li>`;
+}
+
+/** One group (UX-62): its icon and heading with the full count, the first three items, then up to seven more in a closed native fold that ends with todoCapped when the group has more than it draws. */
+function todoGroup(t: Label, lang: Lang, space: SpaceView, g: TodoGroup, today: string): Html {
   const heading = t(TODO_HEADING[g.key], { n: String(g.count), days: String(TODO_AHEAD_DAYS) });
   const shown = g.items.slice(0, TODO_SHOWN);
   const rest = g.items.slice(TODO_SHOWN);
@@ -173,21 +240,44 @@ function todoGroup(t: Label, lang: Lang, space: SpaceView, g: TodoGroup): Html {
   const fold = rest.length
     ? html`
 <details class="todo-more"><summary>${t('todoMore', { n: String(rest.length) })}</summary>
-<ul class="todo-list">${rest.map((i) => todoItem(t, lang, space, i))}</ul>${capped}
+<ul class="todo-list">${rest.map((i) => todoItem(t, lang, space, i, g.key, today))}</ul>${capped}
 </details>`
     : '';
   return html`<div class="todo-group" data-group="${g.key}">
-<h3 id="todo-${g.key}">${heading}</h3>
-<ul class="todo-list">${shown.map((i) => todoItem(t, lang, space, i))}</ul>${fold}
+<h3 id="todo-${g.key}">${icon(TODO_ICON[g.key])}<span>${heading}</span></h3>
+<ul class="todo-list">${shown.map((i) => todoItem(t, lang, space, i, g.key, today))}</ul>${fold}
 </div>`;
 }
 
-/** The to-do block (section 5.3, UX-62): nothing at all when no group has an item. */
-export function todoBlock(t: Label, lang: Lang, space: SpaceView, groups: TodoGroup[]): Html | string {
-  if (!groups.length) return '';
+/** The to-do block (section 5.3, UX-62), now the to-do page's content; with nothing due, «لا شيء مطلوب الآن». */
+export function todoBlock(t: Label, lang: Lang, space: SpaceView, groups: TodoGroup[], today = ''): Html {
   return html`<section id="todo" class="card todo-block" aria-labelledby="todo-heading">
-<h2 id="todo-heading">${t('todoTitle')}</h2>
-${groups.map((g) => todoGroup(t, lang, space, g))}
+<h1 id="todo-heading">${t('todoTitle')}</h1>
+${groups.length ? groups.map((g) => todoGroup(t, lang, space, g, today)) : html`<p id="todo-none" class="strip-none">${t('nothingDue')}</p>`}
+</section>
+`;
+}
+
+/** LMS redesign R1a (S9, UX-102): the to-do page. */
+export function todoPage(t: Label, lang: Lang, space: SpaceView, groups: TodoGroup[], today: string): Html {
+  return spacePage(t, lang, space, t('todoTitle'), todoBlock(t, lang, space, groups, today), { current: 'todo', bar: true });
+}
+
+/** The home's due-soon strip (UX-98): the heading and "see all", then the first three items of the list (overdue, then today, then the
+ * next days), each one link with the subject icon, title, subject name and tag; with nothing due, «لا شيء مطلوب الآن». In a preview,
+ * "see all" keeps its text and place and leads nowhere (the to-do page is not previewable, S9). */
+function dueStrip(t: Label, lang: Lang, space: SpaceView, groups: TodoGroup[], today: string): Html {
+  const items = groups.flatMap((g) => g.items.map((item) => ({ item, group: g.key }))).slice(0, STRIP_SHOWN);
+  const all = space.preview
+    ? html`<a id="todo-all" tabindex="0"${INERT}>${t('seeAll')}${icon('chev', 'flip')}</a>`
+    : html`<a id="todo-all" href="${learnerUrl(space, '/todo')}">${t('seeAll')}${icon('chev', 'flip')}</a>`;
+  const row = ({ item, group }: (typeof items)[number]) => {
+    const href = item.kind === 'lesson' ? lessonHref(space, item.id) : subjectHref(space, item.subjectId, item.id);
+    return html`<li class="strip-row" data-group="${group}" data-kind="${item.kind}" data-item="${item.id}" data-subject="${item.subjectId}"><a class="row-link" href="${href}" style="${subjStyle(item.subjectId)}"><span class="sicon">${icon('book')}</span><span class="t"><bdi>${item.title}</bdi></span><span class="s"><bdi>${item.subjectTitle}</bdi>${dueTag(t, lang, group, item.dueOn, today)}</span></a></li>`;
+  };
+  return html`<section id="todo" class="strip" aria-labelledby="todo-heading">
+<div class="sec-h"><h2 id="todo-heading">${t('dueSoonHeading')}</h2>${all}</div>
+${items.length ? html`<ul class="strip-rows">${items.map(row)}</ul>` : html`<p id="todo-none" class="strip-none">${t('nothingDue')}</p>`}
 </section>
 `;
 }
@@ -208,7 +298,7 @@ function chapterBlock(t: Label, lang: Lang, space: SpaceView, ch: OutlineChapter
       : html`<a data-lesson="${l.id}" href="${lessonHref(space, l.id)}"><bdi>${l.title}</bdi></a>`;
     // LMS wave 6 (section 5.5, UX-63): a dated lesson's line after its title, for any date and also when locked; an undated row is today's.
     if (l.due_on) {
-      const due = html`<span class="due-line">${dueLine(t, l.due_on)}</span>`;
+      const due = html`<span class="due-line">${dueLine(t, lang, l.due_on)}</span>`;
       return done.has(l.id) ? html`<li class="is-done due-dated">${tick(t, 'lesson')}${link}${due}</li>` : html`<li class="due-dated">${link}${due}</li>`;
     }
     return done.has(l.id) ? html`<li class="is-done">${tick(t, 'lesson')}${link}</li>` : html`<li>${link}</li>`;
@@ -220,7 +310,7 @@ function chapterBlock(t: Label, lang: Lang, space: SpaceView, ch: OutlineChapter
   // Inside the summary, so it shows while folded: the tag and the reason with its count. No control inside a summary.
   const lockLine = lock ? html`<span class="lock-line">${lockTag(t)} ${reasonSpans(t, lang, lock)}</span>` : '';
   return html`<details class="card fold${lock ? ' locked' : ''}" id="chapter-${ch.id}" data-chapter="${ch.id}"${lock ? html` data-locked` : ''}${open ? html` open` : ''}>
-  <summary><span class="mark" aria-hidden="true"></span><span class="head"><span class="muted">${t('chapter')}</span> <bdi class="title">${ch.title}</bdi>${allDone}${ch.due_on ? html`<span class="due-line">${dueLine(t, ch.due_on)}</span>` : ''}</span> <span class="count muted">${lessonCount(t, lang, ch.lessons.length)}</span>${lockLine}</summary>
+  <summary><span class="mark" aria-hidden="true"></span><span class="head"><span class="muted">${t('chapter')}</span> <bdi class="title">${ch.title}</bdi>${allDone}${ch.due_on ? html`<span class="due-line">${dueLine(t, lang, ch.due_on)}</span>` : ''}</span> <span class="count muted">${lessonCount(t, lang, ch.lessons.length)}</span>${lockLine}</summary>
   ${list}
 </details>`;
 }
@@ -234,7 +324,7 @@ function chapterBlock(t: Label, lang: Lang, space: SpaceView, ch: OutlineChapter
 /** The style of the order box, the tag, the reasons, the locked lessons, the locked page and the locked Next (UX-45 to UX-47, UX-50). */
 const ORDER_CSS = `.order-box{display:flex;flex-direction:column;gap:8px;margin:8px 0 12px}
 .order-box p{margin:0}
-a.button.go-to{display:flex;align-items:center;justify-content:center;width:100%;min-height:48px;min-width:44px;box-sizing:border-box;text-align:center;background:#1a5fd0;overflow-wrap:anywhere}
+a.button.go-to{display:flex;align-items:center;justify-content:center;width:100%;min-height:48px;min-width:44px;box-sizing:border-box;text-align:center;background:var(--brand-strong);overflow-wrap:anywhere}
 @media (min-width:700px){a.button.go-to{width:auto;align-self:flex-start;max-width:100%}}
 .lock-tag{display:inline-flex;align-items:center;gap:6px;padding:2px 10px;border:1px solid #57606a;border-radius:999px;background:#f6f8fa;color:#24292f;font-weight:600;font-size:.9rem}
 .lock-reason{color:#424a53;font-size:.9rem;font-weight:400;overflow-wrap:anywhere;min-width:0}
@@ -283,12 +373,13 @@ function reasonSpans(t: Label, lang: Lang, r: LockReason): Html {
   const date = dateOf(r);
   const order = r.kind === 'date' ? null : html`<span class="lock-reason">${lockReasonText(t, lang, r)}</span>`;
   if (!date) return order!;
-  return html`<span class="lock-reason" data-reason="date">${withMarkup(t, 'openedOn', { date: dueDate(date) })}</span>${order ? html` ${order}` : ''}`;
+  return html`<span class="lock-reason" data-reason="date">${withMarkup(t, 'openedOn', { date: dueDate(date, lang) })}</span>${order ? html` ${order}` : ''}`;
 }
 
 /** "Next: <chapter>: <title>, opens on <date>." (openNext, L2, UX-90): plain text, never a link. */
-function openNextLine(t: Label, next: WaitingFor, id?: string): Html {
-  return html`${dateStyle}<p${id ? html` id="${id}"` : ''} class="open-next">${withMarkup(t, 'openNext', { title: html`<bdi>${next.title}</bdi>`, date: dueDate(next.date) })}</p>`;
+function openNextLine(t: Label, lang: Lang, next: WaitingFor, id?: string, cls?: string): Html {
+  // LMS redesign R1a (UX-97, UX-90): beside a calendar icon, still plain text.
+  return html`${dateStyle}<p${id ? html` id="${id}"` : ''} class="open-next${cls ? ` ${cls}` : ''}">${icon('cal')}<span>${withMarkup(t, 'openNext', { title: html`<bdi>${next.title}</bdi>`, date: dueDate(next.date, lang) })}</span></p>`;
 }
 
 /** A chapter's reason (section 5.4): the first locked chapter names the blocking chapter, every later one says "everything before it"; each with the count left. */
@@ -369,7 +460,7 @@ export function subjectPage(
 <h1 id="subject-title" dir="auto">${head.title}</h1>${progressLine(t, lang, done.size, ids.length)}${locks?.inOrder ? orderBox(t, lang, space, locks) : ''}${dated}${announcements}${quizzes}
 ${fold}
 <div id="outline">${blocks}</div>`;
-  return spacePage(t, lang, space, head.title, body);
+  return spacePage(t, lang, space, head.title, body, { bar: true });
 }
 
 export const KIND_LABEL: Record<MaterialKind, LabelKey> = {
@@ -469,8 +560,8 @@ const DONE_CSS = `.done-block{display:flex;flex-direction:column;gap:12px;margin
 .done-block:focus{outline:3px solid #1b1f24;outline-offset:4px}
 .done-block>*{margin:0}
 .done-block form{display:flex}
-.done-block button{flex:1 1 auto;display:flex;align-items:center;justify-content:center;min-height:48px;min-width:44px;background:#1a5fd0;font-size:1.05rem}
-.done-block button.undo{min-height:44px;background:#fff;color:#1a5fd0;border:2px solid #1a5fd0;font-size:1rem}
+.done-block button{flex:1 1 auto;display:flex;align-items:center;justify-content:center;min-height:48px;min-width:44px;background:var(--brand-strong);font-size:1.05rem}
+.done-block button.undo{min-height:44px;background:#fff;color:var(--brand-strong);border:2px solid var(--brand-strong);font-size:1rem}
 @media (min-width:700px){.done-block button{flex:0 1 auto;min-width:240px}}
 .done-now{display:flex;align-items:center;gap:8px;font-weight:700;color:#0f5132}
 .done-now .tick{flex:0 0 auto;color:#1a7f37;font-weight:700}
@@ -529,7 +620,7 @@ ${introBlock}
 <h2>${t('material')}</h2>
 ${list}${v.done ? doneBlock(t, space, v.lesson.id, v.done) : ''}
 ${lessonNav(t, lang, space, top, v.lesson, v.place, v.locks)}`;
-  return spacePage(t, lang, space, title, body);
+  return spacePage(t, lang, space, title, body, { bar: true });
 }
 
 /** A locked lesson opened by its address (LMS wave 4, section 5.4, UX-46): in
@@ -561,7 +652,7 @@ export function lockedLessonPage(
 <p><a id="back-to-subject" class="go back" href="${toSubject}"><span>${withMarkup(t, 'quizBackToSubject', { subjectTitle: html`<bdi>${top.title}</bdi>` })}</span></a></p>
 ${v.locks.goTo ? html`<p>${goToLink(t, space, v.locks.goTo)}</p>` : ''}
 </section>`;
-    return spacePage(t, lang, space, v.lesson.title, dated);
+    return spacePage(t, lang, space, v.lesson.title, dated, { bar: true });
   }
   const body = html`<nav id="trail" class="trail muted">
   <span>${t('subject')}: <a href="${subjectHref(space, top.id, v.lesson.chapter_id)}"><bdi>${top.title}</bdi></a></span> ·
@@ -575,5 +666,5 @@ ${v.locks.goTo ? html`<p>${goToLink(t, space, v.locks.goTo)}</p>` : ''}
 ${v.locks.goTo ? html`<p>${goToLink(t, space, v.locks.goTo)}</p>` : ''}
 <p><a id="back-to-outline" class="go back" href="${back}">${t('backToOutline')}</a></p>
 </section>`;
-  return spacePage(t, lang, space, v.lesson.title, body);
+  return spacePage(t, lang, space, v.lesson.title, body, { bar: true });
 }

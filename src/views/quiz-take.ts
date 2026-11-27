@@ -66,7 +66,7 @@ ${x.answers.map((a) => html`<label class="quiz-choice"><input type="radio" class
 <form id="quiz-take" class="quiz-form" method="post" action="${learnerUrl(space, `/quiz/${q.id}`)}"><input type="hidden" name="rev" value="${q.rev}">
 ${q.questions.map(question)}<button type="submit">${t('quizSubmit')}</button></form>
 </div>`;
-  return spacePage(t, lang, space, q.title, body);
+  return spacePage(t, lang, space, q.title, body, { bar: true });
 }
 
 // ---------------------------------------------------------- result page ----
@@ -94,5 +94,5 @@ export function quizResultPage(
 ${quizResultBody(t, v.quiz.questions, v.answers)}
 <p class="quiz-back"><a id="quiz-back" href="${learnerUrl(space, `/learn/${v.subject.id}`)}"><span>${filled(t, 'quizBackToSubject', { subjectTitle: title(v.subject.title) })}</span></a></p>
 </div>`;
-  return spacePage(t, lang, space, t('quizResultTitle', { title: v.quiz.title }), body);
+  return spacePage(t, lang, space, t('quizResultTitle', { title: v.quiz.title }), body, { bar: true });
 }

@@ -56,7 +56,11 @@ export async function overflow(page: Page): Promise<{ sideways: number; clipped:
     for (const el of document.querySelectorAll('body *')) {
       const e = el as HTMLElement;
       if (e.closest('script, style') || !e.innerText?.trim()) continue;
-      if (getComputedStyle(e).display === 'inline') continue; // an inline box has no width of its own to overflow
+      const cs = getComputedStyle(e);
+      if (cs.display === 'inline') continue; // an inline box has no width of its own to overflow
+      // LMS redesign R1a: a visually hidden heading (screen readers only) and a line cut on purpose with an ellipsis (UX-99's
+      // announcement line) are not clipped text.
+      if (e.classList.contains('sr-only') || cs.textOverflow === 'ellipsis') continue;
       if (e.scrollWidth > e.clientWidth + 1) clipped.push(`${e.tagName.toLowerCase()}${e.id ? '#' + e.id : ''}.${e.className}: ${e.innerText.slice(0, 40)}`);
     }
     return { sideways: root.scrollWidth - root.clientWidth, clipped };

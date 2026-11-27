@@ -11,6 +11,10 @@
 // direct database read, so a test is written once.
 import { createServer, type IncomingMessage } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { existsSync, readFileSync, statSync } from 'node:fs';
+import { extname, join } from 'node:path';
+// @ts-expect-error: a plain ES module (tools/build-assets.mjs) with no type file.
+import { buildAssets } from '../../tools/build-assets.mjs';
 import { startInProcess, type InProcessSource, type InProcessWorker, type StatementHooks } from './in-process.ts';
 import { startWorker } from './worker.ts';
 import { withBusyRetry } from './busy.ts';
@@ -33,6 +37,36 @@ async function bodyOf(req: IncomingMessage): Promise<Buffer | undefined> {
   return chunks.length ? Buffer.concat(chunks) : undefined;
 }
 
+// ------------------------------------------------------- static assets ----
+// LMS redesign wave R1a (contract S3, UX-95): the Worker's static assets
+// (wrangler.jsonc "assets": the fonts and their licence, built by
+// tools/build-assets.mjs) are served before the router, with the headers of
+// their `_headers` file, as Wrangler and Cloudflare serve them. A path with no
+// file goes to the router.
+const TYPES: Record<string, string> = { '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8' };
+let assetsDir: string | null = null;
+
+function staticAsset(url: string): { body: Buffer; headers: Record<string, string> } | null {
+  const path = decodeURIComponent(url.split(/[?#]/)[0]);
+  if (!path.startsWith('/assets/') || path.includes('..')) return null;
+  assetsDir ??= buildAssets();
+  const file = join(assetsDir, path);
+  if (!existsSync(file) || !statSync(file).isFile()) return null;
+  const headers: Record<string, string> = { 'content-type': TYPES[extname(file)] ?? 'application/octet-stream' };
+  // `_headers`: a path pattern line (`*` = any rest), then indented "Name: value" lines.
+  let applies = false;
+  for (const line of readFileSync(join(assetsDir, '_headers'), 'utf8').split('\n')) {
+    if (!line.trim()) continue;
+    if (!/^\s/.test(line)) {
+      applies = new RegExp(`^${line.trim().replace(/[.+?^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')}$`).test(path);
+    } else if (applies) {
+      const at = line.indexOf(':');
+      headers[line.slice(0, at).trim().toLowerCase()] = line.slice(at + 1).trim();
+    }
+  }
+  return { body: readFileSync(file), headers };
+}
+
 /** An in-process product (see InProcessSource), with its worker (database and file store) at hand. */
 export async function inProcess(from: InProcessSource = {}): Promise<Product & { worker: InProcessWorker }> {
   const w = await startInProcess({}, from);
@@ -45,6 +79,14 @@ export async function inProcess(from: InProcessSource = {}): Promise<Product & {
       // The router checks a write's Origin against its own address: the browser's is the served one.
       if (headers.get('origin') === served) headers.set('origin', w.url);
       const method = req.method ?? 'GET';
+      // LMS redesign R1a (S3): the static assets answer before the Worker, as Cloudflare serves them.
+      const asset = method === 'GET' || method === 'HEAD' ? staticAsset(req.url ?? '/') : null;
+      if (asset) {
+        res.statusCode = 200;
+        for (const [name, value] of Object.entries(asset.headers)) res.setHeader(name, value);
+        res.end(method === 'HEAD' ? undefined : asset.body);
+        return;
+      }
       const body = method === 'GET' || method === 'HEAD' ? undefined : await bodyOf(req);
       const r = await fetch(w.url + (req.url ?? '/'), { method, headers, body, redirect: 'manual' });
       res.statusCode = r.status;

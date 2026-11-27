@@ -42,10 +42,11 @@ import {
   ADMIN, AT, HADEER, KARIM5, LOAD_LEARNER, MONA, OMAR, RANA5, SALMA, YOUSSEF, adminDue, annBlock, clockAt, dPlus, duePost, publisherDue, saveDue, wave4World, withAt2, withW5a, withW5d, withW6a,
   type Load, type Wave1World,
 } from './world.ts';
-import { onLocalD1, todoOf, withW6d, withW6e, withoutGuardianTodo } from './todo.ts';
+import { onLocalD1, stripOf, todoOf, todoPath, withW6d, withW6e, withoutGuardianTodo } from './todo.ts';
 import { QUIZ_CARD, cutWave7Style } from '../wave7/world.ts';
 import { OPENING_CARD } from '../wave8/world.ts';
 import { d9People } from '../d9/base.ts';
+import { linksOf, r1aNormal } from '../redesign/base.ts';
 
 const repo = fileURLToPath(new URL('../..', import.meta.url));
 /** The pinned base: W5-main f0125980 (wave 5 merged, main CI run 44864862736 green), the contract's "main". */
@@ -154,7 +155,8 @@ const CARD = /<section id="due-dates"[\s\S]*?<\/section>/g;
 
 function normalised(body: string, url: string): string {
   // LMS-D9 (PIL-320): the appoint form's help line and role choices (test/d9/base.ts).
-  return d9People(body.split(url).join('[product]').replace(/<div id="usage"[\s\S]*?(?=<h2|<\/main>)/g, '[usage today]'));
+  // LMS redesign R1a (PIL-325): the new shell, learner home and S4 dates, on both sides (test/redesign/base.ts).
+  return r1aNormal(d9People(body.split(url).join('[product]').replace(/<div id="usage"[\s\S]*?(?=<h2|<\/main>)/g, '[usage today]')));
 }
 
 function firstDifference(a: string, b: string): string {
@@ -163,7 +165,8 @@ function firstDifference(a: string, b: string): string {
   return `at ${i}:\nmain:      ${JSON.stringify(a.slice(Math.max(0, i - 120), i + 160))}\ncandidate: ${JSON.stringify(b.slice(Math.max(0, i - 120), i + 160))}`;
 }
 
-interface Result { what: string; who: string; path: string; status: number; teacher: boolean; card: boolean; ann: boolean; problem: string | null; reads: { base: number; cand: number } }
+/** `cards`: the candidate's page holds subject cards (LMS redesign R1a: their latest announcements are read only then). */
+interface Result { what: string; who: string; path: string; status: number; teacher: boolean; card: boolean; ann: boolean; cards: boolean; problem: string | null; reads: { base: number; cand: number } }
 
 async function bodyOf(res: Response): Promise<string> {
   const type = res.headers.get('content-type') ?? '';
@@ -183,7 +186,7 @@ function spyOn(t: Twin): () => string[] {
 }
 
 /** One address on both products, each under the statement spy: status, Location, content type, cache rule, the style rule and the (normalised) body. */
-async function same(p: Pair, who: Who, method: 'GET' | 'POST', path: string, out: Result[], fields: Record<string, string> = {}, opts: { guardianTodo?: boolean } = {}): Promise<{ res: Response; body: string }> {
+async function same(p: Pair, who: Who, method: 'GET' | 'POST', path: string, out: Result[], fields: Record<string, string> = {}, opts: { guardianTodo?: boolean } = {}): Promise<{ res: Response; body: string; links: string[] }> {
   const stopBase = spyOn(p.base);
   const rb = method === 'GET' ? await who.base.get(path) : await who.base.post(path, fields);
   const bodyB = await bodyOf(rb);
@@ -204,7 +207,10 @@ async function same(p: Pair, who: Who, method: 'GET' | 'POST', path: string, out
   let cb = normalised(bodyC, p.cand.url);
   const sb = HEAD_STYLE.exec(bb);
   const sc = HEAD_STYLE.exec(cb);
-  if (sb && sc) {
+  // LMS redesign R1a (PIL-325): R1a replaces the shared style; r1aNormal made both one token, so no block is left to check.
+  if (sb && sc && sb[2] === '[style]' && sc[2] === '[style]') {
+    // both already one token
+  } else if (sb && sc) {
     // LMS wave 7 (W7 contract on PIL-261, section 11 item 3): wave 7's block follows wave 6's; it is checked and cut off first.
     const w7 = cutWave7Style(sc[2]);
     if (w7.problem) problems.push(`style: ${w7.problem}`);
@@ -231,8 +237,9 @@ async function same(p: Pair, who: Who, method: 'GET' | 'POST', path: string, out
   const annB = annBlock(bb);
   const annC = annBlock(cut);
   if (annB !== annC) problems.push('another announcement block');
-  out.push({ what, who: who.who, path, status: rc.status, teacher, card, ann: Boolean(annB), problem: problems.length ? problems.join('; ') : null, reads: { base: sb0, cand: sc0 } });
-  return { res: rb, body: bb };
+  out.push({ what, who: who.who, path, status: rc.status, teacher, card, ann: Boolean(annB), cards: /<ul id="my-list"/.test(bodyC), problem: problems.length ? problems.join('; ') : null, reads: { base: sb0, cand: sc0 } });
+  // The crawl follows main's own links (R1a: the learner home is one token in the compared body).
+  return { res: rb, body: bb, links: linksOf(bodyB) };
 }
 
 const keep = (path: string) => !path.startsWith('/__test') && !/\/signout\b/.test(path);
@@ -246,15 +253,14 @@ async function crawlBoth(p: Pair, who: Who, out: Result[], limit = 600, opts: { 
     const path = queue.shift()!;
     if (seen.has(path)) continue;
     seen.add(path);
-    const { res, body } = await same(p, who, 'GET', path, out, {}, opts);
+    const { res, links } = await same(p, who, 'GET', path, out, {}, opts);
     if (res.status >= 300 && res.status < 400) {
       const to = (res.headers.get('location') ?? '').replace(p.base.url, '');
       if (to.startsWith('/') && keep(to)) queue.push(to);
       continue;
     }
     if (!(res.headers.get('content-type') ?? '').startsWith('text/html')) continue;
-    for (const m of body.matchAll(/(?:href|src)="(\/[^"#]*)/g)) {
-      const next = m[1].replace(/&amp;/g, '&');
+    for (const next of links) {
       if (!seen.has(next) && keep(next)) queue.push(next);
     }
   }
@@ -387,7 +393,8 @@ describe('W6 AT-4.1 base comparison: with no due dates every page is W5-main f01
     const lesson = s.lessons['Adding fractions'];
     const date = utcDatePlusDays(3);
     await saveDue(hadeer, page, 'lesson', lesson, date);
-    assert.ok(todoOf(await (await salma.get(`/s/${s.id}`)).text()), 'with the date set, Salma\'s home shows the to-do block');
+    // LMS redesign R1a (UX-62/UX-63 row): the to-do block is on the to-do page; the home shows its due-soon strip.
+    assert.ok(todoOf(await (await salma.get(todoPath(s))).text()), 'with the date set, Salma\'s to-do page shows the to-do block');
     // The same visit on W5-main's side: the home's first visit sets the activity
     // notice cookie (shown in full once, then folded), so both Salmas carry it.
     await (await salmaWho.base.get(`/s/${s.id}`)).arrayBuffer();
@@ -418,7 +425,10 @@ describe('W6 AT-4.1 base comparison: with no due dates every page is W5-main f01
     const SUBJECT_PAGE = /^\/s\/[^/]+\/(preview\/)?learn\/[^/?#]+(\?|$)/;
     // LMS wave 7 (W7-3, contract v3 addendum on PIL-285, G9.5): a 200 linked learner's page also reads the quiz scores once.
     const quizRead = (r: Result) => (r.status === 200 && r.what.includes(' GET ') && (SUBJECT_PAGE.test(r.path) || LINKED_PAGE.test(r.path)) ? 1 : 0);
-    const off = results.filter((r) => r.reads.cand !== r.reads.base + (plusOne(r) ? 1 : 0) + quizRead(r));
+    // LMS redesign R1a (PIL-325, UX-55 row): W5-main's home block read is now the cards' latest-announcement read, which a
+    // learner home with no subject card (nothing assigned) does not make: one fewer there.
+    const noCards = (r: Result) => (r.status === 200 && r.what.includes(' GET ') && LEARNERS.has(r.who) && HOME.test(r.path) && !r.cards ? 1 : 0);
+    const off = results.filter((r) => r.reads.cand !== r.reads.base + (plusOne(r) ? 1 : 0) + quizRead(r) - noCards(r));
     const homes = results.filter(plusOne);
     t.diagnostic(`AT-3.4b small world: ${results.length} requests counted; ${homes.length} learner and preview homes at W5-main's count plus one (e.g. Salma ${JSON.stringify(homes.find((r) => r.who === 'Salma')?.reads)}), every other page W5-main's count`);
     assert.ok(homes.some((r) => r.who === 'Salma') && homes.some((r) => r.who === 'Amal') && homes.some((r) => r.who === 'Hadeer'), 'the learner home and both previews were counted');
@@ -444,7 +454,8 @@ describe('W6 AT-4.1 base comparison: with no due dates every page is W5-main f01
       const m = await measure(p.cand, fresh[who], path);
       assert.equal(m.status, 200, `${who} ${path}`);
       assert.equal(m.reads, before.reads.cand, `${who} ${path}: with due dates the same count as without (${before.reads.cand})`);
-      if (path.endsWith(`/s/${s.id}`) || path.includes('/preview?')) assert.ok(todoOf(m.body), `${who} ${path}: the block is there with dates`);
+      // LMS redesign R1a (UX-34/UX-54/UX-62 row): on the learner and preview homes, the due-soon strip.
+      if (path.endsWith(`/s/${s.id}`) || path.includes('/preview?')) assert.ok(stripOf(m.body)?.ids.length, `${who} ${path}: the strip is there with dates`);
     }
     const salmaBase = await measure(p.base, p.people.find((x) => x.who === 'Salma')!.base, `/s/${s.id}`);
     const salmaCand = await measure(p.cand, fresh.Salma, `/s/${s.id}`);
@@ -496,11 +507,13 @@ describe('W6 AT-3.4b reads, learner side, load worlds: with W6-d and W6-e the ho
     t.diagnostic(`instant ${await clockAt(cw, AT.noon)}`);
     const learner = await signedIn(p.cand.url, LOAD_LEARNER.username, LOAD_LEARNER.password);
     const out: string[] = [];
+    // LMS redesign R1a: the candidate's home before any date, for the size bound below.
+    const undated = await measure(p.cand, learner, home);
     // W6-d: 300 due lessons (D+1 and D+5).
     await withW6d(p.cand.sql, load, dPlus);
     const d = await measure(p.cand, learner, home);
     assert.equal(d.status, 200);
-    assert.ok(todoOf(d.body), 'W6-d: the block');
+    assert.ok(stripOf(d.body)?.ids.length, 'W6-d: the due-soon strip (R1a: the block is on the to-do page)');
     assert.equal(d.reads, smallCand.reads, `W6-d: the small world's count (${smallCand.reads})`);
     const dRead = await onLocalD1(p.cand.worker.sqlite, d.todo!);
     out.push(`W6-d ${figures(d, base, p.cand.worker.sqlite, Number(dRead.meta.rows_read))}`);
@@ -519,12 +532,19 @@ describe('W6 AT-3.4b reads, learner side, load worlds: with W6-d and W6-e the ho
     assert.ok(rows <= 30, `W6-e: the to-do statement returns at most 30 rows (${rows})`);
     assert.ok(Number(eRead.meta.rows_read) <= 5000, `W6-e: at most 5,000 rows read (${eRead.meta.rows_read})`);
     assert.ok(e.maxParams <= 20, `W6-e: no statement has more than 20 bound parameters (${e.maxParams})`);
-    // LMS wave 7 (W7 contract on PIL-261, section 11 item 5): the wave 7 style block is checked and left out of the candidate's size, nothing else.
-    const w7 = cutWave7Style(HEAD_STYLE.exec(e.body)?.[2] ?? '');
-    assert.equal(w7.problem, null, 'W6-e: the wave 7 style block');
-    const eBytes = Buffer.byteLength(e.body.replace(HEAD_STYLE, (_m, a: string, _s: string, z: string) => a + w7.rest + z));
-    assert.ok(eBytes <= base.bytes + 16 * 1024, `W6-e: the home at most W5-main's on W5-d plus 16 KB (${eBytes} vs ${base.bytes})`);
-    const v = todoOf(e.body)!;
+    // LMS wave 7 (W7 contract on PIL-261, section 11 item 5): the wave 7 style block was left out of the candidate's size.
+    // LMS redesign R1a (PIL-325, UX-34/UX-54/UX-62 and UX-62/UX-63 rows): the home is rebuilt (cards with icon and ring;
+    // its own budget is AT-R1a.6a) and the to-do list moved to the to-do page. What this bound measures, the growth the
+    // dates bring, is measured on the candidate: the W6-e home against the same home before any date (W6-d), and the
+    // W6-e to-do page against W5-main's W5-d home, each without the shared style, plus 16 KB.
+    const noStyle = (b: string) => Buffer.byteLength(b.replace(HEAD_STYLE, '$1$3'));
+    const eBytes = noStyle(e.body);
+    assert.ok(eBytes <= noStyle(undated.body) + 16 * 1024, `W6-e: the home at most the undated home plus 16 KB (${eBytes} vs ${noStyle(undated.body)})`);
+    const todoPage = await (await learner.get(todoPath(load))).text();
+    assert.ok(noStyle(todoPage) <= noStyle(base.body) + 16 * 1024, `W6-e: the to-do page at most W5-main's home on W5-d plus 16 KB (${noStyle(todoPage)} vs ${noStyle(base.body)})`);
+    out.push(`R1a sizes without the shared style: undated home ${noStyle(undated.body)} B, W6-e home ${eBytes} B, W6-e to-do page ${noStyle(todoPage)} B, W5-main W5-d home ${noStyle(base.body)} B`);
+    t.diagnostic(`AT-3.4b ${out.at(-1)}`);
+    const v = todoOf(todoPage)!;
     const overdue = v.groups.find((g) => g.key === 'overdue')!;
     assert.equal(overdue.items.length, 10, 'W6-e: 10 overdue items drawn');
     assert.ok(overdue.capped, 'W6-e: todoCapped at the end of the fold');
@@ -599,7 +619,8 @@ describe('W6 AT-3.1 no leak, no late flag for others: with W6-a and Salma\'s mar
       const posted = await same(p, salma, 'POST', `/s/${s.id}/read/${lesson}/done`, out, { state: 'done' });
       assert.equal(posted.res.status, 303, `Salma marks ${lesson} done on both`);
     }
-    const salmaHome = await (await salma.cand.get(`/s/${s.id}`)).text();
+    // LMS redesign R1a (UX-62/UX-63 row): her to-do block is on her to-do page.
+    const salmaHome = await (await salma.cand.get(todoPath(s))).text();
     assert.ok(todoOf(salmaHome), 'Salma has her to-do block on the candidate (the dates are there)');
     assert.ok(GROUP_WORDS.filter(([, re]) => re.test(visibleText(salmaHome))).length >= 2, 'positive control: the group words are found on Salma\'s own home');
     // Guardian and owner: byte-identical to W5-main (after the AT-4 normalising).

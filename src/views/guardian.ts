@@ -16,7 +16,10 @@ import type { Label, Lang } from '../labels.ts';
 import { GUARDIAN_QUIZ_DRAWN, GUARDIAN_QUIZ_SHOWN, type GuardianQuizRow } from '../quiz.ts';
 import { activityLink, activityOff } from './activity.ts';
 import { resultCard, scoreText } from './exams.ts';
-import { marked, sentence, type Html } from './layout.ts';
+import { dateText, datedSentence, marked, sentence, type Html } from './layout.ts';
+import { showDate } from '../format.ts';
+import { utcDate } from '../access.ts';
+import { now } from '../clock.ts';
 import { spacePage } from './learn.ts';
 import type { SpaceView } from './space.ts';
 
@@ -50,38 +53,38 @@ const TODO_SHOWN = 3;
 const TODO_HEADING = { overdue: 'todoOverdue', today: 'todoToday', next: 'todoNext7' } as const;
 
 /** One item: the title as plain text, then todoItemLine with its date in Latin digits, left to right. */
-function guardianTodoItem(t: Label, item: TodoItem): Html {
+function guardianTodoItem(t: Label, lang: Lang, item: TodoItem): Html {
   const line = marked(t, 'todoItemLine', {
-    kind: html`${t(item.kind)}`, subjectTitle: html`<bdi>${item.subjectTitle}</bdi>`, date: html`<bdi dir="ltr" class="due-date">${item.dueOn}</bdi>`,
+    kind: html`${t(item.kind)}`, subjectTitle: html`<bdi>${item.subjectTitle}</bdi>`, date: html`<bdi dir="${lang === 'ar' ? 'rtl' : 'ltr'}" class="due-date">${showDate(item.dueOn, lang, utcDate(now()))}</bdi>`,
   });
   return html`<li class="todo-item"><span class="due-title"><bdi>${item.title}</bdi></span>
 <p class="todo-line">${line}</p></li>`;
 }
 
 /** One group: the heading with the full count, 3 items, then up to 7 in a closed native fold that ends with guardianTodoCapped past 10. */
-function guardianTodoGroup(t: Label, g: TodoGroup): Html {
+function guardianTodoGroup(t: Label, lang: Lang, g: TodoGroup): Html {
   const shown = g.items.slice(0, TODO_SHOWN);
   const rest = g.items.slice(TODO_SHOWN);
   const capped = g.count > TODO_MAX_PER_GROUP ? html`
 <p class="todo-capped">${t('guardianTodoCapped', { n: String(g.count - TODO_MAX_PER_GROUP) })}</p>` : '';
   const fold = rest.length ? html`
 <details class="todo-more"><summary>${t('todoMore', { n: String(rest.length) })}</summary>
-<ul class="todo-list">${rest.map((i) => guardianTodoItem(t, i))}</ul>${capped}
+<ul class="todo-list">${rest.map((i) => guardianTodoItem(t, lang, i))}</ul>${capped}
 </details>` : '';
   return html`<section class="todo-group" id="guardian-todo-${g.key}">
 <h3>${t(TODO_HEADING[g.key], { n: String(g.count), days: String(TODO_AHEAD_DAYS) })}</h3>
-<ul class="todo-list">${shown.map((i) => guardianTodoItem(t, i))}</ul>${fold}
+<ul class="todo-list">${shown.map((i) => guardianTodoItem(t, lang, i))}</ul>${fold}
 </section>`;
 }
 
 /** The block, or nothing at all when no group has an item (the page is then W6-1b-main's). */
-function guardianTodo(t: Label, learner: LinkedLearner, groups: TodoGroup[]): Html | string {
+function guardianTodo(t: Label, lang: Lang, learner: LinkedLearner, groups: TodoGroup[]): Html | string {
   if (!groups.length) return '';
   // No white space around it: the page differs from W6-1b-main's by this element only (AT-7.4).
   return html`<section id="guardian-todo" class="card todo-block">
 <h2 id="guardian-todo-heading">${sentence(t, 'guardianTodoTitle', { name: learner.display_name })}</h2>
 <p class="muted">${t('guardianTodoNote')}</p>
-${groups.map((g) => guardianTodoGroup(t, g))}
+${groups.map((g) => guardianTodoGroup(t, lang, g))}
 </section>`;
 }
 
@@ -140,32 +143,32 @@ function card(t: Label, space: SpaceView, c: LearnerCard, heading: 'link' | 'pla
  * exam, subject, date, "mark / maximum" or Absent, and Corrected once
  * corrected), the whole line one link to that page; "No results yet." when
  * there is none. The date and the mark keep the learner page's own markup. */
-function latestLine(t: Label, space: SpaceView, c: GlanceCard): Html {
+function latestLine(t: Label, lang: Lang, space: SpaceView, c: GlanceCard): Html {
   const href = `${home(space)}/${c.learner.id}`;
   const r = c.latest;
   if (!r) return html`<a class="latest-result none" href="${href}">${t('resultsNone')}</a>`;
   const line = marked(t, 'latestResultLine', {
     exam: html`<bdi class="exam">${r.exam_title}</bdi>`,
     subject: html`<bdi class="subject">${r.subject_title}</bdi>`,
-    date: html`<span class="muted date" dir="ltr">${r.exam_date}</span>`,
+    date: html`<span class="muted date" dir="${lang === 'ar' ? 'rtl' : 'ltr'}">${dateText(r.exam_date, lang)}</span>`,
     score: html`<span class="score" dir="auto">${scoreText(t, r)}</span>`,
   });
   return html`<a class="latest-result" href="${href}">${line}${r.corrected_at === null ? '' : html` <span class="tag">${t('correctedTag')}</span>`}</a>`;
 }
 
 /** While activity is on: "Last opened: <lesson> · <date>" (the activity page's newest row) or "No open recorded", beside the link to that page. */
-function lastOpenedLine(t: Label, space: SpaceView, c: GlanceCard): Html {
+function lastOpenedLine(t: Label, lang: Lang, space: SpaceView, c: GlanceCard): Html {
   const shown = c.lastOpened
-    ? sentence(t, 'lastOpenedLine', { title: c.lastOpened.title, date: c.lastOpened.date })
+    ? datedSentence(t, 'lastOpenedLine', { title: c.lastOpened.title, date: c.lastOpened.date }, ['date'], lang)
     : t('lastOpenedNone');
   return html`<div class="activity-row"><p class="last-opened" data-activity>${shown}</p>${activityLink(t, space, c.learner.id)}</div>`;
 }
 
-function glanceCard(t: Label, space: SpaceView, c: GlanceCard, activity: boolean): Html {
+function glanceCard(t: Label, lang: Lang, space: SpaceView, c: GlanceCard, activity: boolean): Html {
   return html`<section class="card" data-learner="${c.learner.id}">
   <h2 class="learner-name"><a class="learner" href="${home(space)}/${c.learner.id}"><bdi>${c.learner.display_name}</bdi></a></h2>
-  ${latestLine(t, space, c)}
-  ${activity ? lastOpenedLine(t, space, c) : ''}
+  ${latestLine(t, lang, space, c)}
+  ${activity ? lastOpenedLine(t, lang, space, c) : ''}
   <h3 class="muted">${t('subject')}</h3>
   ${itemList(t, c.subjects)}
 </section>`;
@@ -179,8 +182,8 @@ export function guardianHome(t: Label, lang: Lang, space: SpaceView, displayName
   const body = html`<p>${t('welcome', { name: displayName })}</p>
 <h1 id="guardian-title">${t('guardianHome')}</h1>
 <p class="muted" id="guardian-note">${t('guardianNote')}</p>
-<div id="linked">${cards.length ? cards.map((c) => glanceCard(t, space, c, activity)) : html`<p id="none-linked" class="card message">${t('guardianNone')}</p>`}</div>`;
-  return spacePage(t, lang, space, t('guardianHome'), body);
+<div id="linked">${cards.length ? cards.map((c) => glanceCard(t, lang, space, c, activity)) : html`<p id="none-linked" class="card message">${t('guardianNone')}</p>`}</div>`;
+  return spacePage(t, lang, space, t('guardianHome'), body, { current: 'guardian', bar: true });
 }
 
 /** One linked learner's page: the same card, the learner's published results
@@ -193,12 +196,12 @@ export function guardianHome(t: Label, lang: Lang, space: SpaceView, displayName
 export function guardianLearnerPage(t: Label, lang: Lang, space: SpaceView, c: LearnerCard, results: OwnResult[], activity = false, todo: TodoGroup[] = [], quizzes: GuardianQuizzes = { rows: [], count: 0 }): Html {
   const body = html`<p><a id="back" href="${home(space)}">${t('guardianHome')}</a></p>
 <div id="linked">${card(t, space, c, 'plain', activity)}</div>
-${activity ? '' : activityOff(t, space)}${activity ? guardianTodo(t, c.learner, todo) : ''}
+${activity ? '' : activityOff(t, space)}${activity ? guardianTodo(t, lang, c.learner, todo) : ''}
 <section id="results" class="card" data-learner="${c.learner.id}">
   <h2 id="results-title">${sentence(t, 'resultsOf', { name: c.learner.display_name })}</h2>
   ${results.length
-    ? html`<ol class="items">${results.map((r) => resultCard(t, space, r, 'guardian'))}</ol>`
+    ? html`<ol class="items">${results.map((r) => resultCard(t, space, r, 'guardian', lang))}</ol>`
     : html`<p id="results-none" class="message">${t('resultsNone')}</p>`}
 </section>${guardianQuizzes(t, c.learner, quizzes)}`;
-  return spacePage(t, lang, space, c.learner.display_name, body);
+  return spacePage(t, lang, space, c.learner.display_name, body, { bar: true });
 }

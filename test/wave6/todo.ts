@@ -8,6 +8,7 @@ import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chapterLocks } from '../../src/learning.ts';
+import { dayLabel, showDate } from '../../src/format.ts';
 import type { Wave1World } from './world.ts';
 
 const unescape = (s: string) => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, '&');
@@ -48,15 +49,22 @@ export interface TodoView {
 }
 
 function itemsOf(fragment: string, folded: boolean): TodoItemView[] {
-  return [...fragment.matchAll(/<li class="todo-item" data-kind="(lesson|chapter)" data-item="([^"]+)" data-subject="([^"]+)"><a class="todo-link" href="([^"]+)">([\s\S]*?)<\/a>\n<p class="todo-line">([\s\S]*?)<\/p>(?:\n<p class="todo-progress">([\s\S]*?)<\/p>)?<\/li>/g)].map((m) => ({
+  // LMS redesign R1a (UX-62/UX-63 rows, UX-102): each row carries its subject's colour and icon, and its line ends with the S6 tag.
+  return [...fragment.matchAll(/<li class="todo-item" data-kind="(lesson|chapter)" data-item="([^"]+)" data-subject="([^"]+)" style="[^"]*"><span class="sicon">[\s\S]*?<\/span><div class="todo-main"><a class="todo-link" href="([^"]+)">([\s\S]*?)<\/a>\n<p class="todo-line">([\s\S]*?)<\/p>(?:\n<p class="todo-progress">([\s\S]*?)<\/p>)?<\/div><\/li>/g)].map((m) => ({
     kind: m[1] as 'lesson' | 'chapter', id: m[2], subject: m[3], href: unescape(m[4]), title: textOf(m[5]), line: textOf(m[6]), progress: m[7] === undefined ? null : textOf(m[7]), folded, raw: m[0],
   }));
 }
 
-/** The to-do block of a page (id="todo"), or null when the page has none. */
+/** The learner's to-do page (LMS redesign R1a, S9, UX-102): the full wave 6 block moved here from the home. */
+export const todoPath = (s: { id: string }) => `/s/${s.id}/todo`;
+
+/** The to-do block of a page (id="todo"), or null when the page has none. LMS redesign R1a (UX-34/UX-54/UX-62 rows): the block
+ * is the to-do page's (read it from todoPath); the home's #todo is the due-soon strip, which this refuses to read. With nothing
+ * due the page keeps its heading and says «لا شيء مطلوب الآن» with no group: read here as null, wave 6's "no block". */
 export function todoOf(html: string): TodoView | null {
   const start = html.indexOf('<section id="todo"');
   if (start < 0) return null;
+  assert.ok(!html.startsWith('<section id="todo" class="strip"', start), 'todoOf reads the to-do page (todoPath), not the home\'s due strip');
   const end = html.indexOf('</section>', start);
   const block = html.slice(start, end + '</section>'.length);
   const groups = [...block.matchAll(/<div class="todo-group" data-group="(overdue|today|next)">\n<h3 id="todo-[a-z]+">([\s\S]*?)<\/h3>([\s\S]*?)\n<\/div>/g)].map((m) => {
@@ -73,7 +81,39 @@ export function todoOf(html: string): TodoView | null {
       capped: capped ? textOf(capped[1]) : null,
     };
   });
-  return { block, at: start, heading: textOf(/<h2 id="todo-heading">([\s\S]*?)<\/h2>/.exec(block)?.[1] ?? ''), groups };
+  if (groups.length === 0) return null;
+  return { block, at: start, heading: textOf(/<h[12] id="todo-heading">([\s\S]*?)<\/h[12]>/.exec(block)?.[1] ?? ''), groups };
+}
+
+/** LMS redesign R1a (UX-98, UX-34/UX-54/UX-62 rows): the home's due-soon strip, the list's first three items. Its markup, with
+ * "see all" taken out (a link on the learner's home, inert in a preview: the to-do page is not previewable), and its rows' ids. */
+export function stripOf(html: string): { markup: string; ids: string[]; groups: string[] } | null {
+  const m = /<section id="todo" class="strip"[\s\S]*?<\/section>/.exec(html);
+  if (!m) return null;
+  return {
+    markup: m[0].replace(/<a id="todo-all"[^>]*>[\s\S]*?<\/a>/, '[see all]'),
+    ids: [...m[0].matchAll(/<li class="strip-row" data-group="[a-z]+" data-kind="[a-z]+" data-item="([^"]+)"/g)].map((r) => r[1]),
+    groups: [...m[0].matchAll(/<li class="strip-row" data-group="([a-z]+)"/g)].map((r) => r[1]),
+  };
+}
+
+/** The subjects of a home's cards, in order (LMS redesign R1a, UX-99: `li.card.subj`). */
+export const cardSubjectsOf = (doc: string) => [...doc.matchAll(/<li class="card subj" data-subject="([^"]+)"/g)].map((m) => m[1]);
+
+/** A to-do row's line on the learner's page (LMS redesign R1a, UX-62/UX-63 rows): "<kind> · <subject>" then the group's S6
+ * tag words (late · <day>, due today, due <day>; the day S4's, a relative word for yesterday/today/tomorrow). */
+export function rowLine(t: (key: string, v?: Record<string, string>) => string, lang: 'ar' | 'en', kind: 'lesson' | 'chapter', subjectTitle: string, group: TodoGroupView['key'], iso: string, today: string): string {
+  const day = dayLabel(iso, lang, today);
+  const tag = group === 'overdue' ? t('tagLate', { date: day }) : group === 'today' ? t('tagToday') : t('tagDue', { date: day });
+  return `${t(kind)} · ${subjectTitle} ${tag}`;
+}
+
+/** LMS redesign R1a (UX-62/UX-63, UX-16a rows): the guardian's line for a row of the learner's to-do page: wave 6's todoItemLine with
+ * the row's kind, its subject title and its due day as S4 shows it (from the tag's `datetime`; a "due today" tag is today). */
+export function guardianLineFor(t: (key: string, v?: Record<string, string>) => string, lang: 'ar' | 'en', item: TodoItemView, group: TodoGroupView['key'], today: string): string {
+  const subjectTitle = textOf(/<p class="todo-line">[^<]*<bdi>([\s\S]*?)<\/bdi>/.exec(item.raw)![1]);
+  const iso = group === 'today' ? today : /<time datetime="(\d{4}-\d{2}-\d{2})">/.exec(item.raw)![1];
+  return t('todoItemLine', { kind: t(item.kind), subjectTitle, date: showDate(iso, lang, today) });
 }
 
 /** The group keys and item ids of a block, compactly (for assertions and messages). */
@@ -251,9 +291,11 @@ export function withoutGuardianTodo(html: string): string {
   return at < 0 ? html : html.slice(0, at) + html.slice(elementEnd(html, at));
 }
 
-/** A block as the sequence AT-6.2 compares: (group key, group heading with its count, item title, todoItemLine text, shown or folded). */
-export function sequenceOf(v: { groups: { key: string; heading: string; items: { title: string; line: string; folded: boolean }[] }[] } | null): string[] | null {
-  return v ? v.groups.flatMap((g) => g.items.map((i) => [g.key, g.heading, i.title, i.line, i.folded ? 'folded' : 'shown'].join(' | '))) : null;
+/** A block as the sequence AT-6.2 compares: (group key, group heading with its count, item title, todoItemLine text, shown or folded).
+ * LMS redesign R1a (UX-62/UX-63 rows): `lines = false` leaves the line out, for comparing the guardian's block with the learner's to-do
+ * page, whose row lines end with the S6 tag; the guardian keeps wave 6's todoItemLine (S4 date, UX-16a row), checked on its own. */
+export function sequenceOf(v: { groups: { key: string; heading: string; items: { title: string; line: string; folded: boolean }[] }[] } | null, lines = true): string[] | null {
+  return v ? v.groups.flatMap((g) => g.items.map((i) => [g.key, g.heading, i.title, ...(lines ? [i.line] : []), i.folded ? 'folded' : 'shown'].join(' | '))) : null;
 }
 
 /** The allow-list of AT-7.2 inside the block: elements, attributes, and text (each element's text is one expected value). Empty when it holds. */

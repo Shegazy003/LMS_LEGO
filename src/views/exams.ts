@@ -17,7 +17,9 @@ import type { ExamRow, HistoryEntry, OwnResult, PublishedRow, ResultRow, RosterR
 import { markText } from '../exams.ts';
 import type { Label, Lang } from '../labels.ts';
 import { RENAME_MAX } from '../names.ts';
-import { errorBox, sentence, type Html } from './layout.ts';
+import { dateText, errorBox, sentence, type Html } from './layout.ts';
+import { showDate } from '../format.ts';
+import { now } from '../clock.ts';
 import { spacePage } from './learn.ts';
 import type { SpaceView } from './space.ts';
 
@@ -303,13 +305,15 @@ export function marksMessagePage(t: Label, lang: Lang, space: SpaceView, exam: E
 /** A result's value as every page shows it: "mark / maximum", or Absent. */
 export const scoreText = (t: Label, r: OwnResult): string => (r.status === 'absent' ? t('absent') : `${markText(r.mark ?? 0)} / ${markText(r.max_mark)}`);
 
-export function resultCard(t: Label, space: SpaceView, r: OwnResult, mode: 'link' | 'plain' | 'guardian'): Html {
+export function resultCard(t: Label, space: SpaceView, r: OwnResult, mode: 'link' | 'plain' | 'guardian', lang?: Lang): Html {
+  // LMS redesign R1a (S4, UX-104): on learner and guardian pages (`lang` given) dates as those pages show them.
+  const shown = (day: string) => (lang ? showDate(day, lang, utcDate(now())) : day);
   const head = html`<bdi class="exam">${r.exam_title}</bdi> · <bdi class="subject">${r.subject_title}</bdi>`;
   const score = scoreText(t, r);
-  const corrected = r.corrected_at === null ? '' : html`<div class="row"><span class="corrected">${t('correctedOn', { date: utcDate(r.corrected_at) })}</span></div>`;
+  const corrected = r.corrected_at === null ? '' : html`<div class="row"><span class="corrected">${t('correctedOn', { date: shown(utcDate(r.corrected_at)) })}</span></div>`;
   return html`<li class="card result"${mode === 'guardian' ? '' : html` data-result="${r.id}"`}>
   <div class="title">${mode === 'link' ? html`<a href="/s/${space.id}/results/${r.id}">${head}</a>` : head}</div>
-  <div class="row"><span class="muted date" dir="ltr">${r.exam_date}</span><span class="score" dir="auto">${score}</span></div>
+  <div class="row"><span class="muted date" dir="${lang === 'ar' ? 'rtl' : 'ltr'}">${lang ? dateText(r.exam_date, lang) : r.exam_date}</span><span class="score" dir="auto">${score}</span></div>
   ${corrected}
 </li>`;
 }
@@ -319,15 +323,15 @@ export function myResultsPage(t: Label, lang: Lang, space: SpaceView, results: O
   const body = html`<h1 id="results-title">${t('myResults')}</h1>
 <p class="muted" id="results-note">${t('resultsNote')}</p>
 ${results.length
-    ? html`<ol id="results" class="items">${results.map((r) => resultCard(t, space, r, 'link'))}</ol>`
+    ? html`<ol id="results" class="items">${results.map((r) => resultCard(t, space, r, 'link', lang))}</ol>`
     : html`<p id="results-none" class="card message">${t('resultsNone')}</p>`}`;
-  return spacePage(t, lang, space, t('myResults'), body, { current: 'results' });
+  return spacePage(t, lang, space, t('myResults'), body, { current: 'results', bar: true });
 }
 
 /** One result of the learner's own. */
 export function resultPage(t: Label, lang: Lang, space: SpaceView, r: OwnResult): Html {
   const body = html`<p><a id="back" href="/s/${space.id}/results">${t('myResults')}</a></p>
-<ol id="results" class="items">${resultCard(t, space, r, 'plain')}</ol>`;
+<ol id="results" class="items">${resultCard(t, space, r, 'plain', lang)}</ol>`;
   // Wave 1 (section 4.4): one result marks My results as the current page of the top navigation.
-  return spacePage(t, lang, space, r.exam_title, body, { current: 'results' });
+  return spacePage(t, lang, space, r.exam_title, body, { current: 'results', bar: true });
 }

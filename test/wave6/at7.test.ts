@@ -24,7 +24,7 @@ import {
   AT, ADMIN, HADEER, LAILA6, MONA, OMAR, RANIA6, SALMA, TAMER6, YARA6, as, clockAt, closeWave6, home, press, wave6World, withTamer, withW6b, withW6f, words,
   type W6a, type W6b, type Wave1World,
 } from './world.ts';
-import { allowListProblems, guardianTodoOf, todoOf, withoutGuardianTodo } from './todo.ts';
+import { allowListProblems, guardianLineFor, guardianTodoOf, todoOf, todoPath, withoutGuardianTodo } from './todo.ts';
 
 const repo = fileURLToPath(new URL('../..', import.meta.url));
 type Lang = 'ar' | 'en';
@@ -135,11 +135,13 @@ describe('W6 AT-7.2 privacy scans: outside the block the release 2 and v2 scans 
             const l = learners[learnerId];
             assert.ok(l, `${where}: a block for a learner of the world`);
             const lc = await as(w, l.person, lang);
-            const own = todoOf(await (await lc.get(home(l.space))).text());
+            // LMS redesign R1a (UX-62/UX-63, UX-16a rows): the learner's list is the to-do page; the guardian's line is todoItemLine with the S4 date.
+            const own = todoOf(await (await lc.get(todoPath(l.space))).text());
             assert.ok(own, `${where}: the learner has their own block`);
+            const today = new Date(AT.noon).toISOString().slice(0, 10);
             const groups = own.groups.map((x) => {
               const n = Number(/\d+/.exec(x.heading.replace(String(TODO_AHEAD_DAYS), ''))![0]);
-              return { heading: x.heading, more: x.more, capped: x.capped ? tt('guardianTodoCapped', { n: String(n - 10) }) : null, items: x.items.map((i) => ({ title: i.title, line: i.line })) };
+              return { heading: x.heading, more: x.more, capped: x.capped ? tt('guardianTodoCapped', { n: String(n - 10) }) : null, items: x.items.map((i) => ({ title: i.title, line: guardianLineFor(tt, lang, i, x.key, today) })) };
             });
             assert.deepEqual(allowListProblems(g.block, { heading: tt('guardianTodoTitle', { name: l.person.display_name }), note: tt('guardianTodoNote'), groups }), [], `${where}: the allow-list inside the block`);
           }
@@ -310,8 +312,68 @@ const W8_CHANGED_TESTS: Record<string, string> = {
   'test/at5/at5.test.ts': 'D9 R-1: AT-5.6 reads the role choices without the disabled placeholder',
   'test/at9/at9a.test.ts': 'D9 R-1: AT-9a reads the role choices without the disabled placeholder',
 };
-/** W7-1's additions to the workflow: the job wave-7 (W7 11.6) and the rollback job's AT-6.3 step (W7 11.6); W8-1a's job wave-8. */
-const W7_JOBS = ['wave-7', 'wave-8'];
+/** LMS redesign R1a (PIL-325, contract c63f0eed section 5): old test files whose steps change, each with its rule-register row. */
+const R1A_CHANGED_TESTS: Record<string, string> = {
+  'test/wave6/todo.ts': 'R1a UX-34/UX-54/UX-62 and UX-62/UX-63 rows: the full to-do list is the to-do page; rows carry the S6 tag; the home strip read apart; UX-16a row: S4 dates',
+  'test/wave6/at2.test.ts': 'R1a UX-34/UX-54/UX-62 and UX-62/UX-63 rows: the list read on /s/<space>/todo; the block placement is the strip\'s; UX-16a row: S4 dates in the tag',
+  'test/wave6/at3.test.ts': 'R1a UX-34/UX-54/UX-62 rows: preview home and learner home compared by their due strips; the full list on the to-do page',
+  'test/wave6/at6.test.ts': 'R1a UX-62/UX-63 rows: the guardian block equals the learner\'s to-do page (lines apart: the learner\'s end with the S6 tag); UX-16a row: S4 dates',
+  'test/wave6/at7.test.ts': 'R1a UX-62/UX-63 and UX-16a rows: the allow-list\'s guardian lines from the learner\'s to-do page rows; the job redesign-r1a; this map',
+  'test/at13/pages.ts': 'R1a S9: the to-do word scan leaves out nav#top-nav (a learner\'s own To-do link); UX-16a row: the results section allows S4 dates',
+  'test/at13/at13a.test.ts': 'R1a UX-16a row: the results-section self-check uses S4 dates and <time datetime>',
+  'test/guards/reset-links.test.ts': 'R1a S2/UX-94: the reset page\'s <html> carries the school colour (class and style) after lang and dir; still an Arabic RTL page',
+  'test/wave6/ux-guardian.test.ts': 'R1a UX-16a row: UX-81 the guardian line\'s date as S4 shows it, in the page\'s direction',
+  'test/wave6/ux-learner.test.ts': 'R1a UX-34/UX-54/UX-62 and UX-62/UX-63 rows: UX-62 to UX-67 read the to-do page and the home strip; UX-16a row: S4 dates',
+  'test/at11/at11a.test.ts': 'R1a UX-16a row: the result date read from <time datetime> (shown as S4); the mark scan leaves the dates out',
+  'test/at12/corrections.ts': 'R1a UX-16a row: a result card\'s date read from <time datetime>',
+  'test/at12/at12a.test.ts': 'R1a UX-16a row: "Corrected on" with the S4 date on learner pages',
+  'test/at13/at13d.test.ts': 'R1a S2: <html> carries the school colour variables after lang and dir',
+  'test/at13/at13d-activity.test.ts': 'R1a S2: <html> carries the school colour variables after lang and dir',
+  'test/support/product.ts': 'R1a S3: the in-process product serves the font assets with their _headers before the router, as Cloudflare does',
+  'test/wave1/ux.ts': 'R1a UX-99: the overflow check skips visually hidden text and one-line ellipsis (the card\'s announcement line)',
+  'test/wave2/at1.test.ts': 'R1a UX-34 row: AT-1.3 reads the new card markup',
+  'test/wave2/at5.test.ts': 'R1a UX-34 row: the continue hero (kicker, lesson title, progress, one link) and the card action by its accessible name',
+  'test/wave2/ux-home.test.ts': 'R1a UX-34 row: UX-34/UX-35 home order hero, due strip, cards; one hero link of at least 44 px; Tab order through the strip',
+  'test/wave5/at2.test.ts': 'R1a UX-55 row: the home announcements block is replaced by each card\'s latest-announcement line; UX-16a row: S4 by-line dates',
+  'test/wave5/at3.test.ts': 'R1a UX-55 row: AT-3.4(b) reads the card lines',
+  'test/wave5/at5.test.ts': 'R1a UX-55 row and S9: the AT-5.5 crawl allows /s/<space>/subjects',
+  'test/wave5/ux-learner.test.ts': 'R1a UX-55 row: UX-55 to UX-58 home halves read the card lines (the first-screen clause kept)',
+  'test/wave4/at2.test.ts': 'R1a UX-34 row, UX-97/UX-99: AT-2.5 reads the one-line hero link and the card action by its accessible name',
+  'test/wave4/ux.test.ts': 'R1a UX-96: UX-46 "no focus move" allows body.has-bar (learner pages with the bottom bar)',
+  'test/wave3a/at1.test.ts': 'R1a UX-1 row (look only), UX-99: cards read as `card subj`; S2/UX-94: the space colour as --brand on <html>',
+  'test/wave3a/at2.test.ts': 'R1a UX-1 row (look only), UX-99: cards read as `card subj`',
+  'test/wave3a/at3.test.ts': 'R1a UX-55 row: the preview home shows announcements as card lines; S9: see-all is an inert control; S3/UX-95: static font assets are no Worker request',
+  'test/wave3a/at5.test.ts': 'R1a UX-99: cards counted as `card subj`; S12: the job list gains redesign-r1a',
+  'test/wave3a/world.ts': 'R1a S9/UX-96: My subjects and To do are not previewable (left out of the learner side; see-all inert); UX-99: no ring in a preview',
+  'test/wave3a/ux.test.ts': 'R1a S9/UX-96: the learner Tab order without the two not-previewable nav items; UX-103: the empty home heading',
+  'test/wave1/home.ts': 'R1a UX-1 row (look only), UX-99: the card action is read by its accessible name «<word>: <title>»',
+  'test/wave1/ux1.test.ts': 'R1a UX-1 row (look only), UX-99: the action\'s accessible name starts with its visible word; UX-105: content up to 1120 px',
+  'test/wave1/ux2.test.ts': 'R1a UX-103: the empty home\'s heading is nothingAssigned; UX-99: "no gap" read in the title block (the count is in the side column)',
+  'test/wave1/at1-3.test.ts': 'R1a UX-34 row, UX-103: the home parts in main > .home-grid; the empty home = nothingAssigned heading + one sentence',
+  'test/wave1/at2-5.test.ts': 'R1a UX-3 row (S9, UX-96): below 960 px the nav is a bottom bar; in view = inside the viewport and above the bar',
+  'test/wave1/ux6.test.ts': 'R1a UX-3 row (S9, UX-96): below 960 px the nav is a bottom bar; in view = inside the viewport and above the bar',
+  'test/l2/world.ts': 'R1a UX-16a row: result and activity dates read from <time datetime>; s4() gives the date as shown; expectedLine takes the shown date',
+  'test/l2/at4-1.test.ts': 'R1a UX-16a row: the guardian result line reads with the S4 date',
+  'test/l2/at4-2.test.ts': 'R1a UX-16a row: "Last opened" reads with the S4 date; the newest activity row keeps its stored day',
+  'test/l2/ux16b.test.ts': 'R1a UX-16a row: the result date as S4 shows it, the stored day compared with the learner page',
+  'test/at15/activity.ts': 'R1a UX-16a row: the guardian activity page\'s dates (last opened, recording since) read from <time datetime> (shown as S4)',
+  'test/at15/at15c.test.ts': 'R1a UX-16a row: "every date is a calendar day" now checks the stored day in <time datetime> and the S4 display (year only when not this UTC year)',
+  'test/wave5/ux.test.ts': 'R1a UX-55 row: the removed home keys leave the key list; UX-94: staff secondary colour is the school\'s strong colour',
+  'test/wave8/learner.ts': 'R1a UX-99: the card read as `card subj`, its waiting line as `open-next wait`; UX-62/UX-63 rows: the to-do page path and its group reader; UX-16a row: shown() gives a date as S4 shows it',
+  'test/wave8/at2.test.ts': 'R1a UX-16a row: openedOn with the S4 date; UX-62/UX-63 rows: the to-do list read on /s/<space>/todo',
+  'test/wave8/at3.test.ts': 'R1a UX-16a row: openedOn and openNext with the S4 date',
+  'test/wave8/at4.test.ts': 'R1a UX-16a row: openedOn and openNext with the S4 date; AT-4.4 also scans for Ch3\'s date as S4 shows it',
+  'test/wave8/at5.test.ts': 'R1a UX-55 row (S13): AT-5.2 allows the rows of the one latest-announcement read on the home and preview home, nothing else (budget AT-R1a.6a); UX-3, UX-1, UX-34/UX-54/UX-62, UX-55, UX-62/UX-63 and UX-16a rows: AT-5.1 compares the candidate with a41f7d8\'s live capture (itself equal to the stored fixtures) by N1 and the shared R1a normaliser (test/redesign/base.ts); AT-5.3 (a41f7d8\'s code) stays strict',
+  'test/wave4/base.test.ts': 'R1a UX-3, UX-1 (look), UX-34/UX-54/UX-62, UX-55 and UX-16a rows: the shared R1a normaliser (test/redesign/base.ts) on both sides; the crawl follows main\'s own links',
+  'test/wave5/base.test.ts': 'R1a rows as wave 4\'s base; UX-55 row: a home with no subject card makes no latest-announcement read; AT-3.5 sees the card lines in place of the block',
+  'test/wave6/base.test.ts': 'R1a rows as wave 4\'s base; UX-62/UX-63 rows: the list read on the to-do page, the home strip apart; the W6-e size bound measures the dates\' growth on the candidate (undated home, to-do page), without the shared style',
+  'test/wave6/base-guardian.test.ts': 'R1a rows as wave 4\'s base; UX-62/UX-63 rows: the learner\'s own block on her to-do page, compared without lines; UX-55 row: no announcement read on a home with no card; the W6-e page bound without the shared style',
+  'test/wave7/base.test.ts': 'R1a rows as wave 4\'s base; UX-94: wave 7\'s CSS block weighed up to R1a\'s blocks with wave 7\'s colour; UX-55 row: no announcement read on a home with no card',
+  'test/wave7/base-guardian.test.ts': 'R1a rows as wave 4\'s base; UX-55 row: no announcement read on a home with no card',
+  'test/wave8/ux-learn.test.ts': 'R1a UX-16a row: openedOn and openNext with the S4 date, isolated in the page\'s direction and kept on one line; UX-99: `open-next wait`',
+};
+/** W7-1's additions to the workflow: the job wave-7 (W7 11.6) and the rollback job's AT-6.3 step (W7 11.6); W8-1a's job wave-8; R1a's job redesign-r1a. */
+const W7_JOBS = ['wave-7', 'wave-8', 'redesign-r1a'];
 const W7_ROLLBACK_STEP = /^W7 AT-6\.3 /;
 
 describe('W6 AT-7.5 keep working: every existing CI step and the rollback job are W6-1b-main\'s; only the named test files changed', { concurrency: false }, () => {
@@ -343,7 +405,7 @@ describe('W6 AT-7.5 keep working: every existing CI step and the rollback job ar
     assert.deepEqual(removed, [], 'no test file removed');
     // W6-1c's named files all changed; any other changed file is one W7-1 names (section 11).
     assert.deepEqual(Object.keys(CHANGED_TESTS).filter((p) => !changed.includes(p)), [], 'every file W6-1c names is changed');
-    assert.deepEqual(changed.filter((p) => !CHANGED_TESTS[p] && !W7_CHANGED_TESTS[p] && !W8_CHANGED_TESTS[p]), [], 'only the named test files changed (W6-1c\'s, W7\'s and W8\'s)');
-    t.diagnostic(`AT-7.5: ${steps} W6-1b-main steps unchanged in ${base.size} jobs (rollback included); ${added.length} steps added to wave-6; changed test files:\n${changed.map((p) => `${p}: ${CHANGED_TESTS[p] ?? W7_CHANGED_TESTS[p] ?? W8_CHANGED_TESTS[p]}`).join('\n')}`);
+    assert.deepEqual(changed.filter((p) => !CHANGED_TESTS[p] && !W7_CHANGED_TESTS[p] && !W8_CHANGED_TESTS[p] && !R1A_CHANGED_TESTS[p]), [], 'only the named test files changed (W6-1c\'s, W7\'s, W8\'s and R1a\'s)');
+    t.diagnostic(`AT-7.5: ${steps} W6-1b-main steps unchanged in ${base.size} jobs (rollback included); ${added.length} steps added to wave-6; changed test files:\n${changed.map((p) => `${p}: ${[CHANGED_TESTS[p], W7_CHANGED_TESTS[p], W8_CHANGED_TESTS[p], R1A_CHANGED_TESTS[p]].filter(Boolean).join('; ')}`).join('\n')}`);
   });
 });

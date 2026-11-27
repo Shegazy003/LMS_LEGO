@@ -17,6 +17,7 @@ import {
   uxShot, wave6World, withHuda, withKitGuardians, withW5d, withW6f, words, WIDTHS, type W6a, type Wave1World, type Width,
 } from './world.ts';
 import { guardianTodoOf, withW6d, withW6e } from './todo.ts';
+import { showDate } from '../../src/format.ts';
 
 type Lang = 'ar' | 'en';
 const GUARDIAN_KEYS = ['guardianTodoTitle', 'guardianTodoNote', 'guardianTodoCapped'] as const satisfies readonly UiKey[];
@@ -207,8 +208,10 @@ describe('UX-81 wording for the guardian', { concurrency: false }, () => {
         const page = k.page;
         assert.deepEqual(await page.evaluate(() => [document.documentElement.lang, document.documentElement.dir]), [lang, lang === 'ar' ? 'rtl' : 'ltr'], `${space.kit} ${lang}: lang and dir`);
         const t = words(space.kit, lang);
-        assert.equal((await page.textContent('#guardian-todo .todo-line'))?.replace(/\s+/g, ' ').trim(), t('todoItemLine', { kind: t('lesson'), subjectTitle: 'Mathematics', date: '2026-12-10' }), `${space.kit} ${lang}: the kit's word in the line`);
-        assert.deepEqual(await page.$$eval('#guardian-todo .due-date', (ds) => ds.map((d) => [d.getAttribute('dir'), d.textContent])), [['ltr', '2026-12-10']], `${space.kit} ${lang}: the date Latin, dir="ltr"`);
+        // LMS redesign R1a (UX-16a row): the date as S4 shows it (day and month name, Latin digits) in the page's direction.
+        const shown = showDate('2026-12-10', lang, '2026-12-10');
+        assert.equal((await page.textContent('#guardian-todo .todo-line'))?.replace(/\s+/g, ' ').trim(), t('todoItemLine', { kind: t('lesson'), subjectTitle: 'Mathematics', date: shown }), `${space.kit} ${lang}: the kit's word in the line`);
+        assert.deepEqual(await page.$$eval('#guardian-todo .due-date', (ds) => ds.map((d) => [d.getAttribute('dir'), d.textContent])), [[lang === 'ar' ? 'rtl' : 'ltr', shown]], `${space.kit} ${lang}: the date S4, Latin digits`);
         const text = (await page.textContent('#guardian-todo')) ?? '';
         for (const key of GUARDIAN_KEYS) assert.ok(!text.includes(UI[other][key].split('{')[0].trim()), `${space.kit} ${lang}: no ${other} ${key}`);
         if (lang === 'ar') await uxShot(page, `UX-81-phone-ar-${space.kit}`);

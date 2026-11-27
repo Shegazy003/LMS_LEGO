@@ -22,7 +22,8 @@ let browser: Browser;
 function cards(html: string): string[][] {
   return [...html.matchAll(/<li class="card result" data-result="([^"]+)">([\s\S]*?)<\/li>/g)].map((m) => [
     (m[2].match(/<bdi class="exam">([^<]*)<\/bdi>/)?.[1] ?? '') + ' · ' + (m[2].match(/<bdi class="subject">([^<]*)<\/bdi>/)?.[1] ?? ''),
-    m[2].match(/<span class="muted date" dir="ltr">([^<]*)<\/span>/)?.[1] ?? '',
+    // LMS redesign R1a (UX-16a row): the date as S4 shows it, in the page's direction; its ISO day stays in <time datetime>.
+    m[2].match(/<span class="muted date" dir="(?:ltr|rtl)"><time datetime="([^"]*)">[^<]*<\/time><\/span>/)?.[1] ?? '',
     m[2].match(/<span class="score" dir="auto">([^<]*)<\/span>/)?.[1] ?? '',
   ]);
 }
@@ -47,7 +48,9 @@ describe('AT-11a each learner sees exactly their own published results', { concu
     assert.deepEqual(cards(html), [['Mid-term · Mathematics', '2026-11-12', '17 / 20']]);
     for (const other of [B, C, D]) assert.ok(!html.includes(other.display_name) && !html.includes(other.username), `nothing of ${other.username}`);
     assert.ok(!html.includes(A.username), 'not even A\'s own username');
-    for (const mark of ['12', '15.5']) assert.ok(!html.includes(`>${mark}`) && !html.includes(`${mark} /`), `no other learner's mark ${mark}`);
+    // LMS redesign R1a (UX-16a row): the S4 date («12 نوفمبر») is a <time>; the mark scan reads the page without the dates.
+    const undated = html.replace(/<time datetime="[^"]*">[^<]*<\/time>/g, '');
+    for (const mark of ['12', '15.5']) assert.ok(!undated.includes(`>${mark}`) && !undated.includes(`${mark} /`), `no other learner's mark ${mark}`);
     for (const word of NEVER) assert.ok(!html.toLowerCase().includes(word.toLowerCase()), `no "${word}"`);
     assert.ok(!/<input[^>]*type="hidden"/.test(html), 'no hidden field');
     for (const id of [w.ids[B.username], w.ids[C.username], w.ids[D.username], w.published[B.username].id, w.published[C.username].id, w.published[D.username].id]) {

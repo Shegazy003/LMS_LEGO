@@ -33,6 +33,7 @@ import { HADEER, MONA, OMAR, SALMA, YOUSSEF, adminOrder, publisherOrder, wave4Wo
 import { QUIZ_CARD, cutWave7Style } from '../wave7/world.ts';
 import { OPENING_CARD } from '../wave8/world.ts';
 import { d9People } from '../d9/base.ts';
+import { linksOf, r1aNormal } from '../redesign/base.ts';
 
 const repo = fileURLToPath(new URL('../..', import.meta.url));
 /** The pinned base: main b4ad669 (wave 3b merged), the contract's "main". */
@@ -116,9 +117,10 @@ const CARD_PAGES = [/^\/s\/[^/]+\/publish\/edit\/[^/?#]+(\/removed)?(\?|$)/, /^\
 
 function normalised(body: string, url: string): string {
   // LMS-D9 (PIL-320): the appoint form's help line and role choices (test/d9/base.ts).
-  return d9People(body.split(url).join('[product]')
+  // LMS redesign R1a (PIL-325): the new shell, learner home and S4 dates, on both sides (test/redesign/base.ts).
+  return r1aNormal(d9People(body.split(url).join('[product]')
     // The owner's usage today: each product counts its own requests (main's also built the world).
-    .replace(/<div id="usage"[\s\S]*?(?=<h2|<\/main>)/g, '[usage today]'));
+    .replace(/<div id="usage"[\s\S]*?(?=<h2|<\/main>)/g, '[usage today]')));
 }
 
 // LMS wave 5 (contract on PIL-246, section 11 item 3, and AT-4's style handling): the CSS is inlined in every page,
@@ -133,6 +135,8 @@ function styleHandled(base: string, cand: string, what: string): { base: string;
   const sc = HEAD_STYLE.exec(cand);
   assert.equal(Boolean(sc), Boolean(sb), `${what}: a <style> on both sides or neither`);
   if (!sb || !sc) return { base, cand };
+  // LMS redesign R1a (PIL-325): R1a replaces the shared style; r1aNormal made both one token, so no block is left to check.
+  if (sb[2] === '[style]' && sc[2] === '[style]') return { base, cand };
   // LMS wave 7 (W7 contract on PIL-261, section 11 item 3): wave 7's block follows wave 6's; it is checked and cut off first.
   const w7 = cutWave7Style(sc[2]);
   assert.equal(w7.problem, null, `${what}: the wave 7 block`);
@@ -185,7 +189,7 @@ async function bodyOf(res: Response): Promise<string> {
 }
 
 /** One address on both products: same status, Location, content type, cache rule and (normalised) body. */
-async function same(p: Pair, who: { who: string; base: Client; cand: Client }, method: 'GET' | 'POST', path: string, tally: Tally, fields: Record<string, string> = {}): Promise<{ res: Response; body: string }> {
+async function same(p: Pair, who: { who: string; base: Client; cand: Client }, method: 'GET' | 'POST', path: string, tally: Tally, fields: Record<string, string> = {}): Promise<{ res: Response; body: string; links: string[] }> {
   const rb = method === 'GET' ? await who.base.get(path) : await who.base.post(path, fields);
   const rc = method === 'GET' ? await who.cand.get(path) : await who.cand.post(path, fields);
   await p.base.worker.settle();
@@ -195,7 +199,8 @@ async function same(p: Pair, who: { who: string; base: Client; cand: Client }, m
   const loc = (r: Response, url: string) => (r.headers.get('location') ?? '').split(url).join('[product]');
   assert.equal(loc(rc, p.cand.url), loc(rb, p.base.url), `${what}: same Location`);
   for (const h of ['content-type', 'cache-control']) assert.equal(rc.headers.get(h), rb.headers.get(h), `${what}: same ${h}`);
-  const styled = styleHandled(normalised(await bodyOf(rb), p.base.url), normalised(await bodyOf(rc), p.cand.url), what);
+  const rawBase = await bodyOf(rb);
+  const styled = styleHandled(normalised(rawBase, p.base.url), normalised(await bodyOf(rc), p.cand.url), what);
   const bb = styled.base;
   const cut = withoutCard(styled.cand);
   if (cut.card) {
@@ -205,7 +210,8 @@ async function same(p: Pair, who: { who: string; base: Client; cand: Client }, m
   if (cut.body !== bb) assert.fail(`${what}: same body ${firstDifference(bb, cut.body)}`);
   tally.pages++;
   tally.per[who.who] = (tally.per[who.who] ?? 0) + 1;
-  return { res: rb, body: bb };
+  // The crawl follows main's own links (R1a: the learner home is one token in the compared body).
+  return { res: rb, body: bb, links: linksOf(rawBase) };
 }
 
 /** Never followed: leaving (sign-out is a form anyway) and the test build's own addresses. */
@@ -219,15 +225,14 @@ async function crawlBoth(p: Pair, who: { who: string; base: Client; cand: Client
     const path = queue.shift()!;
     if (seen.has(path)) continue;
     seen.add(path);
-    const { res, body } = await same(p, who, 'GET', path, tally);
+    const { res, links } = await same(p, who, 'GET', path, tally);
     if (res.status >= 300 && res.status < 400) {
       const to = (res.headers.get('location') ?? '').replace(p.base.url, '');
       if (to.startsWith('/') && keep(to)) queue.push(to);
       continue;
     }
     if (!(res.headers.get('content-type') ?? '').startsWith('text/html')) continue;
-    for (const m of body.matchAll(/(?:href|src)="(\/[^"#]*)/g)) {
-      const next = m[1].replace(/&amp;/g, '&');
+    for (const next of links) {
       if (!seen.has(next) && keep(next)) queue.push(next);
     }
   }

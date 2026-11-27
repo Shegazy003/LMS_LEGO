@@ -14,7 +14,7 @@ import { OWNER } from '../support/seed.ts';
 import type { Client } from '../support/http.ts';
 import type { Lang } from '../../src/labels.ts';
 import {
-  ADMIN, AT2_ARABIC, AT2_MATH, FARES, HADEER, LINA4, MONA, NADIA, RANA5, SALMA, annBlock, as, blockTexts, home, learnerBlockOf, post,
+  ADMIN, AT2_ARABIC, AT2_MATH, FARES, HADEER, LINA4, MONA, NADIA, RANA5, SALMA, annBlock, as, blockTexts, cardLines, home, learnerBlockOf, post,
   publisherAnn, subjectPath, wave4World, withAt2, withNile5, withW5a, type Wave1World,
 } from './world.ts';
 
@@ -209,26 +209,27 @@ describe('W5 AT-3 only the subject\'s own people see it; the preview shows it ex
         assert.equal(unpreview(block), learnerBlock, `(a) ${who} ${lang}: byte-identical to Salma's`);
       }
       // (b) the preview home: Amal's from every published subject (Salma has them all); Hadeer's from Mathematics only (Rana Test has exactly that).
-      const amalHome = annBlock(await preview(amal, `/s/${s.id}/preview?from=home`));
-      const salmaHome = annBlock(await (await salma.get(home(s))).text());
-      assert.ok(amalHome && salmaHome, `${lang}: both home blocks`);
-      assert.equal(unpreview(amalHome), salmaHome, `(b) Amal ${lang}: the preview home block equals Salma's (assigned every published subject)`);
-      const hadeerHome = annBlock(await preview(hadeer, `/s/${s.id}/preview?from=home`));
-      const ranaHome = annBlock(await (await rana.get(home(s))).text());
-      assert.ok(hadeerHome && ranaHome, `${lang}: Hadeer's preview and Rana Test's home blocks`);
-      assert.equal(unpreview(hadeerHome), ranaHome, `(b) Hadeer ${lang}: the preview home block equals Rana Test's (assigned exactly Mathematics)`);
-      assert.ok(!hadeerHome.includes(escaped(AT2_ARABIC)), `(b) Hadeer ${lang}: not Arabic grammar's (not hers)`);
+      // LMS redesign R1a (UX-55 row): the home's block became each card's line; the preview's lines equal the learner's.
+      const lines = (html: string) => [...cardLines(html).values()].map((l) => [l.subject, l.ann, l.raw]);
+      const amalHome = lines(await preview(amal, `/s/${s.id}/preview?from=home`));
+      const salmaHome = lines(await (await salma.get(home(s))).text());
+      assert.ok(amalHome.length && salmaHome.length, `${lang}: both homes have card lines`);
+      assert.deepEqual(amalHome, salmaHome, `(b) Amal ${lang}: the preview home's lines equal Salma's (assigned every published subject)`);
+      const hadeerHome = lines(await preview(hadeer, `/s/${s.id}/preview?from=home`));
+      const ranaHome = lines(await (await rana.get(home(s))).text());
+      assert.ok(hadeerHome.length && ranaHome.length, `${lang}: Hadeer's preview and Rana Test's home lines`);
+      assert.deepEqual(hadeerHome, ranaHome, `(b) Hadeer ${lang}: the preview home's lines equal Rana Test's (assigned exactly Mathematics)`);
+      assert.ok(!hadeerHome.some((l) => l[2] === escaped(AT2_ARABIC)), `(b) Hadeer ${lang}: not Arabic grammar's (not hers)`);
     }
     // (b) a world where Salma is not assigned every published subject: a new subject, published, not hers, with the newest announcement.
     const extra = 'w5-extra-subject';
     await w.p.sql(`INSERT INTO subject (id, space_id, title, publisher_user_id, is_published) VALUES ('${extra}', '${s.id}', 'Extra club', NULL, 1)`);
     await post(w.admin, `/s/${s.id}/admin/topics/${extra}/announcements`, 'Extra club meets on Friday.');
     for (const lang of LANGS) {
-      const salmaHome = learnerBlockOf(await (await (await as(w, SALMA, lang)).get(home(s))).text())!;
-      const amalHome = learnerBlockOf(await preview(await as(w, ADMIN, lang), `/s/${s.id}/preview?from=home`))!;
-      assert.ok(!salmaHome.items.some((i) => i.text === 'Extra club meets on Friday.'), `(b) ${lang}: Salma's block lacks the other subject's announcement`);
-      assert.equal(amalHome.items[0].text, 'Extra club meets on Friday.', `(b) ${lang}: the preview's has it`);
-      assert.equal(amalHome.items[0].subject!.id, extra);
+      const salmaHome = cardLines(await (await (await as(w, SALMA, lang)).get(home(s))).text());
+      const amalHome = cardLines(await preview(await as(w, ADMIN, lang), `/s/${s.id}/preview?from=home`));
+      assert.ok(![...salmaHome.values()].some((l) => l.text === 'Extra club meets on Friday.'), `(b) ${lang}: Salma's home lacks the other subject's announcement`);
+      assert.equal(amalHome.get(extra)?.text, 'Extra club meets on Friday.', `(b) ${lang}: the preview's card of that subject has it`);
     }
     // (c) an unpublished subject: Physics (Hadeer's) with an announcement; its preview shows it as a learner sees it once published.
     const hadeer = await as(w, HADEER, 'en');

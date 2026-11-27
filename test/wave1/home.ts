@@ -29,7 +29,9 @@ export async function cardsOn(page: Page): Promise<CardSeen[]> {
       headingLevel: heading?.tagName ?? '',
       teacher: text(li.querySelector('.teacher')),
       count: text(li.querySelector('.count')),
-      start: start ? { text: clean((start as HTMLElement).innerText), href: start.getAttribute('href') ?? '' } : null,
+      // LMS redesign R1a (UX-1 row, look only; UX-99): the action shows its word; its accessible name (aria-label)
+      // is the old text «<word>: <title>», read here.
+      start: start ? { text: clean(start.getAttribute('aria-label') ?? (start as HTMLElement).innerText), href: start.getAttribute('href') ?? '' } : null,
       none: text(li.querySelector('.none')),
       links: [...li.querySelectorAll('a')].map((a) => a.getAttribute('href') ?? ''),
       text: clean((li as HTMLElement).innerText),

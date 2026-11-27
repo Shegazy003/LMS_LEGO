@@ -42,8 +42,11 @@ interface Card {
   action: { text: string; href: string } | null;
 }
 
-/** The words a person hears: the text without the decorative arrow (aria-hidden). */
-const read = (fragment: string) => plain(fragment.replace(/<span\b[^>]*aria-hidden="true"[^>]*>[^<]*<\/span>/g, ' '));
+/** The words a person hears: the text without the decorative arrow, icons and ring (aria-hidden; LMS redesign R1a, UX-97). */
+const read = (fragment: string) => plain(fragment
+  .replace(/<span class="ring" aria-hidden="true">[\s\S]*?<\/span>/g, ' ')
+  .replace(/<svg\b[^>]*aria-hidden="true"[\s\S]*?<\/svg>/g, ' ')
+  .replace(/<span\b[^>]*aria-hidden="true"[^>]*>[^<]*<\/span>/g, ' '));
 
 /** The continue area of a home as the server sent it, or null when the page has none. */
 function areaOf(doc: string): Area | null {
@@ -57,8 +60,9 @@ function areaOf(doc: string): Area | null {
 function cardsOf(doc: string): Card[] {
   const list = element(doc, /<ul\b[^>]*\bid="my-list"[^>]*>/);
   if (!list) return [];
-  return [...list.html.matchAll(/<li class="card" data-subject="([^"]+)">([\s\S]*?)<\/li>/g)].map((m) => {
-    const start = /<a class="button start"[^>]*href="([^"]*)"[^>]*>([\s\S]*?)<\/a>/.exec(m[2]);
+  return [...list.html.matchAll(/<li class="card subj" data-subject="([^"]+)"[^>]*>([\s\S]*?)<\/li>/g)].map((m) => {
+    // LMS redesign R1a (UX-1 row, UX-99): the action shows «ابدأ» / «تابع» and is named "Start: <lesson>" (its accessible name, read here).
+    const start = /<a class="button start[^"]*"[^>]*href="([^"]*)"[^>]*aria-label="([^"]*)"[^>]*>/.exec(m[2]);
     const count = /<p class="count[^"]*"[^>]*>([\s\S]*?)<\/p>/.exec(m[2]);
     return { subject: m[1], html: m[0], count: count ? plain(count[1]) : '', action: start ? { href: start[1], text: plain(start[2]) } : null };
   });
@@ -91,9 +95,10 @@ function assertTarget(
 ): void {
   const area = areaOf(doc);
   assert.ok(area, `${what}: the home has the continue area`);
-  const t = words(s.kit, lang);
-  const link = `${word(lang, 'continueLink', { title: want.lesson }, s.kit)} ${word(lang, 'chapterLine', { title: CHAPTER_OF[want.lesson] }, s.kit)}`;
-  assert.equal(area.text, `${word(lang, 'continueHeading', {}, s.kit)} ${t('subject')}: ${want.subject} ${doneText(lang, want.n, want.total, s.kit)} ${link}`, `${what}: subject, progress and link`);
+  // LMS redesign R1a (UX-34 row, UX-97): the hero's «subject · chapter» kicker, the lesson title, its progress, then one link.
+  const kicker = word(lang, 'heroLesson', { subjectTitle: want.subject, chapterTitle: CHAPTER_OF[want.lesson] }, s.kit);
+  const link = word(lang, 'continueLink', { title: want.lesson }, s.kit);
+  assert.equal(area.text, `${word(lang, 'continueHeading', {}, s.kit)} ${kicker} ${want.lesson} ${doneText(lang, want.n, want.total, s.kit)} ${link}`, `${what}: kicker, lesson, progress and link`);
   assert.deepEqual(area.links, [{ href: lessonPath(s, want.lessonId), text: link }], `${what}: one link, to ${want.lesson}`);
 }
 
@@ -114,7 +119,8 @@ function assertTodayCard(card: Card, lang: Lang, want: { total: number; first: s
 /** A started card: "Done: N of M <lessons>" and "Continue: <target>", or "All done" and "Read again: <first lesson>". */
 function assertStartedCard(card: Card, lang: Lang, want: { n: number; total: number; go: string; goId: string; again?: boolean }, s: SpaceIds, what: string): void {
   assert.equal(card.count, doneText(lang, want.n, want.total, s.kit), `${what}: the done line`);
-  const key = want.again ? 'readAgain' : 'continueLink';
+  // LMS redesign R1a (UX-99): the card's action is named by its visible word first («تابع: …»; English unchanged).
+  const key = want.again ? 'readAgain' : 'cardContinueName';
   assert.deepEqual(card.action, { text: word(lang, key, { title: want.go }, s.kit), href: lessonPath(s, want.goId) }, `${what}: ${want.again ? 'Read again' : 'Continue'}: ${want.go}`);
 }
 

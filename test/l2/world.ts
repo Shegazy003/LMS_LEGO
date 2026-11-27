@@ -25,6 +25,7 @@ import {
   type SpaceIds, type Tab, type Wave1World, type Width,
 } from '../wave1/world.ts';
 import type { Lang } from '../../src/labels.ts';
+import { showDate } from '../../src/format.ts';
 
 export { ADMIN, HADEER, OMAR, SALMA, YOUSSEF, as, browserAs, words };
 export const MONA = { ...G1 };
@@ -199,7 +200,7 @@ export async function guardianCards(page: Page): Promise<GuardianCardSeen[]> {
       line: txt(line) ?? '',
       lineHref: line?.closest('a')?.getAttribute('href') ?? line?.querySelector('a')?.getAttribute('href') ?? null,
       result: score ? {
-        exam: txt(line!.querySelector('.exam')) ?? '', subject: txt(line!.querySelector('.subject')) ?? '', date: txt(line!.querySelector('.date')) ?? '',
+        exam: txt(line!.querySelector('.exam')) ?? '', subject: txt(line!.querySelector('.subject')) ?? '', date: line!.querySelector('.date time')?.getAttribute('datetime') ?? txt(line!.querySelector('.date')) ?? '',
         score: txt(score) ?? '', corrected: Boolean(line!.querySelector('.tag')),
       } : null,
       lastOpened: txt(card.querySelector('.last-opened')),
@@ -215,17 +216,19 @@ export async function firstResultRow(page: Page): Promise<ResultSeen | null> {
   if (!(await row.count())) return null;
   return row.evaluate((li) => {
     const clean = (el: Element | null) => ((el as HTMLElement | null)?.innerText ?? '').replace(/\s+/g, ' ').trim();
-    return { exam: clean(li.querySelector('.exam')), subject: clean(li.querySelector('.subject')), date: clean(li.querySelector('.date')), score: clean(li.querySelector('.score')), corrected: Boolean(li.querySelector('.corrected')) };
+    return { exam: clean(li.querySelector('.exam')), subject: clean(li.querySelector('.subject')), date: li.querySelector('.date time')?.getAttribute('datetime') ?? clean(li.querySelector('.date')), score: clean(li.querySelector('.score')), corrected: Boolean(li.querySelector('.corrected')) };
   });
 }
 
 /** The newest row of a guardian's activity page (newest date; on a tie the first in the page's order), or null for none. */
-export async function newestActivityRow(page: Page): Promise<{ title: string; date: string } | null> {
+export async function newestActivityRow(page: Page): Promise<{ title: string; date: string; shown: string } | null> {
   const rows = await page.locator('#activity li.row').evaluateAll((lis) => lis.map((li) => ({
     title: ((li.querySelector('.title') as HTMLElement | null)?.innerText ?? '').trim(),
-    date: (li.querySelector('.opened')?.textContent ?? '').match(/\d{4}-\d{2}-\d{2}/)?.[0] ?? '',
+    // R1a (UX-16a row): the stored day from <time datetime>; the date as shown (S4) apart.
+    date: li.querySelector('.opened time')?.getAttribute('datetime') ?? '',
+    shown: ((li.querySelector('.opened time') as HTMLElement | null)?.innerText ?? '').trim(),
   })));
-  let best: { title: string; date: string } | null = null;
+  let best: { title: string; date: string; shown: string } | null = null;
   for (const r of rows) if (r.date && (!best || r.date > best.date)) best = r;
   return best;
 }
@@ -241,10 +244,16 @@ export function guardianTab(browser: Browser, w: L2World, lang: Lang = 'ar', opt
   return browserAs(browser, w, opts.who ?? MONA, { lang, width: opts.width });
 }
 
-/** The result line a card should show for a result row, in a language (section 8.1). */
-export function expectedLine(t: ReturnType<typeof words>, r: ResultSeen | null): string {
+/** LMS redesign R1a (UX-16a row, contract S4): a UTC day as learner and guardian pages show it, by the product's clock. */
+export async function s4(w: Wave1World, day: string, lang: Lang): Promise<string> {
+  return showDate(day, lang, new Date(await workerNow(w.p.url)).toISOString().slice(0, 10));
+}
+
+/** The result line a card should show for a result row, in a language (section 8.1). R1a (UX-16a row): the row's
+ * `date` is the stored day (read from <time datetime>), shown as S4 (`shown`). */
+export function expectedLine(t: ReturnType<typeof words>, r: ResultSeen | null, shown = r?.date ?? ''): string {
   if (!r) return t('resultsNone');
-  return `${t('latestResultLine', { exam: r.exam, subject: r.subject, date: r.date, score: r.score })}${r.corrected ? ` ${t('correctedTag')}` : ''}`;
+  return `${t('latestResultLine', { exam: r.exam, subject: r.subject, date: shown, score: r.score })}${r.corrected ? ` ${t('correctedTag')}` : ''}`;
 }
 
 // ------------------------------------------------------- the chooser ----

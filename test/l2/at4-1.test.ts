@@ -16,7 +16,7 @@ import { appointAdmin, createSpace, seed, setUpOwner, signedIn } from '../suppor
 import { utcDatePlusDays } from '../support/http.ts';
 import { UX_EVIDENCE } from '../wave1/world.ts';
 import {
-  ADMIN, DRAFT_SCORE, HADEER, MONA, OMAR, OMAR_EXAM, OMAR_SCORE, SALMA, SALMA_FIRST, YOUSSEF, expectedLine, firstResultRow, go, guardianCards, guardianTab,
+  ADMIN, DRAFT_SCORE, HADEER, MONA, OMAR, OMAR_EXAM, OMAR_SCORE, SALMA, SALMA_FIRST, YOUSSEF, expectedLine, firstResultRow, s4, go, guardianCards, guardianTab,
   l2World, learnerPage, linkThrough, linkedHome, words, type L2World,
 } from './world.ts';
 
@@ -45,12 +45,12 @@ describe('AT-4.1 the guardian home shows each linked learner\'s latest published
         await go(tab.page, w, learnerPage(w.school, card.learnerId));
         const first = await firstResultRow(tab.page);
         assert.deepEqual(card.result, first, `${card.name}: the line's fields are the learner page's first row`);
-        assert.equal(card.line, expectedLine(t, first), `${card.name}: the line reads exactly`);
+        assert.equal(card.line, expectedLine(t, first, first ? await s4(w, first.date, lang) : undefined), `${card.name}: the line reads exactly (R1a UX-16a row: the S4 date)`);
         assert.equal(card.lineHref, learnerPage(w.school, card.learnerId), `${card.name}: the whole line links to the learner page`);
       }
       const salma = cards[0];
       assert.deepEqual(salma.result, { ...SALMA_FIRST, score: SALMA_FIRST.score }, 'Salma: Quiz 3, before Unit test on the tied date, corrected');
-      if (lang === 'en') assert.equal(salma.line, `Latest result: Quiz 3 · Mathematics · ${SALMA_FIRST.date} · 14 / 20 Corrected`);
+      if (lang === 'en') assert.equal(salma.line, `Latest result: Quiz 3 · Mathematics · ${await s4(w, SALMA_FIRST.date, 'en')} · 14 / 20 Corrected`);
       assert.equal(cards[1].result, null);
       assert.equal(cards[1].line, lang === 'en' ? 'No results yet.' : t('resultsNone'), 'Youssef: No results yet.');
       assert.equal(cards[0].lastOpened, null, 'activity off: no activity line');
@@ -67,7 +67,7 @@ describe('AT-4.1 the guardian home shows each linked learner\'s latest published
     await go(tab.page, w, learnerPage(w.school, salma.learnerId));
     const first = await firstResultRow(tab.page);
     assert.deepEqual(salma.result, first);
-    assert.equal(salma.line, expectedLine(words('school', 'en'), first));
+    assert.equal(salma.line, expectedLine(words('school', 'en'), first, first ? await s4(w, first.date, 'en') : undefined));
     await tab.ctx.close();
     assert.equal((await hadeer.post(`/s/${w.school.id}/publish/edit/${w.school.math}/publish`, {})).status, 303, 'published again');
   });

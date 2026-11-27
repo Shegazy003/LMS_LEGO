@@ -44,6 +44,7 @@ import {
 } from './world.ts';
 import { OPENING_CARD } from '../wave8/world.ts';
 import { d9People } from '../d9/base.ts';
+import { linksOf, r1aNormal } from '../redesign/base.ts';
 
 const repo = fileURLToPath(new URL('../..', import.meta.url));
 /** The pinned base: W6-main 6ce8366 (W6-1c merged, wave 6 complete; the Lead's MAIN_SHA for W7-1). */
@@ -154,7 +155,8 @@ const CARD = QUIZ_CARD;
 
 function normalised(body: string, url: string): string {
   // LMS-D9 (PIL-320): the appoint form's help line and role choices (test/d9/base.ts).
-  return d9People(body.split(url).join('[product]').replace(/<div id="usage"[\s\S]*?(?=<h2|<\/main>)/g, '[usage today]'));
+  // LMS redesign R1a (PIL-325): the new shell, learner home and S4 dates, on both sides (test/redesign/base.ts).
+  return r1aNormal(d9People(body.split(url).join('[product]').replace(/<div id="usage"[\s\S]*?(?=<h2|<\/main>)/g, '[usage today]')));
 }
 
 function firstDifference(a: string, b: string): string {
@@ -163,7 +165,8 @@ function firstDifference(a: string, b: string): string {
   return `at ${i}:\nmain:      ${JSON.stringify(a.slice(Math.max(0, i - 120), i + 160))}\ncandidate: ${JSON.stringify(b.slice(Math.max(0, i - 120), i + 160))}`;
 }
 
-interface Result { what: string; who: string; path: string; status: number; teacher: boolean; card: boolean; ann: boolean; todo: boolean; problem: string | null; reads: { base: number; cand: number } }
+/** `cards`, `emptyHome` (LMS redesign R1a): the candidate's page holds subject cards; it is a learner home with none. */
+interface Result { what: string; who: string; path: string; status: number; teacher: boolean; card: boolean; ann: boolean; todo: boolean; cards: boolean; emptyHome: boolean; problem: string | null; reads: { base: number; cand: number } }
 
 async function bodyOf(res: Response): Promise<string> {
   const type = res.headers.get('content-type') ?? '';
@@ -185,7 +188,7 @@ function spyOn(t: Twin): () => string[] {
 const waveSix = (body: string) => [...body.matchAll(/<section id="todo"[\s\S]*?<\/section>|<span class="due-line"[^>]*>[\s\S]*?<\/span>/g)].map((m) => m[0]).join('\n');
 
 /** One address on both products, each under the statement spy. */
-async function same(p: Pair, who: Who, method: 'GET' | 'POST', path: string, out: Result[], fields: Record<string, string> = {}): Promise<{ res: Response; body: string }> {
+async function same(p: Pair, who: Who, method: 'GET' | 'POST', path: string, out: Result[], fields: Record<string, string> = {}): Promise<{ res: Response; body: string; links: string[] }> {
   const stopBase = spyOn(p.base);
   const rb = method === 'GET' ? await who.base.get(path) : await who.base.post(path, fields);
   const bodyB = await bodyOf(rb);
@@ -206,7 +209,10 @@ async function same(p: Pair, who: Who, method: 'GET' | 'POST', path: string, out
   let cb = normalised(bodyC, p.cand.url);
   const sb = HEAD_STYLE.exec(bb);
   const sc = HEAD_STYLE.exec(cb);
-  if (sb && sc) {
+  // LMS redesign R1a (PIL-325): R1a replaces the shared style; r1aNormal made both one token, so no block is left to check.
+  if (sb && sc && sb[2] === '[style]' && sc[2] === '[style]') {
+    // both already one token
+  } else if (sb && sc) {
     const bad = styleCheck(sb[2], sc[2]);
     if (bad) problems.push(`style: ${bad}`);
     bb = bb.replace(HEAD_STYLE, '$1[style]$3');
@@ -227,8 +233,9 @@ async function same(p: Pair, who: Who, method: 'GET' | 'POST', path: string, out
   if (annB !== annBlock(cut)) problems.push('another announcement block');
   const six = waveSix(bb);
   if (six !== waveSix(cut)) problems.push('another to-do block or due line');
-  out.push({ what, who: who.who, path, status: rc.status, teacher, card, ann: Boolean(annB), todo: six.length > 0, problem: problems.length ? problems.join('; ') : null, reads: { base: sb0, cand: sc0 } });
-  return { res: rb, body: bb };
+  out.push({ what, who: who.who, path, status: rc.status, teacher, card, ann: Boolean(annB), todo: six.length > 0, cards: /<ul id="my-list"/.test(bodyC), emptyHome: /<main class="[^"]*\bhome\b/.test(bodyC) && !/<ul id="my-list"/.test(bodyC), problem: problems.length ? problems.join('; ') : null, reads: { base: sb0, cand: sc0 } });
+  // The crawl follows main's own links (R1a: the learner home is one token in the compared body).
+  return { res: rb, body: bb, links: linksOf(bodyB) };
 }
 
 const keep = (path: string) => !path.startsWith('/__test') && !/\/signout\b/.test(path);
@@ -240,15 +247,14 @@ async function crawlBoth(p: Pair, who: Who, out: Result[], limit = 700): Promise
     const path = queue.shift()!;
     if (seen.has(path)) continue;
     seen.add(path);
-    const { res, body } = await same(p, who, 'GET', path, out);
+    const { res, links } = await same(p, who, 'GET', path, out);
     if (res.status >= 300 && res.status < 400) {
       const to = (res.headers.get('location') ?? '').replace(p.base.url, '');
       if (to.startsWith('/') && keep(to)) queue.push(to);
       continue;
     }
     if (!(res.headers.get('content-type') ?? '').startsWith('text/html')) continue;
-    for (const m of body.matchAll(/(?:href|src)="(\/[^"#]*)/g)) {
-      const next = m[1].replace(/&amp;/g, '&');
+    for (const next of links) {
       if (!seen.has(next) && keep(next)) queue.push(next);
     }
   }
@@ -299,7 +305,10 @@ const LINKED_PAGE = /^\/s\/[^/]+\/linked\/[^/?#]+$/;
 function learnerReadProblems(rs: Result[]): string {
   return rs.filter((r) => !r.teacher).filter((r) => {
     const plus = r.status === 200 && r.what.includes(' GET ') && (SUBJECT_PAGES.some((re) => re.test(r.path)) || LINKED_PAGE.test(r.path)) ? 1 : 0;
-    return r.reads.cand !== r.reads.base + plus;
+    // LMS redesign R1a (PIL-325, UX-55 row): wave 5's home block read is now the cards' latest-announcement read, which a
+    // learner home with no subject card (nothing assigned) does not make: one fewer there.
+    const noCards = r.status === 200 && r.what.includes(' GET ') && /^\/s\/[^/?#]+$/.test(r.path) && r.emptyHome ? 1 : 0;
+    return r.reads.cand !== r.reads.base + plus - noCards;
   }).slice(0, 5).map((r) => `${r.what}: W6-main ${r.reads.base}, candidate ${r.reads.cand}`).join('\n');
 }
 
@@ -345,7 +354,11 @@ describe('W7 AT-5.1 base comparison: with no quizzes every page is W6-main 6ce83
     const s = p.w.school;
     const pick = (who: string, path: string) => teacher.find((r) => r.who === who && r.path === path)?.reads;
     const style = HEAD_STYLE.exec(await (await p.people.find((x) => x.who === 'Hadeer')!.cand.get(`/s/${s.id}/publish/edit/${s.math}`)).text())![2];
-    const block = style.slice(style.indexOf(MARK));
+    // LMS redesign R1a (PIL-325): R1a's own blocks follow wave 7's in the shared style; wave 7's block ends where they start.
+    const r1a = style.indexOf('/* redesign R1a', style.indexOf(MARK));
+    // R1a (UX-94, AT-R1a.1e) also writes the school colour `var(--brand-strong)` where wave 7 wrote the fixed blue #1a5fd0;
+    // that is R1a's change (its CSS budget is AT-R1a.6a), so wave 7's block is weighed with wave 7's colour.
+    const block = style.slice(style.indexOf(MARK), r1a < 0 ? undefined : r1a).replace(/var\(--brand-strong\)/g, '#1a5fd0');
     t.diagnostic(`AT-5.2 editor (Hadeer, Mathematics) reads W6-main/candidate: ${JSON.stringify(pick('Hadeer', `/s/${s.id}/publish/edit/${s.math}`))}; subject admin page (Amal, Mathematics): ${JSON.stringify(pick('Amal', `/s/${s.id}/admin/topics/${s.math}`))}; ${teacher.length} teacher pages compared; CSS block ${Buffer.byteLength(block)} bytes (at most ${CSS_MAX})`);
     assert.equal(off.slice(0, 5).map((r) => `${r.what}: W6-main ${r.reads.base}, candidate ${r.reads.cand}`).join('\n'), '', 'every editor and subject admin page makes W6-main\'s count');
     assert.ok(Buffer.byteLength(block) <= CSS_MAX, 'the CSS block is at most 4 KB');
@@ -565,7 +578,9 @@ describe('W7 AT-5.3 reads at W7-e: the subject pages, the take page of QL, a sen
         // W6-main's same page: the candidate's page with the quiz section and the wave 7 CSS block cut, which AT-5.1b proves is
         // W6-main's page byte for byte (the section is the only change on a learner page, the block the only change of the style).
         const style = HEAD_STYLE.exec(m.body)![2];
-        const block = style.slice(style.indexOf(MARK));
+        // LMS redesign R1a (PIL-325): R1a's own blocks follow wave 7's in the shared style; wave 7's block ends where they start.
+        const r1a = style.indexOf('/* redesign R1a', style.indexOf(MARK));
+        const block = style.slice(style.indexOf(MARK), r1a < 0 ? undefined : r1a);
         const section = /\n<section id="quizzes" class="card quiz-section"[\s\S]*?<\/section>/.exec(m.body)![0];
         const base = m.bytes - Buffer.byteLength(section) - Buffer.byteLength(block);
         const extra = m.bytes - base;

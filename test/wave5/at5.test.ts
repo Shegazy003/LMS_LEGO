@@ -303,7 +303,8 @@ describe('W5 AT-5.5 no route returns announcement text but the pages of section 
         const p = path.split('?')[0].split('#')[0];
         if (who === 'Hadeer' && p.startsWith(editorPath(s, s.math))) return true;
         if (who === 'Amal' && p.startsWith(topicPath(s, s.math))) return true;
-        if ((who === 'Salma' || who === 'Omar C') && (p === home || p === learn)) return true;
+        // LMS redesign R1a (UX-55 row, S9): My subjects shows the same cards as the home, with their announcement lines.
+        if ((who === 'Salma' || who === 'Omar C') && (p === home || p === learn || p === `${home}/subjects`)) return true;
         if ((who === 'Hadeer' || who === 'Amal') && (p === learn || previews.includes(p))) return true;
         return false;
       };

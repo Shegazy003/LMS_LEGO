@@ -44,6 +44,7 @@ import type { InProcessWorker } from '../support/in-process.ts';
 import { QUIZ_CARD, cutWave7Style } from '../wave7/world.ts';
 import { OPENING_CARD } from '../wave8/world.ts';
 import { d9People } from '../d9/base.ts';
+import { linksOf, r1aNormal } from '../redesign/base.ts';
 import {
   ADMIN, AT2_ARABIC, AT2_MATH, HADEER, KARIM5, LOAD_ADMIN, LOAD_LEARNER, MONA, OMAR, SALMA, YOUSSEF, adminAnn, annBlock, post, publisherAnn, wave4World, withLoadAnnouncements,
   withW5a, withW5d, type Load, type Wave1World,
@@ -168,7 +169,8 @@ const HEAD_STYLE = /(<head>[\s\S]*?<style>)([\s\S]*?)(<\/style>)/;
 
 function normalised(body: string, url: string): string {
   // LMS-D9 (PIL-320): the appoint form's help line and role choices (test/d9/base.ts).
-  return d9People(body.split(url).join('[product]').replace(/<div id="usage"[\s\S]*?(?=<h2|<\/main>)/g, '[usage today]'));
+  // LMS redesign R1a (PIL-325): the new shell, learner home and S4 dates, on both sides (test/redesign/base.ts).
+  return r1aNormal(d9People(body.split(url).join('[product]').replace(/<div id="usage"[\s\S]*?(?=<h2|<\/main>)/g, '[usage today]')));
 }
 
 function firstDifference(a: string, b: string): string {
@@ -178,7 +180,8 @@ function firstDifference(a: string, b: string): string {
 }
 
 interface Reads { base: number; cand: number; maxParams: number }
-interface Result { what: string; who: string; path: string; status: number; teacher: boolean; card: boolean; problem: string | null; reads: Reads }
+/** `cards`: the candidate's page holds subject cards (LMS redesign R1a: their latest announcements are read only then). */
+interface Result { what: string; who: string; path: string; status: number; teacher: boolean; card: boolean; cards: boolean; annLine: boolean; problem: string | null; reads: Reads }
 
 async function bodyOf(res: Response): Promise<string> {
   const type = res.headers.get('content-type') ?? '';
@@ -198,7 +201,7 @@ function spyOn(t: Twin): () => { reads: number; maxParams: number } {
 }
 
 /** One address on both products, each under the statement spy: status, Location, content type, cache rule, the style rule and the (normalised) body. */
-async function same(p: Pair, who: Who, method: 'GET' | 'POST', path: string, out: Result[], fields: Record<string, string> = {}): Promise<{ res: Response; body: string }> {
+async function same(p: Pair, who: Who, method: 'GET' | 'POST', path: string, out: Result[], fields: Record<string, string> = {}): Promise<{ res: Response; body: string; links: string[] }> {
   const stopBase = spyOn(p.base);
   const rb = method === 'GET' ? await who.base.get(path) : await who.base.post(path, fields);
   const bodyB = await bodyOf(rb);
@@ -219,7 +222,10 @@ async function same(p: Pair, who: Who, method: 'GET' | 'POST', path: string, out
   let cb = normalised(bodyC, p.cand.url);
   const sb = HEAD_STYLE.exec(bb);
   const sc = HEAD_STYLE.exec(cb);
-  if (sb && sc) {
+  // LMS redesign R1a (PIL-325): R1a replaces the shared style; r1aNormal made both one token, so no block is left to check.
+  if (sb && sc && sb[2] === '[style]' && sc[2] === '[style]') {
+    // both already one token
+  } else if (sb && sc) {
     // LMS wave 7 (W7 contract on PIL-261, section 11 item 3): wave 7's block follows wave 6's; it is checked and cut off first.
     const w7 = cutWave7Style(sc[2]);
     if (w7.problem) problems.push(`style: ${w7.problem}`);
@@ -239,8 +245,9 @@ async function same(p: Pair, who: Who, method: 'GET' | 'POST', path: string, out
   const teacher = isTeacherPage(path);
   if (card && !teacher) problems.push('an announcement block on a page that is not a teacher page');
   if (cut !== bb) problems.push(`another body ${firstDifference(bb, cut)}`);
-  out.push({ what, who: who.who, path, status: rc.status, teacher, card, problem: problems.length ? problems.join('; ') : null, reads: { base: sb0.reads, cand: sc0.reads, maxParams: sc0.maxParams } });
-  return { res: rb, body: bb };
+  out.push({ what, who: who.who, path, status: rc.status, teacher, card, cards: /<ul id="my-list"/.test(bodyC), annLine: /<p class="ann" data-ann=/.test(bodyC), problem: problems.length ? problems.join('; ') : null, reads: { base: sb0.reads, cand: sc0.reads, maxParams: sc0.maxParams } });
+  // The crawl follows main's own links (R1a: the learner home is one token in the compared body).
+  return { res: rb, body: bb, links: linksOf(bodyB) };
 }
 
 const keep = (path: string) => !path.startsWith('/__test') && !/\/signout\b/.test(path);
@@ -252,15 +259,14 @@ async function crawlBoth(p: Pair, who: Who, out: Result[], limit = 600): Promise
     const path = queue.shift()!;
     if (seen.has(path)) continue;
     seen.add(path);
-    const { res, body } = await same(p, who, 'GET', path, out);
+    const { res, links } = await same(p, who, 'GET', path, out);
     if (res.status >= 300 && res.status < 400) {
       const to = (res.headers.get('location') ?? '').replace(p.base.url, '');
       if (to.startsWith('/') && keep(to)) queue.push(to);
       continue;
     }
     if (!(res.headers.get('content-type') ?? '').startsWith('text/html')) continue;
-    for (const m of body.matchAll(/(?:href|src)="(\/[^"#]*)/g)) {
-      const next = m[1].replace(/&amp;/g, '&');
+    for (const next of links) {
       // The load space (W5-d) is measured by its own list (AT-3.5), not crawled.
       if (!seen.has(next) && keep(next) && !next.startsWith(`/s/${p.load.id}/`) && next !== `/s/${p.load.id}`) queue.push(next);
     }
@@ -328,11 +334,14 @@ function extraReads(r: Result, spaces: string[]): number {
   // The learner home: the space home of a person whose main role there is learner (Salma, Omar C, Karim Test, Youssef; the load learner).
   // LMS wave 6 (W6-1b, product-contract v2 on PIL-257, AT-3.4b): the learner home and the preview home also read the
   // to-do list once (W5-main's count plus exactly one). Named in CANDIDATE READY (outside section 11; the Lead decides).
-  if (rest === '' && ['Salma', 'Omar C', 'Karim Test', 'Youssef', 'Load learner'].includes(r.who)) return 1 + 1;
+  // LMS redesign R1a (PIL-325, UX-55 row): the read of wave 5's home block is now the cards' latest-announcement read,
+  // which a home with no subject card (nothing assigned) does not make.
+  const ann = r.cards ? 1 : 0;
+  if (rest === '' && ['Salma', 'Omar C', 'Karim Test', 'Youssef', 'Load learner'].includes(r.who)) return ann + 1;
   // LMS wave 7 (W7-2, contract v2 on PIL-261, section 11 item 4): the subject's /learn page and the preview subject page
   // also read the subject's quizzes once (exactly one more statement).
   if (/^\/learn\/[^/]+$/.test(rest)) return 1 + 1; // the subject's /learn page (learner, admin, publisher)
-  if (rest === '/preview') return 1 + 1; // the preview home (and wave 6's to-do read)
+  if (rest === '/preview') return ann + 1; // the preview home (and wave 6's to-do read)
   if (/^\/preview\/learn\/[^/]+$/.test(rest)) return 1 + 1; // the preview subject page (and wave 7's quiz read)
   if (/^\/publish\/edit\/[^/]+$/.test(rest) || /^\/admin\/topics\/[^/]+$/.test(rest)) return 1; // the editor and the subject admin page (the card's list)
   // LMS wave 6 (W6-1c, product-contract v3 addendum on PIL-265, G9.5): a linked learner's page reads that learner's
@@ -480,7 +489,8 @@ describe('W5 AT-4.1 base comparison: with no announcements every page is main b8
     assert.ok(maxParams <= 20, `at most 20 bound parameters in any statement (${maxParams}); no IN list of subject ids`);
     // The blocks really showed in crawl C (so the counts above are with announcements on the page).
     const salmaHome = small.find((r) => r.who === 'Salma' && r.path === `/s/${p.w.school.id}`)!;
-    assert.ok(salmaHome.card, 'Salma\'s home showed the block in crawl C');
+    // LMS redesign R1a (PIL-325, UX-55 row): the home's block is gone; her cards show their latest announcement line instead.
+    assert.ok(salmaHome.annLine, 'Salma\'s home showed the latest announcement on her cards in crawl C');
     void annBlock;
   });
 });

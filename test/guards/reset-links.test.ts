@@ -128,7 +128,7 @@ describe('AT-2 guard: reset links are single-use, bound to the username and expi
     assert.equal(res.headers.get('referrer-policy'), 'no-referrer', 'the token never leaves in a Referer');
     assert.match(res.headers.get('cache-control') ?? '', /no-store/);
     const html = await res.text();
-    assert.match(html, /<html lang="ar" dir="rtl">/);
+    assert.match(html, /<html lang="ar" dir="rtl"[ >]/);
     assert.ok(html.includes(SPACE), 'the space\'s name');
     assert.ok(text(html).includes('اكتب اسم المستخدم، ثم كلمة المرور الجديدة التي تريدها'), 'plain instructions in Arabic');
     assert.ok(!html.includes(HADEER.username) && !html.includes(HADEER.display_name), 'the page does not say whose link it is');

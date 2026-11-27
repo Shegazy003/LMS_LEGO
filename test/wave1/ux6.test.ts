@@ -69,7 +69,10 @@ describe('UX-6 outline folds and opens the right chapter', { concurrency: false 
         const nav = document.querySelector('nav#top-nav')!.getBoundingClientRect();
         const open = [...document.querySelectorAll('#outline details[open]')];
         const r = open[0]!.getBoundingClientRect();
-        return { n: open.length, title: open[0]!.querySelector('.title')!.textContent, navBottom: nav.bottom, top: r.top, height: window.innerHeight };
+        // LMS redesign R1a (UX-3 row, S9, UX-96): below 960 px the navigation is a bottom bar; then in view means
+        // inside the viewport and above the bar (its top), and nothing is below a top navigation.
+        const bar = nav.top > window.innerHeight / 2;
+        return { n: open.length, title: open[0]!.querySelector('.title')!.textContent, navBottom: bar ? 0 : nav.bottom, top: r.top, height: bar ? nav.top : window.innerHeight };
       });
       assert.equal(box.n, 1);
       assert.equal(box.title, 'Decimals');

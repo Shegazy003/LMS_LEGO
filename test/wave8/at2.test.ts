@@ -13,7 +13,7 @@ import { createHash } from 'node:crypto';
 import { MADE_UP, normalise } from './n1.ts';
 import { AT8, ID, MARKER, MONA, OMAR, SALMA, textOf, w8World, words8, type W8World } from './world.ts';
 import {
-  S, cardOf, continueOf, counterOf, donePath, filePath, got, lessonLinks, lessonPath, marksOf, opensOf, outlineOf, subjectPath, todoIds,
+  S, cardOf, continueOf, counterOf, donePath, filePath, got, lessonLinks, lessonPath, marksOf, opensOf, outlineOf, subjectPath, todoIds, todoPath, shown,
 } from './learner.ts';
 import type { Client } from '../support/http.ts';
 
@@ -55,7 +55,7 @@ describe('W8 AT-2.1 at 2026-12-09T23:59:59.999Z Salma meets the shown-locked col
     for (const id of [ID.ch2, ID.ch5]) {
       const ch = chapters.find((x) => x.id === id)!;
       assert.ok(ch.locked && ch.tag, `outline ${id}: the "Locked" tag`);
-      assert.deepEqual(ch.reasons, [{ kind: 'date', text: EN('openedOn', { date: '2026-12-10' }) }], `outline ${id}: the date line only (Open in order off)`);
+      assert.deepEqual(ch.reasons, [{ kind: 'date', text: EN('openedOn', { date: shown('2026-12-10') }) }], `outline ${id}: the date line only (Open in order off)`);
     }
     assert.deepEqual(chapters.find((x) => x.id === ID.ch2)!.lessons, CH2_LESSONS.map((id) => ({ id, link: false })), 'outline: Ch2\'s lessons listed without links');
     for (const id of [ID.ch1, ID.ch4]) assert.ok(!chapters.find((x) => x.id === id)!.locked, `outline ${id}: open`);
@@ -65,7 +65,7 @@ describe('W8 AT-2.1 at 2026-12-09T23:59:59.999Z Salma meets the shown-locked col
       const page = await got(c, lessonPath(id));
       assert.equal(page.status, 200, `lesson ${id}: the locked page (200)`);
       assert.match(page.html, /<section id="locked-lesson"/, `lesson ${id}: the locked page`);
-      assert.equal(textOf(/<p id="lock-reason"[^>]*>([\s\S]*?)<\/p>/.exec(page.html)?.[1] ?? ''), EN('openedOn', { date: '2026-12-10' }), `lesson ${id}: the reason "Opens on 2026-12-10."`);
+      assert.equal(textOf(/<p id="lock-reason"[^>]*>([\s\S]*?)<\/p>/.exec(page.html)?.[1] ?? ''), EN('openedOn', { date: shown('2026-12-10') }), `lesson ${id}: the reason "Opens on 2026-12-10."`);
       assert.ok(!/id="items"|id="done-state"|id="done-control"|\/file\//.test(page.html), `lesson ${id}: no material, file link or done block`);
     }
     const hidden = await view(c, 'GET', lessonPath(ID.l31), undefined, ID.l31);
@@ -96,7 +96,7 @@ describe('W8 AT-2.1 at 2026-12-09T23:59:59.999Z Salma meets the shown-locked col
     assert.deepEqual(counterOf(l41.html), { k: 5, n: 6 }, 'counter on Ch4\'s first lesson: 5 / 6 (Ch2 counted, Ch3 skipped)');
     assert.ok(!l41.html.includes(ID.l31) && !l41.html.includes(MARKER), 'no link into Ch3');
     // To-do: Ch2's lesson due 2026-12-08 is not listed before day X.
-    assert.ok(!Object.values(todoIds(home.html)).flat().includes(ID.l21), 'to-do: Ch2\'s item is not listed');
+    assert.ok(!Object.values(todoIds((await got(c, todoPath)).html)).flat().includes(ID.l21), 'to-do: Ch2\'s item is not listed');
     // No open recorded for any Ch2 or Ch3 address.
     assert.deepEqual(opensOf(w, SALMA.id).filter((r) => [ID.l21, ID.l22, ID.l31].some((id) => r.startsWith(id))), opensBefore.filter((r) => r.startsWith(ID.l31)), 'no open recorded for Ch2 or Ch3 (Ch3\'s old record unchanged)');
     t.diagnostic(`AT-2.1 outline ${chapters.map((ch) => `${ch.id.slice(-1)}${ch.locked ? ':locked' : ''}`).join(' ')}; card "${card.count}"; counters 2/6 and 5/6`);
@@ -248,11 +248,11 @@ describe('W8 AT-2.5 at 2026-12-10T00:00:00.000Z the Ch2 lesson due 2026-12-08 is
       return { any: page.includes('Halves and quarters'), overdue: overdue.includes('Halves and quarters'), block };
     };
     t.diagnostic(`instant ${at(AT8.d9end)}`);
-    assert.ok(!Object.values(todoIds((await got(salma, S)).html)).flat().includes(ID.l21), 'before: not in Salma\'s to-do');
+    assert.ok(!Object.values(todoIds((await got(salma, todoPath)).html)).flat().includes(ID.l21), 'before: not in Salma\'s to-do');
     assert.equal((await guardianHas()).any, false, 'before: not in Mona\'s block');
     await w.clock(AT8.d10);
     t.diagnostic(`instant ${at(AT8.d10)}`);
-    assert.ok((todoIds((await got(salma, S)).html).overdue ?? []).includes(ID.l21), 'from 00:00 UTC: in Salma\'s overdue group');
+    assert.ok((todoIds((await got(salma, todoPath)).html).overdue ?? []).includes(ID.l21), 'from 00:00 UTC: in Salma\'s overdue group');
     assert.equal((await guardianHas()).overdue, true, 'from 00:00 UTC: in Mona\'s guardian block, overdue group');
   });
 });

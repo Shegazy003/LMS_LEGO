@@ -8,6 +8,8 @@
 import assert from 'node:assert/strict';
 import type { Client } from '../support/http.ts';
 import { ID, textOf, type W8World } from './world.ts';
+import { showDate } from '../../src/format.ts';
+import type { Lang } from '../../src/labels.ts';
 
 export const S = `/s/${ID.space}`;
 export const subjectPath = (open = 'all') => `${S}/learn/${ID.math}?open=${open}`;
@@ -60,15 +62,21 @@ export function lessonLinks(page: string): string[] {
   return [...page.matchAll(/href="[^"]*\/read\/([^"?#/]+)[^"]*"/g)].map((m) => m[1]);
 }
 
-/** The home card of Mathematics. */
+/** LMS redesign R1a (UX-34/UX-54/UX-62 and UX-62/UX-63 rows): the full to-do list is the to-do page's. */
+export const todoPath = `${S}/todo`;
+
+/** LMS redesign R1a (UX-16a row, S4): a UTC day as the learner's pages show it, for the test's clock (2026 by default). */
+export const shown = (iso: string, lang: Lang = 'en', today = '2026-12-09') => showDate(iso, lang, today);
+
+/** The home card of Mathematics (R1a UX-99: `card subj` with the subject's colour in a style attribute). */
 export function cardOf(page: string): { count: string; links: string[]; next: string | null; html: string } {
-  const m = new RegExp(`<li class="card" data-subject="${ID.math}">([\\s\\S]*?)</li>`).exec(page);
+  const m = new RegExp(`<li class="card subj" data-subject="${ID.math}"[^>]*>([\\s\\S]*?)</li>`).exec(page);
   assert.ok(m, 'the Mathematics card');
   return {
     count: textOf(/<p class="count[^"]*"[^>]*>([\s\S]*?)<\/p>/.exec(m[1])?.[1] ?? ''),
     links: lessonLinks(m[1]),
     next: (() => {
-      const n = /<p class="open-next"[^>]*>([\s\S]*?)<\/p>/.exec(m[1]);
+      const n = /<p class="open-next[^"]*"[^>]*>([\s\S]*?)<\/p>/.exec(m[1]); // R1a UX-97/UX-99: `open-next wait`, with the calendar icon
       return n ? textOf(n[1]) : null;
     })(),
     html: m[1],
@@ -85,7 +93,8 @@ export function continueOf(page: string): { links: string[]; text: string; html:
 /** The lesson ids listed in the to-do block, by group. */
 export function todoIds(page: string): Record<string, string[]> {
   const out: Record<string, string[]> = {};
-  for (const g of page.matchAll(/<div class="todo-group" data-group="([^"]+)">([\s\S]*?)<\/div>/g)) {
+  // R1a: a row holds its own <div class="todo-main">, so a group runs to the next group or the block's end.
+  for (const g of page.matchAll(/<div class="todo-group" data-group="([^"]+)">([\s\S]*?)(?=<div class="todo-group"|<\/section>)/g)) {
     out[g[1]] = [...g[2].matchAll(/data-item="([^"]+)"/g)].map((m) => m[1]);
   }
   return out;

@@ -74,7 +74,8 @@ describe('AT-13d no-store and the page direction on every lesson-activity page, 
           assert.equal(res.status, status, `${state} ${lang} ${who} ${path}`);
           assert.equal(res.headers.get('cache-control'), 'no-store', `${state} ${lang} ${who} ${path}: no-store`);
           const html = await res.text();
-          assert.match(html, new RegExp(`<html lang="${lang}" dir="${lang === 'ar' ? 'rtl' : 'ltr'}">`), `${state} ${lang} ${who} ${path}: direction`);
+          // LMS redesign R1a (S2): <html> may carry the school's colour variables after lang and dir.
+          assert.match(html, new RegExp(`<html lang="${lang}" dir="${lang === 'ar' ? 'rtl' : 'ltr'}"[^>]*>`), `${state} ${lang} ${who} ${path}: direction`);
           checked++;
         }
       }

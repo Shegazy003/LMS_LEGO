@@ -59,8 +59,10 @@ function homeFacts(page: Page): Promise<HomeFacts> {
       cards: [...document.querySelectorAll<HTMLElement>('#my-list > li')].map((li) => ({
         subject: li.dataset.subject ?? '',
         count: clean(li.querySelector('.count')?.textContent),
-        actions: [...li.querySelectorAll('a.start')].map((a) => clean((a as HTMLElement).innerText)),
-        links: li.querySelectorAll('a').length,
+        // LMS redesign R1a (UX-1 row, UX-99): the action shows «ابدأ» / «تابع»; its accessible name says the lesson.
+        actions: [...li.querySelectorAll('a.start')].map((a) => clean(a.getAttribute('aria-label') ?? (a as HTMLElement).innerText)),
+        // Title and action; the latest-announcement line (UX-55 row) is its own link and not counted here.
+        links: [...li.querySelectorAll('a')].filter((a) => !a.closest('.ann')).length,
         started: li.querySelector('[data-action]') !== null,
       })),
     };
@@ -94,7 +96,8 @@ describe('UX-34 continue area states and card actions', { concurrency: false }, 
       assert.ok(f.labelled, `${lang}: a <section> named by its <h2> heading`);
       assert.equal(f.heading, t('continueHeading'));
       assert.equal(await page.getByRole('region', { name: t('continueHeading') }).count(), 1, `${lang}: one region named "${t('continueHeading')}"`);
-      assert.deepEqual(f.order.slice(0, 3), ['greeting', 'continue', 'h2'], `${lang}: greeting, the area, then "${t('assignedToYou')}"`);
+      // LMS redesign R1a (UX-34 row): greeting, the hero, (the due strip,) then the cards.
+      assert.deepEqual(f.order.slice(0, 3), ['greeting', 'continue', 'my-list'], `${lang}: greeting, the area, then the cards`);
       assert.equal(f.links, 0, `${lang}: no link`);
       assert.deepEqual(f.lines, [t('continueFirst', { lesson: t('lesson').toLocaleLowerCase(lang) })], `${lang}: the one line`);
       assert.ok(f.cards.every((c) => !c.started && c.actions.length <= 1), `${lang}: every card as today`);
@@ -103,6 +106,8 @@ describe('UX-34 continue area states and card actions', { concurrency: false }, 
     }
   });
 
+  // LMS redesign R1a (UX-34 row, UX-97): the hero's «subject · chapter» kicker, the lesson title and the progress, then one
+  // button-styled link of 44 px or more (the chapter moved from the link's second line to the kicker).
   it('UX-34 has a target: subject, progress, one button-styled link of 48 px or more with the chapter on a second line; started and unstarted cards; standard screenshot set', async () => {
     await mark(w, w.school, MATH_ORDER.slice(0, 2));
     await mark(w, w.company, MATH_ORDER.slice(0, 2));
@@ -114,20 +119,19 @@ describe('UX-34 continue area states and card actions', { concurrency: false }, 
       const f = await homeFacts(page);
       const what = `${width} ${lang} ${kit}`;
       assert.equal(f.links, 1, `${what}: one link in the area`);
-      assert.deepEqual(f.lines.slice(0, 2).map((x) => x.split(':')[0]), [t('subject'), lang === 'en' ? 'Done' : t('doneProgress', { n: '', total: '', count: '' }).split(':')[0]], `${what}: the subject line, then the progress`);
+      assert.deepEqual(f.lines.slice(0, 3), [
+        t('heroLesson', { subjectTitle: 'Mathematics', chapterTitle: 'Decimals' }), 'Reading decimals', t('doneProgress', { n: '2', total: '5', count: t('doneCount', { n: '5' }) }),
+      ], `${what}: the kicker, the lesson, then the progress`);
       const link = page.locator('#continue a');
       const [box] = await measure(page, '#continue a');
-      assert.ok(box.height >= 48, `${what}: the link is ${box.height}px tall (48 or more)`);
+      assert.ok(box.height >= 44, `${what}: the link is ${box.height}px tall (44 or more, UX-97)`);
       const style = await link.evaluate((a) => {
         const cs = getComputedStyle(a);
-        const l1 = a.querySelector('.line1')!.getBoundingClientRect();
-        const l2 = a.querySelector('.line2')!.getBoundingClientRect();
-        return { bg: cs.backgroundColor, radius: parseFloat(cs.borderTopLeftRadius), secondLine: l2.top >= l1.bottom - 1, line2: (a.querySelector('.line2') as HTMLElement).innerText };
+        return { bg: cs.backgroundColor, radius: parseFloat(cs.borderTopLeftRadius) };
       });
       assert.ok(!/rgba\(0, 0, 0, 0\)|transparent/.test(style.bg) && style.radius > 0, `${what}: button-styled (${style.bg}, radius ${style.radius})`);
-      assert.ok(style.secondLine, `${what}: the chapter is on a second line`);
-      assert.equal(style.line2.replace(/\s+/g, ' ').trim(), t('chapterLine', { title: 'Decimals' }), `${what}: the chapter line`);
-      for (const m of await measure(page, '#continue p, #continue a .line1, #continue a .line2')) {
+      assert.equal((await link.innerText()).replace(/\s+/g, ' ').trim(), t('continueLink', { title: 'Reading decimals' }), `${what}: the link says Continue: Reading decimals`);
+      for (const m of await measure(page, '#continue p, #continue a span')) {
         assert.ok(m.fontPx >= 14, `${what}: ${m.text} ${m.fontPx}px`);
         assert.ok(m.contrast >= 4.5, `${what}: ${m.text} contrast ${m.contrast.toFixed(2)}`);
       }
@@ -136,12 +140,12 @@ describe('UX-34 continue area states and card actions', { concurrency: false }, 
         assert.ok(c.actions.length <= 1 && c.links <= 2, `${what} ${c.subject}: one action (and the title link)`);
         if (c.subject === s.math) {
           assert.ok(c.started, `${what}: Mathematics is started`);
-          assert.equal(c.actions[0], t('continueLink', { title: 'Reading decimals' }), `${what}: Continue: Reading decimals`);
+          assert.equal(c.actions[0], t('cardContinueName', { title: 'Reading decimals' }), `${what}: Continue: Reading decimals`);
         } else if (c.actions.length) {
           assert.ok(!c.started && c.actions[0].startsWith(t('startLesson', { title: '' }).trim()), `${what} ${c.subject}: Start, as today`);
         }
       }
-      for (const m of await measure(page, '#my-list a.start')) assert.ok(m.height >= 48, `${what}: card button ${m.height}px`);
+      for (const m of await measure(page, '#my-list a.start')) assert.ok(m.height >= 44 && m.width >= 44, `${what}: card button ${m.width}×${m.height}px (UX-99: 44 × 44 or more)`);
       await uxShot(page, `UX-34-${width}-${lang}${kit === 'company' ? '-company' : ''}`);
       await ctx.close();
     }
@@ -202,7 +206,11 @@ describe('UX-35 continue area keyboard, widths and language', { concurrency: fal
       assert.ok(at > 0, `${lang}: the continue link is a stop`);
       assert.ok(stops.slice(0, at).some((x) => x.region === 'top-nav'), `${lang}: the top navigation comes first`);
       assert.ok(stops.slice(0, at).every((x) => x.region !== 'cards'), `${lang}: no card before the continue link`);
-      assert.deepEqual(stops.slice(at + 1).map((x) => x.href), cardLinks, `${lang}: then the cards' links, in order`);
+      // LMS redesign R1a (UX-34 row): the due strip (#todo) sits between the hero and the cards.
+      const stripLinks = await page.locator('#todo a').evaluateAll((as) => as.map((a) => a.getAttribute('href') ?? ''));
+      const after = stops.slice(at + 1).map((x) => x.href);
+      assert.deepEqual(after.slice(0, stripLinks.length), stripLinks, `${lang}: then the due strip's links`);
+      assert.deepEqual(after.slice(stripLinks.length), cardLinks, `${lang}: then the cards' links, in order`);
       await ctx.close();
     }
   });
@@ -217,7 +225,7 @@ describe('UX-35 continue area keyboard, widths and language', { concurrency: fal
         for (const [titles, target] of [[['Adding fractions'], LONG_LESSON], [['Comparing fractions'], MIXED_TITLE]] as const) {
           await mark(w, s, [...titles], T2 + 10_000);
           await page.goto(w.p.url + home(s));
-          const line1 = (await page.locator('#continue-link .line1').innerText()).replace(/\s+/g, ' ');
+          const line1 = (await page.locator('#continue .hero-title').innerText()).replace(/\s+/g, ' '); // R1a (UX-97): the hero's lesson title
           assert.ok(line1.includes(target.slice(0, 40)), `the target in the area: ${target.slice(0, 20)}...`);
           const o = await overflow(page);
           assert.ok(o.sideways <= 0, `${lang} ${width}: no sideways scroll (${o.sideways} px)`);
@@ -255,7 +263,7 @@ describe('UX-35 continue area keyboard, widths and language', { concurrency: fal
         const text = await wordsOnly(page);
         for (const x of foreign) assert.ok(!text.includes(x), `${sp.kit} ${lang}: no ${other} words "${x}"`);
         // Titles inside the area's sentences are isolated.
-        assert.ok(await page.locator('#continue-link .line1 bdi').count() >= 1, `${sp.kit} ${lang}: the lesson title is in <bdi>`);
+        assert.ok(await page.locator('#continue .hero-title bdi').count() >= 1, `${sp.kit} ${lang}: the lesson title is in <bdi>`);
         // The started card's count line and the area's progress carry the kit's plural lesson word.
         const math = (await homeFacts(page)).cards.find((c) => c.subject === sp.math)!;
         assert.ok(math.count.includes(t('lessonPlural')), `${sp.kit} ${lang}: the card says "${t('lessonPlural')}" (${math.count})`);
