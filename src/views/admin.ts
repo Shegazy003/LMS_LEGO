@@ -96,11 +96,12 @@ export function peoplePage(
   const role = (ROLES as readonly string[]).includes(v.values.role ?? '') ? v.values.role : '';
   const roleError = v.roleError && v.error ? v.error : undefined;
   const none = v.search ? html`<p id="search-none" class="card muted">${sentence(t, 'searchNone', { q: v.search })}</p>` : html`<p id="people" class="card muted">${t('noneAppointed')}</p>`;
+  // The line break is part of the confirmation, so without one the page is main's byte for byte up to the form.
   const added = v.added
-    ? html`<p id="done" class="done" role="status" tabindex="-1">${sentence(t, 'appointedAs', { name: v.added.display_name, role: roleWord(t, v.added.role) })}</p>`
+    ? html`
+<p id="done" class="done" role="status" tabindex="-1">${sentence(t, 'appointedAs', { name: v.added.display_name, role: roleWord(t, v.added.role) })}</p>`
     : '';
-  const body = html`<h1>${t('people')}</h1>
-${added}
+  const body = html`<h1>${t('people')}</h1>${added}
 <form id="search" class="inline-add card" method="get" action="${base(space)}/people" role="search">
   <label>${t('searchLabel')}<input name="q" type="search" maxlength="${SEARCH_MAX}" value="${v.search}" dir="auto" autocomplete="off"></label>
   <button type="submit">${t('searchButton')}</button>

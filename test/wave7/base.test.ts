@@ -43,6 +43,7 @@ import {
   resultsOf, wave4World, wave7BlockProblem, wave7World, withAt2, withW5a, withW6a, withW7a, withW7b, withW7d, withW7e, type Wave1World,
 } from './world.ts';
 import { OPENING_CARD } from '../wave8/world.ts';
+import { d9People } from '../d9/base.ts';
 
 const repo = fileURLToPath(new URL('../..', import.meta.url));
 /** The pinned base: W6-main 6ce8366 (W6-1c merged, wave 6 complete; the Lead's MAIN_SHA for W7-1). */
@@ -152,7 +153,8 @@ const HEAD_STYLE = /(<head>[\s\S]*?<style>)([\s\S]*?)(<\/style>)/;
 const CARD = QUIZ_CARD;
 
 function normalised(body: string, url: string): string {
-  return body.split(url).join('[product]').replace(/<div id="usage"[\s\S]*?(?=<h2|<\/main>)/g, '[usage today]');
+  // LMS-D9 (PIL-320): the appoint form's help line and role choices (test/d9/base.ts).
+  return d9People(body.split(url).join('[product]').replace(/<div id="usage"[\s\S]*?(?=<h2|<\/main>)/g, '[usage today]'));
 }
 
 function firstDifference(a: string, b: string): string {

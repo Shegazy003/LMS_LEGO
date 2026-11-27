@@ -32,6 +32,7 @@ import type { InProcessWorker } from '../support/in-process.ts';
 import { HADEER, MONA, OMAR, SALMA, YOUSSEF, adminOrder, publisherOrder, wave4World, type Wave1World } from './world.ts';
 import { QUIZ_CARD, cutWave7Style } from '../wave7/world.ts';
 import { OPENING_CARD } from '../wave8/world.ts';
+import { d9People } from '../d9/base.ts';
 
 const repo = fileURLToPath(new URL('../..', import.meta.url));
 /** The pinned base: main b4ad669 (wave 3b merged), the contract's "main". */
@@ -114,9 +115,10 @@ async function pair(): Promise<Pair> {
 const CARD_PAGES = [/^\/s\/[^/]+\/publish\/edit\/[^/?#]+(\/removed)?(\?|$)/, /^\/s\/[^/]+\/publish\/part\/[^/?#]+(\?|$)/, /^\/s\/[^/]+\/admin\/topics\/[^/?#]+(\?|$)/];
 
 function normalised(body: string, url: string): string {
-  return body.split(url).join('[product]')
+  // LMS-D9 (PIL-320): the appoint form's help line and role choices (test/d9/base.ts).
+  return d9People(body.split(url).join('[product]')
     // The owner's usage today: each product counts its own requests (main's also built the world).
-    .replace(/<div id="usage"[\s\S]*?(?=<h2|<\/main>)/g, '[usage today]');
+    .replace(/<div id="usage"[\s\S]*?(?=<h2|<\/main>)/g, '[usage today]'));
 }
 
 // LMS wave 5 (contract on PIL-246, section 11 item 3, and AT-4's style handling): the CSS is inlined in every page,

@@ -43,6 +43,7 @@ import { inProcess, startProductWith, type Product } from '../support/product.ts
 import type { InProcessWorker } from '../support/in-process.ts';
 import { QUIZ_CARD, cutWave7Style } from '../wave7/world.ts';
 import { OPENING_CARD } from '../wave8/world.ts';
+import { d9People } from '../d9/base.ts';
 import {
   ADMIN, AT2_ARABIC, AT2_MATH, HADEER, KARIM5, LOAD_ADMIN, LOAD_LEARNER, MONA, OMAR, SALMA, YOUSSEF, adminAnn, annBlock, post, publisherAnn, wave4World, withLoadAnnouncements,
   withW5a, withW5d, type Load, type Wave1World,
@@ -166,7 +167,8 @@ export function styleCheck(baseStyle: string, candStyle: string): string | null 
 const HEAD_STYLE = /(<head>[\s\S]*?<style>)([\s\S]*?)(<\/style>)/;
 
 function normalised(body: string, url: string): string {
-  return body.split(url).join('[product]').replace(/<div id="usage"[\s\S]*?(?=<h2|<\/main>)/g, '[usage today]');
+  // LMS-D9 (PIL-320): the appoint form's help line and role choices (test/d9/base.ts).
+  return d9People(body.split(url).join('[product]').replace(/<div id="usage"[\s\S]*?(?=<h2|<\/main>)/g, '[usage today]'));
 }
 
 function firstDifference(a: string, b: string): string {

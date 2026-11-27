@@ -45,6 +45,7 @@ import {
 import { onLocalD1, todoOf, withW6d, withW6e, withoutGuardianTodo } from './todo.ts';
 import { QUIZ_CARD, cutWave7Style } from '../wave7/world.ts';
 import { OPENING_CARD } from '../wave8/world.ts';
+import { d9People } from '../d9/base.ts';
 
 const repo = fileURLToPath(new URL('../..', import.meta.url));
 /** The pinned base: W5-main f0125980 (wave 5 merged, main CI run 44864862736 green), the contract's "main". */
@@ -152,7 +153,8 @@ const HEAD_STYLE = /(<head>[\s\S]*?<style>)([\s\S]*?)(<\/style>)/;
 const CARD = /<section id="due-dates"[\s\S]*?<\/section>/g;
 
 function normalised(body: string, url: string): string {
-  return body.split(url).join('[product]').replace(/<div id="usage"[\s\S]*?(?=<h2|<\/main>)/g, '[usage today]');
+  // LMS-D9 (PIL-320): the appoint form's help line and role choices (test/d9/base.ts).
+  return d9People(body.split(url).join('[product]').replace(/<div id="usage"[\s\S]*?(?=<h2|<\/main>)/g, '[usage today]'));
 }
 
 function firstDifference(a: string, b: string): string {

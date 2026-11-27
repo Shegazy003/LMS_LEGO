@@ -34,6 +34,7 @@ import {
   ADMIN, AT, HADEER, KARIM5, MONA, OMAR, RANA5, SALMA, SHIMAA, TITLES, W7A, adminQuizzes, cutWave7Style, linkedPath, publisherQuizzes, resultsOf, selectorsOf, wave7World, words, type Wave1World,
 } from './world.ts';
 import { OPENING_CARD } from '../wave8/world.ts';
+import { d9People } from '../d9/base.ts';
 
 const repo = fileURLToPath(new URL('../..', import.meta.url));
 /** The pinned base: W7-2-main c1a9d14 (PR #56 merged, 13 of 13 checks), the contract's "today's". */
@@ -136,7 +137,8 @@ function firstDifference(a: string, b: string): string {
 
 /** Wave 5's closed list of normalisations: each product's own address; the owner's "usage today" block (live counters). */
 function normalised(body: string, url: string): string {
-  return body.split(url).join('[product]').replace(/<div id="usage"[\s\S]*?(?=<h2|<\/main>)/g, '[usage today]');
+  // LMS-D9 (PIL-320): the appoint form's help line and role choices (test/d9/base.ts).
+  return d9People(body.split(url).join('[product]').replace(/<div id="usage"[\s\S]*?(?=<h2|<\/main>)/g, '[usage today]'));
 }
 
 /** The quiz card's help line of a teacher page (AT-8.3 / 8.4 (b): the only allowed difference there). */
