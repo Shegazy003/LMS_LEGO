@@ -178,11 +178,12 @@ const plain = (rows: Row[]) => rows.map((r) => ({ ...r }));
 /** A file's text as the repository stores it (LF; a Windows checkout may give CRLF, which SQLite keeps in the schema text). */
 const lf = (file: string) => readFileSync(file, 'utf8').replace(/\r\n/g, '\n');
 
-/** A database with these migration files applied as Wrangler records them (`d1_migrations`). */
-function migrated(dir: string): DatabaseSync {
+/** A database with these migration files applied as Wrangler records them (`d1_migrations`), up to `upTo` when given
+ * (LMS redesign R1b, PIL-332: the candidate's later migrations, 0018 onwards, are not wave 8's and are tested by their own wave). */
+function migrated(dir: string, upTo?: string): DatabaseSync {
   const db = new DatabaseSync(':memory:');
   db.exec('CREATE TABLE d1_migrations (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL)');
-  for (const f of readdirSync(dir).filter((n) => n.endsWith('.sql')).sort()) {
+  for (const f of readdirSync(dir).filter((n) => n.endsWith('.sql') && (!upTo || n <= upTo)).sort()) {
     db.exec(lf(join(dir, f)));
     db.prepare('INSERT INTO d1_migrations (name) VALUES (?)').run(f);
   }
@@ -196,7 +197,7 @@ describe('W8 AT-5.3 migration 0017 is additive; a41f7d8\'s code runs on the migr
     for (const p of [/\bDROP\b/i, /\bRENAME\b/i, /\bDELETE\s+FROM\b/i, /\bUPDATE\s+\w+\s+SET\b/i, /\bCREATE\b/i]) assert.ok(!p.test(sql), `additive: no ${p}`);
     assert.equal((sql.match(/ALTER TABLE chapter ADD COLUMN/g) ?? []).length, 2, 'two ADD COLUMN on chapter');
     const base = migrated(join(BASE_ROOT, 'migrations'));
-    const cand = migrated(join(repo, 'migrations'));
+    const cand = migrated(join(repo, 'migrations'), MIGRATION);
     const added = columnsOf(cand, 'chapter').filter((c) => !columnsOf(base, 'chapter').some((b) => b.name === c.name));
     assert.deepEqual(added, [
       { name: 'opens_on', type: 'TEXT', notnull: 0, dflt_value: null, pk: 0 },
@@ -250,7 +251,7 @@ describe('W8 AT-5.3 migration 0017 is additive; a41f7d8\'s code runs on the migr
       assert.ok(!/migrations-down|\.down\.sql/.test(readFileSync(join(repo, f), 'utf8')), `${f} does not refer to the down script`);
     }
     const base = migrated(join(BASE_ROOT, 'migrations'));
-    const cand = migrated(join(repo, 'migrations'));
+    const cand = migrated(join(repo, 'migrations'), MIGRATION);
     const fake = { sqlite: cand, files: { put: async () => undefined } } as unknown as InProcessWorker;
     await seedW8(fake, { dates: true });
     const tables = (schemaOf(base).filter((r) => r.type === 'table').map((r) => String(r.name)));
@@ -265,7 +266,7 @@ describe('W8 AT-5.3 migration 0017 is additive; a41f7d8\'s code runs on the migr
     assert.deepEqual(cand.prepare('SELECT name FROM d1_migrations ORDER BY id').all().map((r) => (r as Row).name), base.prepare('SELECT name FROM d1_migrations ORDER BY id').all().map((r) => (r as Row).name), 'Wrangler\'s record is exactly a41f7d8\'s');
     assert.deepEqual(snapshot(), rowsBefore, 'every row is unchanged (but the two dropped columns)');
     cand.exec(lf(join(repo, 'migrations', MIGRATION)));
-    assert.deepEqual(schemaOf(cand), schemaOf(migrated(join(repo, 'migrations'))), 'a later forward apply gives wave 8\'s schema again');
+    assert.deepEqual(schemaOf(cand), schemaOf(migrated(join(repo, 'migrations'), MIGRATION)), 'a later forward apply gives wave 8\'s schema again');
     assert.equal(Number((cand.prepare('SELECT COUNT(*) AS n FROM chapter WHERE opens_on IS NOT NULL').get() as Row).n), 0, 'with no date');
   });
 

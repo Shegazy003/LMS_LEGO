@@ -25,6 +25,8 @@
 // - a date: `<time datetime="D">…</time>` (D a day or an instant; R1a shows S4 words inside, main the bare day) and
 //   a bare day in a text position (main's) both become [date D], so the day itself is still compared; a <bdi> holding only that date loses its wrapper (main's
 //   is Latin left-to-right, R1a's isolates the S4 words in the page's direction, UX-16a).
+// - LMS redesign R1b (PIL-332, S7, UX-101): the subject editor's Look card (`<section id="look">`, new in R1b, after
+//   the first card) is taken out; its content is tested by test/redesign/r1b.test.ts and r1b-ux.test.ts. Main has none.
 // Everything else on every page stays byte-compared.
 
 import { showDate } from '../../src/format.ts';
@@ -40,6 +42,7 @@ const MAIN =/<main([^>]*)>([\s\S]*)<\/main>/;
 const TIME = /<time datetime="(\d{4}-\d{2}-\d{2}[^"]*)">[^<]*<\/time>/g;
 const BLUES = /#1a5fd0|#1f6feb|#0b3d91|var\(--brand-strong\)/gi;
 const BARE_DATE =/>(\s*)(\d{4}-\d{2}-\d{2})(\s*)</g;
+const LOOK_CARD = /<section id="look" class="card"[\s\S]*?<\/section>\n?/;
 
 /** Whether the page is a learner home (or its preview): main's has a #continue section, R1a's main is class "home". */
 function isLearnerHome(body: string): boolean {
@@ -60,6 +63,8 @@ export function r1aNormal(body: string, today = new Date().toISOString().slice(0
     .replace(NAV, (_all, _bar, attrs: string, items: string) =>
       `<nav id="top-nav" class="nav"${attrs}>${items.replace(NEW_ITEMS, '').replace(HOME_ITEM, '').replace(/ aria-current="page"/g, '').replace(/<svg[\s\S]*?<\/svg>/g, '').replace(/<\/?span>/g, '')}</nav>`);
   if (isLearnerHome(out)) out = out.replace(MAIN, '<main>[R1a learner home]</main>');
+  // R1b (S7, UX-101): the editor's Look card holds no nested <section>, so it ends at the first </section>.
+  out = out.replace(LOOK_CARD, '');
   // Inside a page's own <style> blocks: main's fixed blues and R1a's school colour both become one token.
   out = out.replace(/<style>[\s\S]*?<\/style>/g, (s) => s.replace(BLUES, '[brand colour]'));
   // UX-16a: a guardian's to-do line shows its due day in the S4 form (wave 6 showed the bare day); main's day is

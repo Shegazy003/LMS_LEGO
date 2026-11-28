@@ -24,7 +24,7 @@ import { readLabels, switchedKit } from './kits/edit.ts';
 import {
   chapterLocks, continueWhere, findFile, findLesson, hiddenNow, learnerCards, learnerChapterLocks, lessonMaterials, lessonSequence, notOpenYet, outline,
   previewCards, previewTodo, previewableSubject, readableSubject, shownChapters,
-  subjectsForPublisher, type ChapterLocks, type OutlineChapter, type Previewer, type SubjectRow,
+  subjectLooks, subjectsForPublisher, type ChapterLocks, type OutlineChapter, type Previewer, type SubjectRow,
 } from './learning.ts';
 import { doneLessonIds, isDone, learnerTodo, linkedAsLearner, markDone, markNotDone, markOrder, readsAsLearner, signedInLearner } from './progress.ts';
 import { previewFrame, type PreviewScope } from './views/preview.ts';
@@ -57,7 +57,7 @@ import { quizResultPage, quizSection, quizTakePage } from './views/quiz-take.ts'
 import { normaliseCountryCode, normaliseMobile } from './phone.ts';
 import {
   addChapter, addLesson, addMaterial, editableChapter, editableLesson, editableMaterial, editableSubject, isDirection,
-  moveChapter, moveLesson, moveMaterial, renameChapter, renameLesson, renameMaterial, replacementKey, setChaptersInOrder, setPublished, switchFile,
+  moveChapter, moveLesson, moveMaterial, renameChapter, renameLesson, renameMaterial, replacementKey, setChaptersInOrder, setLook, setPublished, switchFile,
   type EditableChapter, type EditableLesson, type EditableMaterial, type NewMaterial,
 } from './publishing.ts';
 import {
@@ -85,9 +85,10 @@ import {
 } from './views/people.ts';
 import { guardianHome, guardianLearnerPage, type GlanceCard } from './views/guardian.ts';
 import {
-  ADD_KINDS, SEGMENT, chapterPage, lessonEditor, materialPage, publisherHome, removeConfirmPage, removedPage, subjectEditor,
-  type AddField, type AddKind, type AddState, type EditorNotice,
+  ADD_KINDS, SEGMENT, chapterPage, lessonEditor, materialPage, publisherHome, removeConfirmPage, removedPage, subjectEditor, lookCard,
+  type AddField, type AddKind, type AddState, type EditorNotice, type LookRefusal, type LookStatus,
 } from './views/publish.ts';
+import { AUTO, isColourKey, isIconKey } from './look.ts';
 import { resetAlreadyChangedPage, resetDeadPage, resetDonePage, resetPage, type ResetSpace } from './views/reset.ts';
 import {
   REASON_MAX, adminResultsPage, confirmPage, correctionPage, examListPage, historyPage, marksMessagePage, marksPage, myResultsPage, resultPage,
@@ -944,7 +945,9 @@ app.get('/s/:spaceId/todo', async (c) => {
   const { t, lang, view } = spaceLabel(c);
   const day = todoWindow(now());
   const groups = todoGroups(await learnerTodo(c.get('db'), signedInLearner(c), day.today, day.last, TODO_MAX_PER_GROUP));
-  return page(c, todoPage(t, lang, view, groups, day.today));
+  // LMS redesign R1b (S7): each row in its subject's chosen look, one read for all rows.
+  const looks = await subjectLooks(c.get('db'), view.id, groups.flatMap((g) => g.items.map((i) => i.subjectId)));
+  return page(c, todoPage(t, lang, view, groups, day.today, looks));
 });
 
 // The guardian home (release 2, R2-a): every learner actively linked to this
@@ -2129,13 +2132,50 @@ function titleFrom(body: Record<string, unknown>): string | null {
 const DONE: Record<string, EditorNotice> = { renamed: 'renamed', removed: 'removedDone', restored: 'restoredDone', replaced: 'replacedDone' };
 const editorNotice = (c: C): EditorNotice | undefined => DONE[c.req.query('done') ?? ''];
 
-async function renderSubjectEditor(c: C, subject: SubjectRow, error?: LabelKey, notice?: EditorNotice, refusal?: AnnRefusal) {
+async function renderSubjectEditor(c: C, subject: SubjectRow, error?: LabelKey, notice?: EditorNotice, refusal?: AnnRefusal, lookRefused: LookRefusal = null) {
   const { t, lang, view } = spaceLabel(c);
   const parts = await outline(c.get('db'), view.id, subject.id);
   // LMS wave 5 (section 4.1): the announcement card after the card of Publish, Preview and the setting.
   const card = await announcementsOf(c, { subjectId: subject.id, role: 'publisher', page: subjectEditorPath(view.id, subject.id), published: subject.is_published === 1 }, refusal);
-  return page(c, subjectEditor(t, lang, view, subject, parts, error && t(error), notice, orderStatus(c, subject.chapters_in_order), card, dueCard(t, lang, `${subjectEditorPath(view.id, subject.id)}/due`), quizCard(t, lang, `${subjectEditorPath(view.id, subject.id)}/quizzes`, subject.title), openingCard(t, `${subjectEditorPath(view.id, subject.id)}/opening`)), error || refusal ? 400 : 200);
+  // LMS redesign R1b (S7, UX-101): the Look card right after the first card.
+  const look = lookCard(t, lang, subject, `${subjectEditorPath(view.id, subject.id)}/look`, lookRefused ? null : lookStatus(c), lookRefused);
+  return page(c, subjectEditor(t, lang, view, subject, parts, error && t(error), notice, orderStatus(c, subject.chapters_in_order), card, dueCard(t, lang, `${subjectEditorPath(view.id, subject.id)}/due`), quizCard(t, lang, `${subjectEditorPath(view.id, subject.id)}/quizzes`, subject.title), openingCard(t, `${subjectEditorPath(view.id, subject.id)}/opening`), look), error || refusal || lookRefused ? 400 : 200);
 }
+
+/** The Look card's status line (R1b): ?look=saved or failed, anything else none. */
+function lookStatus(c: C): LookStatus {
+  const asked = c.req.query('look');
+  return asked === 'saved' || asked === 'failed' ? asked : null;
+}
+
+// LMS redesign wave R1b (product-contract v2 on PIL-322, S7; ux-plan UX-101):
+// the subject's colour and icon, from the Look card of the responsible
+// publisher's editor (the publisher gate has run; a subject that is not theirs
+// here, of another space or not there answers 403 as the editor's other forms).
+// colour = auto or c01…c12, icon = auto or one of the sixteen keys; anything
+// else redraws the editor with the refusal beside its group (400) and stores
+// nothing. Both columns in one statement; "auto" stores NULL. Then back to the
+// editor at the card (303). A failed write keeps the stored look and says so.
+app.post('/s/:spaceId/publish/edit/:subjectId/look', async (c) => {
+  const db = c.get('db');
+  const spaceId = c.get('space').id;
+  const userId = c.get('user')!.id;
+  const subject = await editableSubject(db, spaceId, userId, c.req.param('subjectId'));
+  if (!subject) return refuse(c, 403, 'noAccess');
+  const body = await c.req.parseBody();
+  const colour = field(body, 'colour');
+  const iconKey = field(body, 'icon');
+  if (colour !== AUTO && !isColourKey(colour)) return renderSubjectEditor(c, subject, undefined, undefined, undefined, 'colour');
+  if (iconKey !== AUTO && !isIconKey(iconKey)) return renderSubjectEditor(c, subject, undefined, undefined, undefined, 'icon');
+  let said: LookStatus = 'saved';
+  try {
+    if (!(await setLook(db, spaceId, userId, subject.id, colour === AUTO ? null : colour, iconKey === AUTO ? null : iconKey))) return refuse(c, 403, 'noAccess');
+  } catch {
+    logError('look write failed');
+    said = 'failed';
+  }
+  return c.redirect(`${subjectEditorPath(spaceId, subject.id)}?look=${said}#look`, 303);
+});
 
 // LMS wave 4 (product-contract v2 on PIL-238, section 4): the subject's "open
 // in order" setting. A plain form with one field, state = on or off (a set,

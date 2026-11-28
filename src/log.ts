@@ -30,7 +30,7 @@
 // LMS wave 6 (product-contract v2 on PIL-257, section 4.2): 'due date write failed', a due date not saved.
 // LMS wave 7 (product-contract v2 on PIL-261, section 4.2): 'quiz write failed', a quiz, question or copy not saved (no ids of people).
 // LMS wave 8 (product-contract v2 on PIL-299, S3): 'opening date write failed', a chapter's opening date not saved.
-export type LogEvent = 'usage flush failed' | 'request failed' | 'activity write failed' | 'progress write failed' | 'class upload failed' | 'order write failed' | 'announcement write failed' | 'due date write failed' | 'quiz write failed' | 'opening date write failed';
+export type LogEvent = 'usage flush failed' | 'request failed' | 'activity write failed' | 'progress write failed' | 'class upload failed' | 'order write failed' | 'announcement write failed' | 'due date write failed' | 'quiz write failed' | 'opening date write failed' | 'look write failed';
 
 const MESSAGE_MAX = 200;
 const REDACTED = '[redacted]';

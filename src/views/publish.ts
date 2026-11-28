@@ -15,6 +15,66 @@ import { errorBox, ltrSentence, sentence, type Html } from './layout.ts';
 import { KIND_LABEL, materialItem, spacePage } from './learn.ts';
 import { previewPath, viewAsLink } from './preview.ts';
 import type { SpaceView } from './space.ts';
+import { icon } from '../icons.ts';
+import { AUTO, ICONS, PALETTE, autoColour, lookOf, paletteVars } from '../look.ts';
+
+// ---------------------------------------------------------------- Look card ----
+/** LMS redesign R1b (S7, UX-101): the Look card's status line (?look=saved or failed) and a refused group. */
+export type LookStatus = 'saved' | 'failed' | null;
+export type LookRefusal = 'colour' | 'icon' | null;
+
+/** With script, the sample follows the chosen radios before saving (UX-101 live sample); without, it shows the saved look. */
+const LOOK_SCRIPT = `(function(){var f=document.getElementById('look-form'),s=document.getElementById('look-sample');if(!f||!s)return;
+f.addEventListener('change',function(e){var i=e.target;if(!i||i.type!=='radio')return;
+if(i.name==='colour'){var v=i.getAttribute('data-vars'),g2=document.getElementById('look-icons');s.setAttribute('style',v);if(g2)g2.setAttribute('style',v);}
+if(i.name==='icon'){var g=i.parentNode.querySelector('svg'),c=s.querySelector('.sicon');if(g&&c){c.innerHTML='';c.appendChild(g.cloneNode(true));}}});})();`;
+
+/** The Look card: sample card, «اللون» (Automatic + 12 named swatches), «الرمز» (Automatic + 16 named icons), Save look. */
+export function lookCard(
+  t: Label,
+  lang: Lang,
+  subject: { id: string; title: string; look_colour?: string | null; look_icon?: string | null },
+  action: string,
+  status: LookStatus = null,
+  refusal: LookRefusal = null,
+): Html {
+  const look = lookOf(subject.id, subject.look_colour, subject.look_icon);
+  const name = (x: { ar: string; en: string }) => (lang === 'ar' ? x.ar : x.en);
+  const refused = (group: Exclude<LookRefusal, null>) =>
+    refusal === group ? html`<p id="look-refusal" class="error look-refusal" role="alert">${t(group === 'colour' ? 'lookColourRefused' : 'lookIconRefused')}</p>` : '';
+  const said = status === 'saved'
+    ? html`<p id="look-status" class="done" role="status">${t('lookSaved')}</p>`
+    : status === 'failed' ? html`<p id="look-status" class="error" role="alert">${t('lookFailed')}</p>` : '';
+  const autoVars = paletteVars(autoColour(subject.id));
+  const radio = (group: 'colour' | 'icon', value: string, checked: boolean, vars?: string) =>
+    html`<input type="radio" name="${group}" value="${value}"${checked ? raw(' checked') : ''}${vars ? html` data-vars="${vars}"` : ''}>`;
+  const colours = html`<fieldset id="look-colours" class="look-group"${refusal === 'colour' ? raw(' aria-describedby="look-refusal"') : ''}><legend>${t('lookColour')}</legend>${refused('colour')}
+<div class="look-opts">
+<label class="look-opt" data-colour="${AUTO}" style="${autoVars}">${radio('colour', AUTO, !look.chosenColour, autoVars)}<span class="chip sw" aria-hidden="true"><span class="tick">${icon('check')}</span></span><span class="nm">${t('lookAuto')}</span></label>
+${PALETTE.map((p) => {
+    const vars = paletteVars(p);
+    return html`<label class="look-opt" data-colour="${p.key}" style="${vars}">${radio('colour', p.key, look.chosenColour === p.key, vars)}<span class="chip sw" aria-hidden="true"><span class="tick">${icon('check')}</span></span><span class="nm">${name(p)}</span></label>`;
+  })}
+</div></fieldset>`;
+  const icons = html`<fieldset id="look-icons" class="look-group" style="${paletteVars(look.colour)}"${refusal === 'icon' ? raw(' aria-describedby="look-refusal"') : ''}><legend>${t('lookIcon')}</legend>${refused('icon')}
+<div class="look-opts">
+<label class="look-opt" data-icon-key="${AUTO}">${radio('icon', AUTO, !look.chosenIcon)}<span class="chip ic" aria-hidden="true">${icon('book')}<span class="tick">${icon('check')}</span></span><span class="nm">${t('lookAuto')}</span></label>
+${ICONS.map((i) => html`<label class="look-opt" data-icon-key="${i.key}">${radio('icon', i.key, look.chosenIcon === i.key)}<span class="chip ic" aria-hidden="true">${icon(i.key)}<span class="tick">${icon('check')}</span></span><span class="nm">${name(i)}</span></label>`)}
+</div></fieldset>`;
+  return html`<section id="look" class="card" aria-labelledby="look-heading">
+<h2 id="look-heading">${t('lookHeading')}</h2>
+<p class="muted">${t('lookHelp')}</p>
+${said}
+<p class="muted" id="look-sample-name">${t('lookSample')}</p>
+<div id="look-sample" class="card subj look-sample" style="${paletteVars(look.colour)}" aria-describedby="look-sample-name"><span class="band"></span><span class="sicon">${icon(look.icon)}</span><span class="t"><bdi>${subject.title}</bdi></span></div>
+<form id="look-form" method="post" action="${action}">
+${colours}
+${icons}
+<button id="look-save" type="submit">${t('lookSave')}</button>
+</form>
+<script>${raw(LOOK_SCRIPT)}</script>
+</section>`;
+}
 
 const TITLE_MAX = 200;
 const NOTE_MAX = 10_000;
@@ -112,6 +172,8 @@ export function subjectEditor(
   quizzes: Html | string = '',
   /** LMS wave 8 (S1, UX-86): the Opening dates card, after the quiz card. */
   opening: Html | string = '',
+  /** LMS redesign R1b (S7, UX-101): the Look card, right after the first card. */
+  look: Html | string = '',
 ): Html {
   const inOrder = subject.chapters_in_order === 1;
   const published = subject.is_published === 1;
@@ -128,7 +190,7 @@ ${errorBox(error)}
   ${orderCard(t, lang, { action: `${action}/order`, on: inOrder, status: order, own: false })}
   <p><a id="preview-subject" href="${previewPath(space.id, `/learn/${subject.id}`, `subject:${subject.id}`)}">${t('preview')}</a></p>
 </div>
-${announcements}${due}${quizzes}${opening}<h2>${t('chapter')} <span class="muted">· ${t('lesson')}</span></h2>
+${look}${announcements}${due}${quizzes}${opening}<h2>${t('chapter')} <span class="muted">· ${t('lesson')}</span></h2>
 <div id="outline">${parts.map((ch, i) => chapterEditor(t, lang, space, ch, i, parts.length, inOrder))}</div>
 ${parts.length ? '' : html`<p class="card muted">${t('nothingHere')}</p>`}
 <form id="add-chapter" class="stack card" method="post" action="${action}/add">

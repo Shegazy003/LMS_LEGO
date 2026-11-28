@@ -143,10 +143,65 @@ export function fnv1a32(text: string): number {
 /** S7: a subject with no chosen colour takes PALETTE[fnv1a32(id) mod 12], so every viewer and order agrees. */
 export const autoColour = (subjectId: string) => PALETTE[fnv1a32(subjectId) % PALETTE.length];
 
-/** The CSS custom properties of a subject surface, for a style attribute. */
-export function subjectVars(subjectId: string): string {
-  const c = subjectColours(autoColour(subjectId).hex);
+// ----------------------------------------------------- chosen look (R1b) ----
+/** LMS redesign wave R1b (S7, ux-plan UX-101): the sixteen subject icons a teacher may choose, in the Look card's
+ * order, each with its Arabic and English name. "book" is also every automatic subject's icon. Stored as keys only. */
+export const ICONS = [
+  { key: 'book', ar: 'كتاب', en: 'Book' },
+  { key: 'calculator', ar: 'آلة حاسبة', en: 'Calculator' },
+  { key: 'flask', ar: 'دورق', en: 'Flask' },
+  { key: 'pen-book', ar: 'قلم ودفتر', en: 'Pen and notebook' },
+  { key: 'letters', ar: 'حروف', en: 'Letters' },
+  { key: 'globe', ar: 'كرة أرضية', en: 'Globe' },
+  { key: 'map', ar: 'خريطة', en: 'Map' },
+  { key: 'landmark', ar: 'مبنى أثري', en: 'Landmark' },
+  { key: 'palette', ar: 'لوحة ألوان', en: 'Palette' },
+  { key: 'music', ar: 'موسيقى', en: 'Music' },
+  { key: 'ball', ar: 'كرة', en: 'Ball' },
+  { key: 'computer', ar: 'حاسوب', en: 'Computer' },
+  { key: 'leaf', ar: 'ورقة شجر', en: 'Leaf' },
+  { key: 'atom', ar: 'ذرّة', en: 'Atom' },
+  { key: 'heart', ar: 'قلب', en: 'Heart' },
+  { key: 'lightbulb', ar: 'مصباح', en: 'Light bulb' },
+] as const;
+export type SubjectIcon = (typeof ICONS)[number]['key'];
+export type PaletteEntry = (typeof PALETTE)[number];
+
+/** The value of the Look form's "Automatic" choice (both groups). */
+export const AUTO = 'auto';
+
+export const isColourKey = (key: unknown): key is string => typeof key === 'string' && PALETTE.some((p) => p.key === key);
+export const isIconKey = (key: unknown): key is SubjectIcon => typeof key === 'string' && ICONS.some((i) => i.key === key);
+
+/** A subject's look as shown: the stored keys when they are in the sets, else automatic (S7: NULL and any unknown
+ * key alike, never an error). `chosen*` are the keys the Look card shows as checked (null: "Automatic"). */
+export interface Look {
+  colour: PaletteEntry;
+  icon: SubjectIcon;
+  chosenColour: string | null;
+  chosenIcon: SubjectIcon | null;
+}
+
+export function lookOf(subjectId: string, colourKey: unknown, iconKey: unknown): Look {
+  const chosenColour = isColourKey(colourKey) ? colourKey : null;
+  const chosenIcon = isIconKey(iconKey) ? iconKey : null;
+  return {
+    colour: chosenColour ? PALETTE.find((p) => p.key === chosenColour)! : autoColour(subjectId),
+    icon: chosenIcon ?? 'book',
+    chosenColour,
+    chosenIcon,
+  };
+}
+
+/** The CSS custom properties of a palette colour as a subject surface, for a style attribute. */
+export function paletteVars(entry: { hex: string }): string {
+  const c = subjectColours(entry.hex);
   return `--subj:${c.subject};--on-subj:${c.onSubject};--subj-strong:${c.subjectStrong};--subj-tint:${c.subjectTint}`;
+}
+
+/** The CSS custom properties of a subject surface: its chosen colour (R1b), else its automatic one. */
+export function subjectVars(subjectId: string, look?: Look): string {
+  return paletteVars(look?.colour ?? autoColour(subjectId));
 }
 
 /** The CSS custom properties of the school colour, for the page's root. */

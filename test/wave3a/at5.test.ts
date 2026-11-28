@@ -121,9 +121,9 @@ test('W3a AT-5.1 every existing step of contract section 10 is still in its job 
   check('wave-3a', WAVE_3A, true);
   // Wave 3b adds its own one new job, `wave-3b` (W3b contract section 11), wave 4 `wave-4` (W4 contract section 11 item 3)
   // and wave 5 `wave-5` (W5 contract section 11 item 5), wave 6 `wave-6` (W6 contract section 11 item 5), wave 7 `wave-7`
-  // (W7 contract on PIL-261, section 11 item 6), wave 8 `wave-8` (W8 contract on PIL-299, section 6 N1), redesign wave R1a `redesign-r1a` (redesign contract on PIL-322, section 6 S12); nothing else may appear.
-  const known = new Set(Object.keys(SECTION_10).concat('wave-3a', 'wave-3b', 'wave-4', 'wave-5', 'wave-6', 'wave-7', 'wave-8', 'redesign-r1a', 'push')); // "push" is the trigger under on:, not a job
-  assert.deepEqual(Object.keys(ci).filter((j) => !known.has(j)), [], 'at most one new job per wave (wave-3a, then wave-3b, wave-4, wave-5, wave-6, wave-7, wave-8, redesign-r1a)');
+  // (W7 contract on PIL-261, section 11 item 6), wave 8 `wave-8` (W8 contract on PIL-299, section 6 N1), redesign wave R1a `redesign-r1a` (redesign contract on PIL-322, section 6 S12), redesign wave R1b `redesign-r1b` (same contract, section 7); nothing else may appear.
+  const known = new Set(Object.keys(SECTION_10).concat('wave-3a', 'wave-3b', 'wave-4', 'wave-5', 'wave-6', 'wave-7', 'wave-8', 'redesign-r1a', 'redesign-r1b', 'push')); // "push" is the trigger under on:, not a job
+  assert.deepEqual(Object.keys(ci).filter((j) => !known.has(j)), [], 'at most one new job per wave (wave-3a, then wave-3b, wave-4, wave-5, wave-6, wave-7, wave-8, redesign-r1a, redesign-r1b)');
 });
 
 describe('W3a AT-5 keep working', { concurrency: false }, () => {

@@ -363,7 +363,7 @@ const R1A_CHANGED_TESTS: Record<string, string> = {
   'test/wave8/at2.test.ts': 'R1a UX-16a row: openedOn with the S4 date; UX-62/UX-63 rows: the to-do list read on /s/<space>/todo',
   'test/wave8/at3.test.ts': 'R1a UX-16a row: openedOn and openNext with the S4 date',
   'test/wave8/at4.test.ts': 'R1a UX-16a row: openedOn and openNext with the S4 date; AT-4.4 also scans for Ch3\'s date as S4 shows it',
-  'test/wave8/at5.test.ts': 'R1a UX-55 row (S13): AT-5.2 allows the rows of the one latest-announcement read on the home and preview home, nothing else (budget AT-R1a.6a); UX-3, UX-1, UX-34/UX-54/UX-62, UX-55, UX-62/UX-63 and UX-16a rows: AT-5.1 compares the candidate with a41f7d8\'s live capture (itself equal to the stored fixtures) by N1 and the shared R1a normaliser (test/redesign/base.ts); AT-5.3 (a41f7d8\'s code) stays strict',
+  'test/wave8/at5.test.ts': 'R1a UX-55 row (S13): AT-5.2 allows the rows of the one latest-announcement read on the home and preview home, nothing else (budget AT-R1a.6a); UX-3, UX-1, UX-34/UX-54/UX-62, UX-55, UX-62/UX-63 and UX-16a rows: AT-5.1 compares the candidate with a41f7d8\'s live capture (itself equal to the stored fixtures) by N1 and the shared R1a normaliser (test/redesign/base.ts); AT-5.3 (a41f7d8\'s code) stays strict; R1b (PIL-332, S7): AT-5.3 applies the candidate\'s migrations up to 0017 (0018 is R1b\'s, tested by AT-R1b.4)',
   'test/wave4/base.test.ts': 'R1a UX-3, UX-1 (look), UX-34/UX-54/UX-62, UX-55 and UX-16a rows: the shared R1a normaliser (test/redesign/base.ts) on both sides; the crawl follows main\'s own links',
   'test/wave5/base.test.ts': 'R1a rows as wave 4\'s base; UX-55 row: a home with no subject card makes no latest-announcement read; AT-3.5 sees the card lines in place of the block',
   'test/wave6/base.test.ts': 'R1a rows as wave 4\'s base; UX-62/UX-63 rows: the list read on the to-do page, the home strip apart; the W6-e size bound measures the dates\' growth on the candidate (undated home, to-do page), without the shared style',
@@ -372,8 +372,8 @@ const R1A_CHANGED_TESTS: Record<string, string> = {
   'test/wave7/base-guardian.test.ts': 'R1a rows as wave 4\'s base; UX-55 row: no announcement read on a home with no card',
   'test/wave8/ux-learn.test.ts': 'R1a UX-16a row: openedOn and openNext with the S4 date, isolated in the page\'s direction and kept on one line; UX-99: `open-next wait`',
 };
-/** W7-1's additions to the workflow: the job wave-7 (W7 11.6) and the rollback job's AT-6.3 step (W7 11.6); W8-1a's job wave-8; R1a's job redesign-r1a. */
-const W7_JOBS = ['wave-7', 'wave-8', 'redesign-r1a'];
+/** W7-1's additions to the workflow: the job wave-7 (W7 11.6) and the rollback job's AT-6.3 step (W7 11.6); W8-1a's job wave-8; R1a's job redesign-r1a; R1b's job redesign-r1b. */
+const W7_JOBS = ['wave-7', 'wave-8', 'redesign-r1a', 'redesign-r1b'];
 const W7_ROLLBACK_STEP = /^W7 AT-6\.3 /;
 
 describe('W6 AT-7.5 keep working: every existing CI step and the rollback job are W6-1b-main\'s; only the named test files changed', { concurrency: false }, () => {

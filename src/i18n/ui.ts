@@ -724,6 +724,18 @@ const en = {
   cardReadAgain: 'Read again',
   emptyHomeLine: 'When something is assigned to you, it appears here.',
   heroLesson: '{subjectTitle} · {chapterTitle}',
+  // LMS redesign wave R1b (S7, ux-plan UX-101): the Look card of the subject editor; no word agrees with a kit word.
+  lookHeading: 'Look: colour and icon',
+  lookHelp: 'Every {learner} sees this look on the card and on the page.',
+  lookSample: 'Sample card',
+  lookColour: 'Colour',
+  lookIcon: 'Icon',
+  lookAuto: 'Automatic',
+  lookSave: 'Save look',
+  lookSaved: 'Look saved.',
+  lookFailed: 'Not saved. Try again.',
+  lookColourRefused: 'Choose one of the colours shown.',
+  lookIconRefused: 'Choose one of the icons shown.',
 };
 
 export type UiKey = keyof typeof en;
@@ -1432,6 +1444,17 @@ const ar: Record<UiKey, string> = {
   cardReadAgain: 'قراءة من جديد',
   emptyHomeLine: 'عندما يُخصَّص لك شيء يظهر هنا.',
   heroLesson: '{subjectTitle} · {chapterTitle}',
+  lookHeading: 'الشكل: اللون والرمز',
+  lookHelp: 'يظهر هذا الشكل لكل {learner} على البطاقة وفي الصفحة.',
+  lookSample: 'نموذج البطاقة',
+  lookColour: 'اللون',
+  lookIcon: 'الرمز',
+  lookAuto: 'تلقائي',
+  lookSave: 'حفظ الشكل',
+  lookSaved: 'تمّ حفظ الشكل',
+  lookFailed: 'لم يُحفظ. أعد المحاولة.',
+  lookColourRefused: 'اختر أحد الألوان المعروضة.',
+  lookIconRefused: 'اختر أحد الرموز المعروضة.',
 };
 
 export const UI: Record<'ar' | 'en', Record<UiKey, string>> = { en, ar };

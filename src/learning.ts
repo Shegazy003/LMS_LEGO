@@ -15,6 +15,7 @@
 //   (test/guards/removed-content.test.ts checks every statement).
 import type { CurrentSpace } from './app-env.ts';
 import type { Db } from './db.ts';
+import { lookOf, type Look } from './look.ts';
 
 export interface SubjectRow {
   id: string;
@@ -23,6 +24,9 @@ export interface SubjectRow {
   is_published: number;
   /** LMS wave 4 (section 6.1): 1 when the subject opens its chapters in order; read with the row every page already reads. */
   chapters_in_order: number;
+  /** LMS redesign R1b (S7): the chosen colour and icon keys (NULL: automatic); read only by the subject editor. */
+  look_colour?: string | null;
+  look_icon?: string | null;
 }
 
 
@@ -103,6 +107,8 @@ export function subjectsForLearner(db: Db, spaceId: string, userId: string): Pro
 export interface LearnerCard {
   id: string;
   title: string;
+  /** LMS redesign R1b (S7): the subject's colour and icon, chosen by its teacher or automatic, from the same read. */
+  look: Look;
   publisherName: string | null;
   count: number;
   first: { id: string; title: string } | null;
@@ -126,7 +132,7 @@ export interface WaitingFor {
  * (section 4.5): exactly the subjects of subjectsForLearner, in its order. */
 export async function learnerCards(db: Db, spaceId: string, userId: string, today: string): Promise<LearnerCard[]> {
   const rows = await db.all<CardRow>(
-    `SELECT s.id AS subject_id, s.title AS subject_title, s.chapters_in_order AS in_order, u.display_name AS publisher_name, c.id AS chapter_id, c.title AS chapter_title, c.opens_on, c.opens_hidden, l.id AS lesson_id, l.title AS lesson_title
+    `SELECT s.id AS subject_id, s.title AS subject_title, s.chapters_in_order AS in_order, s.look_colour, s.look_icon, u.display_name AS publisher_name, c.id AS chapter_id, c.title AS chapter_title, c.opens_on, c.opens_hidden, l.id AS lesson_id, l.title AS lesson_title
        FROM subject s
        LEFT JOIN user u ON u.id = s.publisher_user_id
        LEFT JOIN chapter c ON c.subject_id = s.id AND c.space_id = s.space_id AND c.removed_at IS NULL
@@ -141,6 +147,18 @@ export async function learnerCards(db: Db, spaceId: string, userId: string, toda
     spaceId, userId, userId,
   );
   return cardsOf(rows, today);
+}
+
+/** LMS redesign R1b (S7): the looks of these subjects of the space, in one read (the to-do page's rows, whose
+ * subjects the learner already reads there); none read when there is no row. */
+export async function subjectLooks(db: Db, spaceId: string, subjectIds: string[]): Promise<Map<string, Look>> {
+  const ids = [...new Set(subjectIds)];
+  if (!ids.length) return new Map();
+  const rows = await db.all<{ id: string; look_colour: string | null; look_icon: string | null }>(
+    'SELECT s.id, s.look_colour, s.look_icon FROM subject s WHERE s.space_id = ? AND s.id IN (SELECT value FROM json_each(?))',
+    spaceId, JSON.stringify(ids),
+  );
+  return new Map(rows.map((r) => [r.id, lookOf(r.id, r.look_colour, r.look_icon)]));
 }
 
 /** One row of the to-do statement (LMS wave 6, section 5): a listed lesson or
@@ -259,7 +277,7 @@ export function previewTodo(db: Db, spaceId: string, previewer: Previewer, today
 }
 
 type CardRow = {
-  subject_id: string; subject_title: string; in_order: number; publisher_name: string | null;
+  subject_id: string; subject_title: string; in_order: number; look_colour: string | null; look_icon: string | null; publisher_name: string | null;
   chapter_id: string | null; chapter_title: string | null; opens_on: string | null; opens_hidden: number | null; lesson_id: string | null; lesson_title: string | null;
 };
 
@@ -278,7 +296,7 @@ export interface Previewer {
 export async function previewCards(db: Db, spaceId: string, previewer: Previewer, today: string): Promise<LearnerCard[]> {
   const rows = previewer.kind === 'admin'
     ? await db.all<CardRow>(
-      `SELECT s.id AS subject_id, s.title AS subject_title, s.chapters_in_order AS in_order, u.display_name AS publisher_name, c.id AS chapter_id, c.title AS chapter_title, c.opens_on, c.opens_hidden, l.id AS lesson_id, l.title AS lesson_title
+      `SELECT s.id AS subject_id, s.title AS subject_title, s.chapters_in_order AS in_order, s.look_colour, s.look_icon, u.display_name AS publisher_name, c.id AS chapter_id, c.title AS chapter_title, c.opens_on, c.opens_hidden, l.id AS lesson_id, l.title AS lesson_title
          FROM subject s
          LEFT JOIN user u ON u.id = s.publisher_user_id
          LEFT JOIN chapter c ON c.subject_id = s.id AND c.space_id = s.space_id AND c.removed_at IS NULL
@@ -288,7 +306,7 @@ export async function previewCards(db: Db, spaceId: string, previewer: Previewer
       spaceId,
     )
     : await db.all<CardRow>(
-      `SELECT s.id AS subject_id, s.title AS subject_title, s.chapters_in_order AS in_order, u.display_name AS publisher_name, c.id AS chapter_id, c.title AS chapter_title, c.opens_on, c.opens_hidden, l.id AS lesson_id, l.title AS lesson_title
+      `SELECT s.id AS subject_id, s.title AS subject_title, s.chapters_in_order AS in_order, s.look_colour, s.look_icon, u.display_name AS publisher_name, c.id AS chapter_id, c.title AS chapter_title, c.opens_on, c.opens_hidden, l.id AS lesson_id, l.title AS lesson_title
          FROM subject s
          LEFT JOIN user u ON u.id = s.publisher_user_id
          LEFT JOIN chapter c ON c.subject_id = s.id AND c.space_id = s.space_id AND c.removed_at IS NULL
@@ -315,7 +333,7 @@ function cardsOf(rows: CardRow[], today: string): LearnerCard[] {
   for (const r of rows) {
     let card = cards.at(-1);
     if (!card || card.id !== r.subject_id) {
-      cards.push((card = { id: r.subject_id, title: r.subject_title, publisherName: r.publisher_name, count: 0, first: null, steps: [], inOrder: r.in_order === 1, opening: new Map(), next: null }));
+      cards.push((card = { id: r.subject_id, title: r.subject_title, look: lookOf(r.subject_id, r.look_colour, r.look_icon), publisherName: r.publisher_name, count: 0, first: null, steps: [], inOrder: r.in_order === 1, opening: new Map(), next: null }));
     }
     if (!r.lesson_id) continue;
     // LMS wave 8 (section 3.3, L1): a hidden chapter not open yet adds nothing (no lesson, no count, no step).

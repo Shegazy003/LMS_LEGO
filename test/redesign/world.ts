@@ -148,8 +148,12 @@ export const FILES = {
 
 export type Row = [string, ...(string | number | null)[]];
 
-/** Every statement of the world, in order (one transaction). */
-export async function worldRows(): Promise<Row[]> {
+/** LMS redesign R1b (S7, section 7 "seed: one subject with a chosen look"): اللغة العربية's chosen look. */
+export const CHOSEN_LOOK = { subjectId: SUBJECTS[2].id, colour: 'c03', icon: 'letters' } as const;
+
+/** Every statement of the world, in order (one transaction). `look` (R1b and the demo seed only; needs migration
+ * 0018): one subject with a chosen look; without it every subject is automatic, as in R1a's world. */
+export async function worldRows(opts: { look?: boolean } = {}): Promise<Row[]> {
   const rows: Row[] = [];
   for (const p of PEOPLE) {
     rows.push(['INSERT INTO user (id, username, password_hash, display_name, mobile, is_owner, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
@@ -215,12 +219,13 @@ export async function worldRows(): Promise<Row[]> {
     rows.push(['INSERT INTO exam_result (id, space_id, exam_id, learner_user_id, status, mark, published_at, changed_by, changed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
       `${examId}-salma`, ID.space, examId, SALMA.id, 'marked', mark, Date.parse(`${date}T12:00:00.000Z`), subject.teacher.id, Date.parse(`${date}T12:00:00.000Z`)]);
   }
+  if (opts.look) rows.push(['UPDATE subject SET look_colour = ?, look_icon = ? WHERE id = ? AND space_id = ?', CHOSEN_LOOK.colour, CHOSEN_LOOK.icon, CHOSEN_LOOK.subjectId, ID.space]);
   return rows;
 }
 
 /** Writes the world into an in-process product's database (one transaction) and its files into the file store. */
-export async function seedR1a(w: InProcessWorker): Promise<void> {
-  const rows = await worldRows();
+export async function seedR1a(w: InProcessWorker, opts: { look?: boolean } = {}): Promise<void> {
+  const rows = await worldRows(opts);
   for (const f of Object.values(FILES)) await w.files.put(f.key, f.bytes(), { httpMetadata: { contentType: f.type } });
   w.sqlite.exec('BEGIN');
   try {
@@ -249,10 +254,10 @@ export interface R1aWorld {
 }
 
 /** The world on a fresh in-process product (this checkout, or another one: `root`), the clock pinned to 2026-11-27. */
-export async function r1aWorld(opts: { root?: string; atMs?: number } = {}): Promise<R1aWorld> {
+export async function r1aWorld(opts: { root?: string; atMs?: number; look?: boolean } = {}): Promise<R1aWorld> {
   const p = (await inProcess(opts.root ? { root: opts.root } : {})) as Twin;
   try {
-    await seedR1a(p.worker);
+    await seedR1a(p.worker, { look: opts.look });
     await pin(p.url, opts.atMs ?? AT);
   } catch (err) {
     await p.stop();
