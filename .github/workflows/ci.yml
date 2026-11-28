@@ -2453,6 +2453,82 @@ jobs:
         with:
           name: evidence-redesign-r1a
           path: evidence/
+  # LMS redesign wave R1b (product-contract v2 on PIL-322, S7; ux-plan UX-101):
+  # the teacher's choice of a subject's colour and icon (migration 0018), in the
+  # seeded world (test/redesign/r1b.test.ts, r1b-ux.test.ts). Each acceptance
+  # test, its sub-tests and the UX item are their own steps; the screenshots
+  # under evidence/ux/ are evidence only, not the gate.
+  redesign-r1b:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      WRANGLER_SEND_METRICS: "false"
+      LMS_TEST_RUNTIME: in-process
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install (lockfile only, when present)
+        run: if [ -f package-lock.json ]; then npm ci; fi
+      - name: Read the Playwright version
+        id: playwright
+        run: |
+          echo "version=$(node -p "require('playwright/package.json').version")" >> "$GITHUB_OUTPUT"
+          echo "image=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
+      - name: Cache Chromium for the browser test
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.image }}-${{ steps.playwright.outputs.version }}-chromium
+      - name: Install Chromium for the browser test
+        timeout-minutes: 10
+        run: |
+          npx playwright install-deps chromium
+          for attempt in 1 2 3; do
+            timeout 180 npx playwright install chromium && exit 0
+            echo "::warning::Chromium install attempt $attempt did not finish; retrying"
+            sleep 10
+          done
+          exit 1
+      - name: Build the static assets (fonts and licence)
+        run: npm run build:assets
+      - name: AT-R1b.0 the colour and icon sets, automatic for NULL and unknown keys
+        if: success() || failure()
+        run: npm run test:redesign -- --test-name-pattern='^AT-R1b.0 ' test/redesign/r1b.test.ts
+      - name: AT-R1b.1 choose and see
+        if: success() || failure()
+        run: npm run test:redesign -- --test-name-pattern='^AT-R1b.1 ' test/redesign/r1b.test.ts
+      - name: AT-R1b.2 refusals store nothing
+        if: success() || failure()
+        run: npm run test:redesign -- --test-name-pattern='^AT-R1b.2 ' test/redesign/r1b.test.ts
+      - name: AT-R1b.3a an unknown stored key renders automatic with status 200
+        if: success() || failure()
+        run: npm run test:redesign -- --test-name-pattern='^AT-R1b.3a ' test/redesign/r1b.test.ts
+      - name: AT-R1b.3b two saves end with one whole look
+        if: success() || failure()
+        run: npm run test:redesign -- --test-name-pattern='^AT-R1b.3b ' test/redesign/r1b.test.ts
+      - name: AT-R1b.3c copy and export paths of subject rows
+        if: success() || failure()
+        run: npm run test:redesign -- --test-name-pattern='^AT-R1b.3c ' test/redesign/r1b.test.ts
+      - name: AT-R1b.4 migration 0018, down script and deploy note
+        if: success() || failure()
+        run: npm run test:redesign -- --test-name-pattern='^AT-R1b.4 ' test/redesign/r1b.test.ts
+      - name: AT-R1b.4 migration hashes and schema checks stay green
+        if: success() || failure()
+        run: npm run test:redesign -- test/deploy/migrations.test.ts
+      - name: UX-101 look card radios names and refusals
+        if: success() || failure()
+        run: npm run test:redesign -- --test-name-pattern='^UX-101 look card ' test/redesign/r1b-ux.test.ts
+      - name: UX-101 live sample
+        if: success() || failure()
+        run: npm run test:redesign -- --test-name-pattern='^UX-101 live sample' test/redesign/r1b-ux.test.ts
+      - name: Upload evidence (redesign R1b screenshots)
+        if: always() && hashFiles('evidence/**') != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: evidence-redesign-r1b
+          path: evidence/
   # AT-14a: rollback holds. The code live before release 2 (main at f3b1fa7,
   # the H-1 version 528786a4, the rollback target) is checked out beside this
   # commit and given this commit's migrations, so the old code runs on a

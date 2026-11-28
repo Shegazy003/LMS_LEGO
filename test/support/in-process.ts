@@ -142,6 +142,10 @@ export async function startInProcess(vars: Record<string, string> = {}, from: In
     // the additive migration 0017 here, with no date stored, as each later wave's copy gained its own migration.
     const cols = sqlite.prepare("SELECT name FROM pragma_table_info('chapter')").all().map((r) => String(r.name));
     if (cols.length && !cols.includes('opens_on')) sqlite.exec(readFileSync(join(root, 'migrations', '0017_chapter_opening.sql'), 'utf8'));
+    // LMS redesign R1b (contract on PIL-322, S7): the editor and learner reads use the subject look columns; such a
+    // copy gains the additive migration 0018 the same way, no look stored (every subject automatic).
+    const subj = sqlite.prepare("SELECT name FROM pragma_table_info('subject')").all().map((r) => String(r.name));
+    if (subj.length && !subj.includes('look_colour')) sqlite.exec(readFileSync(join(root, 'migrations', '0018_subject_look.sql'), 'utf8'));
   }
   const files = from.files ?? r2InMemory();
   let hooks: StatementHooks = {};

@@ -57,7 +57,7 @@ export interface EditableMaterial {
 
 export function editableSubject(db: Db, spaceId: string, userId: string, subjectId: string): Promise<SubjectRow | null> {
   return db.first<SubjectRow>(
-    'SELECT s.id, s.title, s.publisher_user_id, s.is_published, s.chapters_in_order FROM subject s WHERE s.id = ? AND s.space_id = ? AND s.publisher_user_id = ?',
+    'SELECT s.id, s.title, s.publisher_user_id, s.is_published, s.chapters_in_order, s.look_colour, s.look_icon FROM subject s WHERE s.id = ? AND s.space_id = ? AND s.publisher_user_id = ?',
     subjectId, spaceId, userId,
   );
 }
@@ -159,6 +159,17 @@ export async function setChaptersInOrder(db: Db, spaceId: string, userId: string
   const changed = await db.run(
     'UPDATE subject SET chapters_in_order = ? WHERE id = ? AND space_id = ? AND publisher_user_id = ?',
     on ? 1 : 0, subjectId, spaceId, userId,
+  );
+  return changed === 1;
+}
+
+/** LMS redesign R1b (S7): the subject's chosen colour and icon keys (null: automatic), both in one statement, so a
+ * mixed pair is never stored and of two racing saves the last one stands whole. The caller has checked the keys
+ * against the sets; the statement repeats the ownership check. True when the row was this publisher's. */
+export async function setLook(db: Db, spaceId: string, userId: string, subjectId: string, colour: string | null, icon: string | null): Promise<boolean> {
+  const changed = await db.run(
+    'UPDATE subject SET look_colour = ?, look_icon = ? WHERE id = ? AND space_id = ? AND publisher_user_id = ?',
+    colour, icon, subjectId, spaceId, userId,
   );
   return changed === 1;
 }

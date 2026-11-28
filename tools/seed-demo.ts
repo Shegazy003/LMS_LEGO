@@ -38,7 +38,8 @@ if (Number(people[0]?.results[0]?.n ?? 0) > 0) throw new Error('the local databa
 
 const dir = mkdtempSync(join(tmpdir(), 'lms-seed-'));
 try {
-  const sql = (await worldRows()).map(([q, ...params]) => {
+  // LMS redesign R1b (S7, section 7): one subject with a chosen look (اللغة العربية: c03 + letters).
+  const sql = (await worldRows({ look: true })).map(([q, ...params]) => {
     let i = 0;
     return q.replace(/\?/g, () => literal(params[i++])) + ';';
   });

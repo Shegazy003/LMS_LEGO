@@ -39,6 +39,8 @@ const BASE_MIGRATIONS: Record<string, string> = {
   '0016_quizzes.sql': 'ace1442b6cd38a4f2c6128367e7e51dff8d131d8be75c0cbadee333e3e2bc4da',
   // LMS wave 8 (contract on PIL-299, R1): chapter.opens_on and chapter.opens_hidden.
   '0017_chapter_opening.sql': '5135d7abb8ccdce8cf9b3727c69e0d9b79dd81981b6e6acc1b2ccd0bb38bf449',
+  // LMS redesign R1b (contract on PIL-322, S7): subject.look_colour and subject.look_icon.
+  '0018_subject_look.sql': 'e4fd39492a1ab1c35f002184b3d64e4c750d2778b6216932c817b0e152b874d0',
 };
 
 const schemaQuery = "SELECT type, name, tbl_name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND name <> 'd1_migrations' ORDER BY type, name";

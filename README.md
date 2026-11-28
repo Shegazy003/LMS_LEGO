@@ -438,6 +438,12 @@ The approved prototype's look (`docs/visual/prototype-v1.html`), in each school'
 
 **Rollback:** redeploy the earlier version: the old look and home come back; nothing stored changed. The font files are static assets of the version and go with it.
 
+**Subject look (LMS redesign R1b):** the subject's responsible teacher chooses its colour and icon on a new "Look" card of the subject editor (`/s/<space>/publish/edit/<subject>`, right after the first card): a sample card, «اللون» (Automatic + the 12 palette colours, each named), «الرمز» (Automatic + 16 icons, each named) and **Save look**. With script the sample follows the chosen radios before saving; without script it shows the saved look. Learners see the chosen look on their home cards, the "continue" hero, My subjects, the due-soon strip and the to-do page. Stored as keys only (`subject.look_colour` = `c01`…`c12`, `subject.look_icon` = one of the 16 keys in `src/look.ts`); NULL means automatic (R1a's colour from the subject's id and the book icon), and a key the code does not know shows as automatic too. Only the responsible teacher can save it; anything else is refused and nothing is stored. No path copies or exports subject rows, so none needed the columns added (test AT-R1b.3c). The demo seed (`tools/seed-demo.ts`) gives اللغة العربية a chosen look (`c03`, `letters`).
+
+**Deploy order:** apply migration 0018 before deploying the R1b Worker (`npx wrangler d1 migrations apply <database> --remote`, which the deploy workflow already runs before `wrangler deploy`). The migration only adds the two nullable columns, so the earlier code keeps working on the migrated database.
+
+**Rollback:** first redeploy the earlier code, then run the down script, `migrations-down/0018_subject_look.down.sql`, only if the columns must go (`npx wrangler d1 execute <database> --remote --file migrations-down/0018_subject_look.down.sql`). It drops both columns and removes the migration's line from `d1_migrations`, so the schema is exactly d1a5ae3's; every chosen look is deleted (no learner data), so running it on the live database is the owner's RED decision. Without it, the earlier code ignores the columns and every subject is automatic until R1b is redeployed, when the chosen looks return.
+
 ### Reset links (AT-2, contract section 8)
 
 1. The appointer (the admin for publishers and learners, the owner for admins) opens the person's page and presses **Send reset link by WhatsApp**.
